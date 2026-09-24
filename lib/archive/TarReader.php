@@ -171,6 +171,20 @@ final class TarReader {
 	}
 
 	/**
+	 * Skips up to $length bytes of the current entry's data.
+	 *
+	 * @param int $length Bytes to skip.
+	 * @return void
+	 */
+	public function skip_bytes( int $length ): void {
+		$length = (int) min( $length, $this->remaining );
+		if ( $length > 0 ) {
+			$this->skip( $length );
+			$this->remaining -= $length;
+		}
+	}
+
+	/**
 	 * Copies the rest of the current entry's data to a writable stream.
 	 *
 	 * @param resource $destination Writable stream.

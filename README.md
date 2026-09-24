@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups can be restored.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 1 in progress.** `wp fmw backup`, `verify` and `inspect` work and produce complete `.fmw` archives. `wp fmw restore` is next. Test on staging sites before relying on it in production.
+> **Status: phase 1 complete (CLI).** `wp fmw backup`, `restore`, `verify` and `inspect` work end to end and are resumable. The admin screens and `.wpress` import come in phase 2. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -46,6 +46,22 @@ wp fmw verify <file>         # SHA-256 check of every part
 
 Backup flags follow `wp ai1wm backup`: `--exclude-spam-comments`, `--exclude-post-revisions`, `--exclude-media`, `--exclude-themes`, `--exclude-inactive-themes`, `--exclude-muplugins`, `--exclude-plugins`, `--exclude-inactive-plugins`, `--exclude-cache`, `--exclude-database`. FMW adds `--exclude-transients`, `--exclude-tables=a,b`, `--exclude-paths="uploads/old/*"`, `--part-size=512M` and `--porcelain`.
 
+Restore onto the same site or a new domain, path or table prefix:
+
+```bash
+wp fmw restore <file>                  # asks for confirmation; --yes skips it
+wp fmw restore <file> --keep-old-tables
+wp fmw cleanup --tables                # drop fmwold_* / leftover fmwtmp_* tables
+```
+
+How a restore protects the site:
+
+- Every part is checked against its SHA-256 before it is used; a damaged archive stops the restore before anything live changes.
+- The database is imported into `fmwtmp_*` tables and put live with **one atomic `RENAME TABLE`**; the previous tables become `fmwold_*` and are dropped at the end (kept with `--keep-old-tables`). Tables of other sites in a shared database are left alone.
+- URLs, paths and e-mail domains are replaced for the new location, serialized data included, without running `unserialize()` on backup data. `posts.guid` stays unchanged, as WordPress recommends. A changed table prefix is applied to user roles and user meta keys.
+- SQL from the archive is checked against an allowlist (table DDL and literal `INSERT`s only), so a crafted backup cannot run arbitrary queries.
+- The FMW plugin folder, backups and storage are never overwritten, the plugin stays active, and files that are not in the backup are kept.
+
 Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to type `fmw backup`.
 
 | Command | ai1wm equivalent | Available |
@@ -54,7 +70,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | phase 1 (`.wpress`: phase 2) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.wpress`: phase 2) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |

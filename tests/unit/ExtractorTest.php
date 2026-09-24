@@ -114,17 +114,39 @@ final class ExtractorTest extends TestCase {
 		}
 	}
 
-	public function test_nothing_is_written_through_a_symlinked_directory(): void {
-		// "a" points inside the root, but a relative link placed under it could escape.
+	public function test_symlink_chains_cannot_escape_the_root(): void {
+		// "a" points at the root itself (allowed). A link created under it that looks
+		// harmless lexically ("a/../q" = "q") really resolves to root/../q.
 		$path = $this->archive(
 			static function ( TarWriter $w ) {
 				$w->add_symlink( 'a', '.' );
-				$w->add_string( 'a/b.txt', 'through the link' );
+				$w->add_symlink( 'a/s', '../outside' );
 			}
 		);
 
-		$this->expectException( UnsafePathException::class );
-		( new Extractor( $this->tmp . '/root' ) )->extract_all( TarReader::open( $path ) );
+		try {
+			( new Extractor( $this->tmp . '/root' ) )->extract_all( TarReader::open( $path ) );
+			$this->fail( 'Expected UnsafePathException.' );
+		} catch ( UnsafePathException $e ) {
+			$this->assertFalse( is_link( $this->tmp . '/root/s' ) );
+		}
+	}
+
+	public function test_existing_symlinked_folders_on_the_server_are_written_through(): void {
+		$root    = $this->tmp . '/root';
+		$storage = $this->tmp . '/other-disk/uploads';
+		mkdir( $root, 0755, true );
+		mkdir( $storage, 0755, true );
+		symlink( $storage, $root . '/uploads' ); // Set up by the server admin, not by the archive.
+
+		$path = $this->archive(
+			static function ( TarWriter $w ) {
+				$w->add_string( 'uploads/2026/photo.jpg', 'jpeg' );
+			}
+		);
+		( new Extractor( $root ) )->extract_all( TarReader::open( $path ) );
+
+		$this->assertSame( 'jpeg', file_get_contents( $storage . '/2026/photo.jpg' ) );
 	}
 
 	public function test_existing_symlink_at_target_is_replaced_not_followed(): void {
