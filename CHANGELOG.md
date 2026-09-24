@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Export database step: plain-SQL dump per table in `database/NNNN-<table>.CCCC.sql.gz` chunks, restorable with the stock `mysql` client. Keyset pagination on the primary key (or a NOT NULL unique key, else LIMIT/OFFSET), consistent snapshot per process, resumable mid-table, binary values as hex, BIT read as numbers, generated columns left out, views and triggers without DEFINER (triggers restored after the data).
+- Database row exclusions matching `wp ai1wm backup`: spam comments, post revisions, transients (subsite tables included), plus `exclude_tables`.
+- Own mysqli connection built from `DB_HOST` (host, port, socket and IPv6 forms); credentials are never written to job state.
+- CI starts MySQL 8 so the database tests run against a real server; they are skipped when none is reachable.
+
 - Export scan step: resumable depth-first walk of wp-content into an on-disk file list (constant memory for millions of files); symlinks recorded, never followed; non-UTF-8 names kept byte-exact.
 - Export files step: packs files into format-v1 parts (`.tar.gz` for compressible files, `.tar` for media), rotates at the part size without ever splitting a file, resumes in the middle of large files, records SHA-256 per part, skips files deleted after the scan and logs files that changed size.
 - Exclusions matching `wp ai1wm backup`: cache, media, themes, inactive themes, mu-plugins, plugins, inactive plugins, and path patterns. The FMW backups and storage folders and WordPress `upgrade` folders are never included.
