@@ -30,7 +30,7 @@ Until the first release on WordPress.org:
 
 ```bash
 cd wp-content/plugins
-git clone https://github.com/<your-github-username>/founders-migration-website.git
+git clone https://github.com/akhmadsakhoji/founders-migration-website.git
 wp plugin activate founders-migration-website
 wp fmw status
 ```
