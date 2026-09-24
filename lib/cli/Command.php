@@ -254,6 +254,12 @@ final class Command {
 	 * [--password[=<password>]]
 	 * : Encrypt the backup (AES-256, at least 8 characters). Without a value the password is asked for, twice, without echo. Keep it safe: without it the backup cannot be restored.
 	 *
+	 * [--storage=<id>]
+	 * : Upload the backup to this cloud storage afterwards (see `wp fmw storage list`).
+	 *
+	 * [--delete-local]
+	 * : With --storage: delete the copy on this server once the upload is complete and checked.
+	 *
 	 * [--sites=<ids>]
 	 * : Back up selected subsites only. Planned for phase 3.
 	 *
@@ -263,6 +269,7 @@ final class Command {
 	 *     wp fmw backup --exclude-cache --exclude-post-revisions
 	 *     wp fmw backup --exclude-media --porcelain
 	 *     wp fmw backup --password
+	 *     wp fmw backup --storage=1a2b3c4d --delete-local
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -1170,63 +1177,7 @@ final class Command {
 	 * @return void
 	 */
 	private function run_job( Job $job, bool $no_progress, bool $porcelain = false ): void {
-		$bar    = $no_progress ? null : new ProgressBar();
-		$runner = new Runner(
-			Jobs::store(),
-			Jobs::registry(),
-			static function ( Job $job ) use ( $bar ) {
-				if ( null !== $bar && '' !== $job->phase ) {
-					$bar->update( $job->phase, $job->bytes_done, $job->bytes_total );
-				}
-			}
-		);
-
-		if ( ! $porcelain ) {
-			WP_CLI::log( sprintf( 'FMW %s · job %s', FMWP_VERSION, $job->id ) );
-		}
-		try {
-			$runner->run( $job, Deadline::unlimited(), true );
-		} catch ( JobException $e ) {
-			WP_CLI::error( $e->getMessage() );
-		} finally {
-			if ( null !== $bar ) {
-				$bar->finish();
-			}
-		}
-
-		if ( Job::STATUS_COMPLETED === $job->status ) {
-			if ( Jobs::changes_site( $job->type ) ) {
-				Jobs::store()->purge_work_files( $job->id );
-				wp_cache_flush();
-				delete_option( 'rewrite_rules' );
-				if ( 'reset' === $job->type ) {
-					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
-					return;
-				}
-				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored site; log in with its accounts.', home_url() ) );
-				return;
-			}
-			if ( isset( $job->data['archive']['path'] ) ) {
-				Jobs::store()->purge_work_files( $job->id );
-				if ( $porcelain ) {
-					WP_CLI::line( (string) $job->data['archive']['name'] );
-					return;
-				}
-				WP_CLI::success( sprintf( 'Backup created: %s (%s).', $job->data['archive']['path'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ) ) );
-				return;
-			}
-			WP_CLI::success( sprintf( 'Job %s completed.', $job->id ) );
-			return;
-		}
-		if ( Job::STATUS_CANCELLED === $job->status ) {
-			WP_CLI::warning( sprintf( 'Job %s was cancelled.', $job->id ) );
-			WP_CLI::halt( 1 );
-		}
-		if ( Job::STATUS_FAILED === $job->status ) {
-			WP_CLI::error( sprintf( 'Job %s failed: %s Fix the cause, then run `wp fmw resume %s`.', $job->id, rtrim( (string) $job->error, '.' ) . '.', $job->id ) );
-		}
-		WP_CLI::warning( sprintf( 'Job %s stopped. Continue with `wp fmw resume %s`.', $job->id, $job->id ) );
-		WP_CLI::halt( self::EXIT_RESUMABLE );
+		JobRunner::run( $job, $no_progress, $porcelain );
 	}
 
 	/**

@@ -15,6 +15,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\JobToken;
+use Founders\Migration\Remote\Storages;
 use Founders\Migration\Schedule\ScheduleOptions;
 use Founders\Migration\Schedule\Scheduler;
 use WP_Error;
@@ -178,7 +179,7 @@ final class ScheduleRestController {
 	 */
 	private function save( WP_REST_Request $request, ?array $existing ) {
 		$input = array();
-		foreach ( array( 'name', 'enabled', 'frequency', 'time', 'weekday', 'monthday', 'flags', 'keep', 'notify', 'email' ) as $field ) {
+		foreach ( array( 'name', 'enabled', 'frequency', 'time', 'weekday', 'monthday', 'flags', 'keep', 'notify', 'email', 'storage', 'remote_keep', 'keep_local' ) as $field ) {
 			if ( null !== $request[ $field ] ) {
 				$input[ $field ] = $request[ $field ];
 			}
@@ -188,6 +189,9 @@ final class ScheduleRestController {
 		}
 		if ( isset( $input['name'] ) ) {
 			$input['name'] = sanitize_text_field( (string) $input['name'] );
+		}
+		if ( ! empty( $input['storage'] ) && null === Storages::get( (string) $input['storage'] ) ) {
+			return new WP_Error( 'fmw_invalid_schedule', __( 'That cloud storage does not exist any more.', 'founders-migration-website' ), array( 'status' => 400 ) );
 		}
 		try {
 			$schedule = ScheduleOptions::build( $input, $existing, time(), wp_timezone() );

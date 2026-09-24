@@ -274,12 +274,34 @@
 		} );
 	}
 
+	function remoteLine( summary ) {
+		return summary.remote ? el( 'p', { text: sprintf( t.uploadedTo, summary.remote.name, summary.remote.key ) } ) : null;
+	}
+
 	function finish( summary ) {
 		modal.part( 'progress' ).hidden = true;
-		if ( 'completed' === summary.status && 'backup' === summary.type && summary.backup ) {
+		if ( 'completed' === summary.status && 'backup' === summary.type && summary.deleted_local ) {
+			modal.message( sprintf( t.uploadedTo, summary.remote.name, summary.remote.key ), 'success' );
+			modal.part( 'modal-body' ).appendChild( el( 'p', { text: t.deletedLocal } ) );
+			modal.actions( [ closeButton( false ) ] );
+		} else if ( 'completed' === summary.status && 'backup' === summary.type && summary.backup ) {
 			modal.message( sprintf( t.backupDone, summary.backup.name, bytes( summary.backup.size ) ), 'success' );
+			if ( summary.remote ) {
+				modal.part( 'modal-body' ).appendChild( remoteLine( summary ) );
+			}
 			modal.actions( [
 				el( 'a', { class: 'button button-primary', href: config.download + '&name=' + encodeURIComponent( summary.backup.name ), text: t.download } ),
+				closeButton( false ),
+			] );
+		} else if ( 'completed' === summary.status && 'upload' === summary.type ) {
+			modal.message( sprintf( t.uploadedTo, summary.remote.name, summary.remote.key ), 'success' );
+			modal.actions( [ closeButton( false ) ] );
+		} else if ( 'completed' === summary.status && 'download' === summary.type && summary.backup ) {
+			modal.message( sprintf( t.downloaded, summary.backup.name ), 'success' );
+			modal.actions( [
+				button( t.restore, function () {
+					confirmRestore( summary.backup.name );
+				}, true ),
 				closeButton( false ),
 			] );
 		} else if ( 'completed' === summary.status && 'reset' === summary.type ) {
@@ -311,6 +333,13 @@
 		panel.querySelectorAll( '.fmw-advanced input[type=checkbox]:checked' ).forEach( function ( box ) {
 			flags[ box.name ] = true;
 		} );
+		var storage = panel.querySelector( '[data-fmw-export-storage]' );
+		if ( storage && storage.value ) {
+			flags.storage = storage.value;
+			if ( panel.querySelector( '[data-fmw-export-delete-local] input' ).checked ) {
+				flags[ 'delete-local' ] = true;
+			}
+		}
 		if ( panel.querySelector( '[data-fmw-encrypt]' ).checked ) {
 			var password = panel.querySelector( '[data-fmw-password]' ).value;
 			if ( password.length < 8 ) {
@@ -548,6 +577,10 @@
 		form.querySelector( '[data-fmw-schedule-password-kept]' ).hidden = ! ( on && kept );
 	}
 
+	function showRemote( form ) {
+		form.querySelector( '[data-fmw-schedule-remote]' ).hidden = ! form.elements.storage.value;
+	}
+
 	function resetScheduleForm() {
 		var form  = scheduleForm();
 		var title = document.querySelector( '[data-fmw-schedule-title]' );
@@ -557,6 +590,7 @@
 		form.querySelector( '[data-fmw-schedule-cancel]' ).hidden = true;
 		form.querySelector( '[data-fmw-schedule-error]' ).textContent = '';
 		showFrequency( form );
+		showRemote( form );
 		showPassword( form, false );
 	}
 
@@ -573,6 +607,9 @@
 		form.elements.keep.value      = String( schedule.keep );
 		form.elements.notify.value    = schedule.notify;
 		form.elements.email.value     = schedule.email;
+		form.elements.storage.value   = schedule.storage || '';
+		form.elements.remote_keep.value = String( undefined === schedule.remote_keep ? 30 : schedule.remote_keep );
+		form.elements.keep_local.checked = false !== schedule.keep_local;
 		form.elements.enabled.checked = !! schedule.enabled;
 		form.elements.encrypt.checked = !! schedule.encrypted;
 		form.querySelectorAll( '[data-fmw-flag]' ).forEach( function ( box ) {
@@ -581,6 +618,7 @@
 		title.textContent = title.getAttribute( 'data-edit' ) + ': ' + schedule.name;
 		form.querySelector( '[data-fmw-schedule-cancel]' ).hidden = false;
 		showFrequency( form );
+		showRemote( form );
 		showPassword( form, schedule.encrypted );
 		form.scrollIntoView( { behavior: 'smooth', block: 'start' } );
 	}
@@ -604,6 +642,9 @@
 			email: form.elements.email.value,
 			enabled: form.elements.enabled.checked,
 			flags: flags,
+			storage: form.elements.storage.value,
+			remote_keep: form.elements.remote_keep.value,
+			keep_local: form.elements.keep_local.checked,
 		};
 		var password = form.elements.password.value;
 		error.textContent = '';
@@ -624,6 +665,204 @@
 			resetScheduleForm();
 			return loadSchedules();
 		}, function ( e ) {
+			error.textContent = e.message;
+		} );
+	}
+
+	// ------------------------------------------------------------ cloud storage
+
+	function startRemoteJob( path, body, title ) {
+		modal.open( title );
+		modal.progress( null, t.preparing );
+		return api( path, { method: 'POST', body: body } ).then( function ( created ) {
+			return runJob( created, created.token, title );
+		} ).catch( function ( error ) {
+			if ( ! error.shown ) {
+				modal.message( error.message, 'error' );
+				modal.actions( [ closeButton( false ) ] );
+			}
+		} );
+	}
+
+	function uploadBackup( name ) {
+		var select = el( 'select', {}, ( config.storages || [] ).map( function ( storage ) {
+			return el( 'option', { value: storage.id, text: storage.name } );
+		} ) );
+		modal.open( t.uploadTitle );
+		modal.body( [ el( 'p', {}, [ el( 'code', { text: name } ) ] ), el( 'p', {}, [ el( 'label', {}, [ t.uploadTitle + ': ', select ] ) ] ) ] );
+		modal.actions( [ button( t.cancel, function () {
+			modal.close();
+		} ), button( t.uploadButton, function () {
+			startRemoteJob( '/backups/' + encodeURIComponent( name ) + '/upload', { storage: select.value }, t.uploadTitle );
+		}, true ) ] );
+	}
+
+	var storages = {};
+
+	function storageStatus( text, kind ) {
+		var status         = document.querySelector( '[data-fmw-storage-status]' );
+		status.textContent = text || '';
+		status.className   = 'fmw-test-result' + ( kind ? ' fmw-status-' + kind : '' );
+	}
+
+	function loadStorages() {
+		var body = document.querySelector( '[data-fmw-storage-rows]' );
+		return api( '/storages' ).then( function ( data ) {
+			body.textContent = '';
+			storages         = {};
+			if ( ! data.storages.length ) {
+				body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', text: t.noStorages } ) ] ) );
+			}
+			data.storages.forEach( function ( storage ) {
+				storages[ storage.id ] = storage;
+				body.appendChild( el( 'tr', {}, [
+					el( 'td', {}, [ el( 'strong', { text: storage.name } ), el( 'br' ), el( 'code', { text: storage.id } ) ] ),
+					el( 'td', { text: storage.provider_label + ( storage.region ? ' · ' + storage.region : '' ) } ),
+					el( 'td', {}, [ el( 'code', { text: storage.location } ) ] ),
+					el( 'td', { class: 'fmw-row-actions' }, [
+						button( t.browse, function () {
+							browseStorage( storage );
+						}, true ),
+						button( t.test, function () {
+							storageStatus( t.testing );
+							api( '/storages/' + storage.id + '/test', { method: 'POST' } ).then( function ( result ) {
+								storageStatus( storage.name + ': ' + sprintf( t.testOk, result.result ), 'completed' );
+							}, function ( error ) {
+								storageStatus( storage.name + ': ' + error.message, 'failed' );
+							} );
+						} ),
+						button( t.edit, function () {
+							editStorage( storage );
+						} ),
+						button( t.delete, function () {
+							if ( window.confirm( sprintf( t.confirmDeleteStorage, storage.name ) ) ) {
+								api( '/storages/' + storage.id, { method: 'DELETE' } ).then( loadStorages, function ( error ) {
+									window.alert( error.message );
+								} );
+							}
+						} ),
+					] ),
+				] ) );
+			} );
+		} ).catch( function ( error ) {
+			body.textContent = '';
+			body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', class: 'fmw-error', text: error.message } ) ] ) );
+		} );
+	}
+
+	function browseStorage( storage ) {
+		var panel = document.getElementById( 'fmw-remote-files' );
+		var body  = panel.querySelector( '[data-fmw-file-rows]' );
+		panel.hidden = false;
+		panel.querySelector( '[data-fmw-files-title]' ).textContent = t.browse + ': ' + storage.name + ' (' + storage.location + ')';
+		body.textContent = '';
+		body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', text: t.loading } ) ] ) );
+		panel.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+		api( '/storages/' + storage.id + '/files' ).then( function ( data ) {
+			body.textContent = '';
+			if ( ! data.files.length ) {
+				body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', text: t.noFiles } ) ] ) );
+			}
+			data.files.forEach( function ( file ) {
+				var name = el( 'td', {}, [ el( 'code', { text: file.name } ) ] );
+				if ( file.here ) {
+					name.appendChild( el( 'span', { class: 'fmw-badge', text: t.onServer } ) );
+				}
+				body.appendChild( el( 'tr', {}, [
+					name,
+					el( 'td', { text: file.date } ),
+					el( 'td', { text: bytes( file.size ) } ),
+					el( 'td', { class: 'fmw-row-actions' }, [
+						button( t.downloadToServer, function () {
+							startRemoteJob( '/storages/' + storage.id + '/download', { name: file.name }, t.downloadTitle );
+						}, true ),
+						button( t.delete, function () {
+							if ( window.confirm( sprintf( t.confirmDeleteRemote, file.name, storage.name ) ) ) {
+								api( '/storages/' + storage.id + '/files/delete', { method: 'POST', body: { name: file.name } } ).then( function () {
+									browseStorage( storage );
+								}, function ( error ) {
+									window.alert( error.message );
+								} );
+							}
+						} ),
+					] ),
+				] ) );
+			} );
+		} ).catch( function ( error ) {
+			body.textContent = '';
+			body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', class: 'fmw-error', text: error.message } ) ] ) );
+		} );
+	}
+
+	function storageForm() {
+		return document.querySelector( '[data-fmw-storage-form]' );
+	}
+
+	function applyProvider( form, fill ) {
+		var option  = form.elements.provider.selectedOptions[ 0 ];
+		var region  = form.elements.region.value || option.getAttribute( 'data-region' );
+		var pattern = option.getAttribute( 'data-endpoint' );
+		if ( fill ) {
+			form.elements.region.value        = option.getAttribute( 'data-region' );
+			form.elements.path_style.checked  = '1' === option.getAttribute( 'data-path-style' );
+			form.elements.endpoint.value      = pattern.indexOf( '{region}' ) !== -1 ? pattern.replace( '{region}', form.elements.region.value ) : '';
+			region                            = form.elements.region.value;
+		}
+		form.elements.endpoint.placeholder = pattern.replace( '{region}', region ) || 'https://minio.example.com:9000';
+		form.querySelector( '[data-fmw-storage-class]' ).hidden = 'aws' !== form.elements.provider.value;
+	}
+
+	function resetStorageForm() {
+		var form  = storageForm();
+		var title = document.querySelector( '[data-fmw-storage-title]' );
+		form.reset();
+		form.elements.id.value = '';
+		title.textContent      = title.getAttribute( 'data-add' );
+		form.elements.secret_key.placeholder = '';
+		form.querySelector( '[data-fmw-storage-cancel]' ).hidden = true;
+		form.querySelector( '[data-fmw-storage-error]' ).textContent = '';
+		applyProvider( form, true );
+	}
+
+	function editStorage( storage ) {
+		var form  = storageForm();
+		var title = document.querySelector( '[data-fmw-storage-title]' );
+		resetStorageForm();
+		form.elements.id.value            = storage.id;
+		form.elements.provider.value      = storage.provider;
+		form.elements.region.value        = storage.region;
+		form.elements.endpoint.value      = storage.endpoint;
+		form.elements.bucket.value        = storage.bucket;
+		form.elements.prefix.value        = storage.prefix;
+		form.elements.access_key.value    = storage.access_key;
+		form.elements.name.value          = storage.name;
+		form.elements.path_style.checked  = !! storage.path_style;
+		form.elements.storage_class.value = storage.storage_class || '';
+		form.elements.secret_key.placeholder = t.secretKept;
+		title.textContent = title.getAttribute( 'data-edit' ) + ': ' + storage.name;
+		form.querySelector( '[data-fmw-storage-cancel]' ).hidden = false;
+		applyProvider( form, false );
+		form.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+	}
+
+	function saveStorage( form ) {
+		var error  = form.querySelector( '[data-fmw-storage-error]' );
+		var submit = form.querySelector( '[type=submit]' );
+		var id     = form.elements.id.value;
+		var body   = {};
+		[ 'provider', 'region', 'endpoint', 'bucket', 'prefix', 'access_key', 'secret_key', 'name', 'storage_class' ].forEach( function ( field ) {
+			body[ field ] = form.elements[ field ].value;
+		} );
+		body.path_style   = form.elements.path_style.checked;
+		error.textContent = t.testing;
+		submit.disabled   = true;
+		api( '/storages' + ( id ? '/' + id : '' ), { method: 'POST', body: body } ).then( function ( saved ) {
+			submit.disabled = false;
+			resetStorageForm();
+			storageStatus( sprintf( t.testOk, saved.name ), 'completed' );
+			return loadStorages();
+		}, function ( e ) {
+			submit.disabled   = false;
 			error.textContent = e.message;
 		} );
 	}
@@ -731,7 +970,7 @@
 			body.textContent = '';
 			panel.hidden     = ! jobs.length;
 			jobs.forEach( function ( job ) {
-				var label = ( 'backup' === job.type ? t.backup + ( job.schedule ? ' (' + job.schedule + ')' : '' ) : ( 'reset' === job.type ? t.reset : t.restore + ' ' + ( job.archive || '' ) ) ) + ' · ' + job.id;
+				var label = ( 'backup' === job.type ? t.backup + ( job.schedule ? ' (' + job.schedule + ')' : '' ) : ( 'reset' === job.type ? t.reset : ( t.jobType[ job.type ] || ( t.restore + ' ' + ( job.archive || '' ) ) ) ) ) + ' · ' + job.id;
 				var state = ( t.status && t.status[ job.status ] ) || job.status;
 				body.appendChild( el( 'tr', {}, [
 					el( 'td', { text: label } ),
@@ -740,7 +979,7 @@
 					el( 'td', {}, [
 						button( t.continue, function () {
 							api( '/jobs/' + job.id + '/token', { method: 'POST' } ).then( function ( renewed ) {
-								runJob( renewed, renewed.token, { backup: t.export, reset: t.reset }[ job.type ] || t.restore ).catch( function () {} );
+								runJob( renewed, renewed.token, { backup: t.export, reset: t.reset, upload: t.uploadTitle, download: t.downloadTitle }[ job.type ] || t.restore ).catch( function () {} );
 							}, function ( error ) {
 								window.alert( error.message );
 							} );
@@ -775,6 +1014,8 @@
 			deleteBackup( target.closest( '[data-fmw-backup]' ) );
 		} else if ( 'reset' === action ) {
 			resetSite( document.getElementById( 'fmw-reset' ) );
+		} else if ( 'upload' === action ) {
+			uploadBackup( target.closest( '[data-fmw-backup]' ).getAttribute( 'data-fmw-backup' ) );
 		}
 	} );
 
@@ -817,6 +1058,34 @@
 		} );
 	}
 
+	var exportStorage = document.querySelector( '[data-fmw-export-storage]' );
+	if ( exportStorage ) {
+		exportStorage.addEventListener( 'change', function () {
+			document.querySelector( '[data-fmw-export-delete-local]' ).hidden = ! exportStorage.value;
+		} );
+	}
+
+	var storageFormNode = storageForm();
+	if ( storageFormNode ) {
+		storageFormNode.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			saveStorage( storageFormNode );
+		} );
+		storageFormNode.elements.provider.addEventListener( 'change', function () {
+			applyProvider( storageFormNode, true );
+		} );
+		storageFormNode.elements.region.addEventListener( 'input', function () {
+			var pattern = storageFormNode.elements.provider.selectedOptions[ 0 ].getAttribute( 'data-endpoint' );
+			if ( pattern.indexOf( '{region}' ) !== -1 ) {
+				storageFormNode.elements.endpoint.value = pattern.replace( '{region}', storageFormNode.elements.region.value.trim() );
+			}
+			applyProvider( storageFormNode, false );
+		} );
+		storageFormNode.querySelector( '[data-fmw-storage-cancel]' ).addEventListener( 'click', resetStorageForm );
+		resetStorageForm();
+		loadStorages();
+	}
+
 	var resetPanel = document.getElementById( 'fmw-reset' );
 	if ( resetPanel && resetPanel.querySelector( '[data-fmw-action=reset]' ) ) {
 		var update = function () {
@@ -834,6 +1103,9 @@
 		} );
 		form.elements.frequency.addEventListener( 'change', function () {
 			showFrequency( form );
+		} );
+		form.elements.storage.addEventListener( 'change', function () {
+			showRemote( form );
 		} );
 		form.elements.encrypt.addEventListener( 'change', function () {
 			var id = form.elements.id.value;

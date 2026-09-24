@@ -17,6 +17,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Remote\Storages;
 use Founders\Migration\Schedule\ScheduleOptions;
 use Founders\Migration\Schedule\Scheduler;
 use WP_CLI;
@@ -78,13 +79,14 @@ final class ScheduleCommand {
 				'last_run'    => self::when( (int) ( $state['last_run'] ?? 0 ) ),
 				'last_status' => (string) ( $state['last_status'] ?? '' ) . ( '' !== (string) ( $state['last_error'] ?? '' ) ? ': ' . $state['last_error'] : '' ),
 				'backups'     => count( (array) ( $state['backups'] ?? array() ) ),
+				'upload'      => self::upload_text( $schedule ),
 			);
 		}
 		if ( ! $rows && 'table' === $format ) {
 			WP_CLI::log( 'No schedules yet. Add one with `wp fmw schedule add --frequency=daily --time=02:00`.' );
 			return;
 		}
-		WP_CLI\Utils\format_items( $format, $rows, array( 'id', 'name', 'enabled', 'when', 'keep', 'exclude', 'encrypted', 'notify', 'next_run', 'last_run', 'last_status', 'backups' ) );
+		WP_CLI\Utils\format_items( $format, $rows, array( 'id', 'name', 'enabled', 'when', 'keep', 'upload', 'exclude', 'encrypted', 'notify', 'next_run', 'last_run', 'last_status', 'backups' ) );
 
 		if ( 'table' === $format ) {
 			$health = Scheduler::health();
@@ -150,6 +152,15 @@ final class ScheduleCommand {
 	 *
 	 * [--password[=<password>]]
 	 * : Encrypt the backups (at least 8 characters). Without a value it is asked for, twice, without echo.
+	 *
+	 * [--storage=<id>]
+	 * : Upload each backup to this cloud storage (see `wp fmw storage list`); "" for none.
+	 *
+	 * [--remote-keep=<count>]
+	 * : Newest uploads of this schedule to keep in the storage; older ones are deleted there. 0 keeps all.
+	 *
+	 * [--[no-]keep-local]
+	 * : Keep the copy on this server after the upload (default: yes).
 	 *
 	 * [--disabled]
 	 * : Save the schedule without running it yet.
@@ -257,6 +268,15 @@ final class ScheduleCommand {
 	 *
 	 * [--no-password]
 	 * : Stop encrypting the backups.
+	 *
+	 * [--storage=<id>]
+	 * : Upload each backup to this cloud storage (see `wp fmw storage list`); "" for none.
+	 *
+	 * [--remote-keep=<count>]
+	 * : Newest uploads of this schedule to keep in the storage; older ones are deleted there. 0 keeps all.
+	 *
+	 * [--[no-]keep-local]
+	 * : Keep the copy on this server after the upload (default: yes).
 	 *
 	 * [--exclude=<flags>]
 	 * : Replace the exclusions, comma-separated (media,cache,...); "" for none.
@@ -402,7 +422,8 @@ final class ScheduleCommand {
 			}
 
 			if ( Job::STATUS_COMPLETED === $job->status ) {
-				WP_CLI::success( sprintf( 'Backup created: %s (%s).', (string) ( $job->data['archive']['name'] ?? '' ), ProgressBar::bytes( (int) ( $job->data['archive']['bytes'] ?? 0 ) ) ) );
+				$upload = isset( $job->data['remote']['key'] ) ? sprintf( ', uploaded to "%s"%s', $job->data['remote']['name'], empty( $job->data['archive']['deleted_local'] ) ? '' : ' (not kept on this server)' ) : '';
+				WP_CLI::success( sprintf( 'Backup created: %s (%s)%s.', (string) ( $job->data['archive']['name'] ?? '' ), ProgressBar::bytes( (int) ( $job->data['archive']['bytes'] ?? 0 ) ), $upload ) );
 			} elseif ( Job::STATUS_FAILED === $job->status ) {
 				WP_CLI::warning( sprintf( 'Backup failed: %s', (string) $job->error ) );
 				$failed = true;
@@ -445,10 +466,16 @@ final class ScheduleCommand {
 	 */
 	private function input( array $assoc_args, bool $with_flags ): array {
 		$input = array();
-		foreach ( array( 'name', 'frequency', 'time', 'weekday', 'monthday', 'keep', 'notify', 'email' ) as $field ) {
-			if ( isset( $assoc_args[ $field ] ) && ! is_bool( $assoc_args[ $field ] ) ) {
-				$input[ $field ] = (string) $assoc_args[ $field ];
+		foreach ( array( 'name', 'frequency', 'time', 'weekday', 'monthday', 'keep', 'notify', 'email', 'storage', 'remote-keep' ) as $flag ) {
+			if ( isset( $assoc_args[ $flag ] ) && ! is_bool( $assoc_args[ $flag ] ) ) {
+				$input[ str_replace( '-', '_', $flag ) ] = (string) $assoc_args[ $flag ];
 			}
+		}
+		if ( array_key_exists( 'keep-local', $assoc_args ) ) {
+			$input['keep_local'] = (bool) $assoc_args['keep-local'];
+		}
+		if ( ! empty( $input['storage'] ) && null === Storages::get( (string) $input['storage'] ) ) {
+			WP_CLI::error( sprintf( 'Cloud storage "%s" not found; see `wp fmw storage list`.', $input['storage'] ) );
 		}
 		if ( $with_flags ) {
 			$input['flags'] = array();
@@ -526,6 +553,21 @@ final class ScheduleCommand {
 	 */
 	private static function when( int $time ): string {
 		return $time > 0 ? (string) wp_date( 'Y-m-d H:i', $time ) : '';
+	}
+
+	/**
+	 * Where a schedule uploads to, for the list.
+	 *
+	 * @param array<string,mixed> $schedule Schedule.
+	 * @return string
+	 */
+	private static function upload_text( array $schedule ): string {
+		$id = (string) ( $schedule['storage'] ?? '' );
+		if ( '' === $id ) {
+			return '';
+		}
+		$storage = Storages::get( $id );
+		return ( null === $storage ? $id . ' (missing!)' : (string) $storage['name'] ) . ', keep ' . ( ! empty( $schedule['remote_keep'] ) ? (int) $schedule['remote_keep'] : 'all' ) . ( empty( $schedule['keep_local'] ) ? ', not here' : '' );
 	}
 
 	/**

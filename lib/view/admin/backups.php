@@ -41,6 +41,7 @@ $fmwp_backups = isset( $fmwp_data['backups'] ) && is_array( $fmwp_data['backups'
 		?>
 	</p>
 
+	<?php $fmwp_storages = Founders\Migration\Controller\AdminController::storage_choices(); ?>
 	<?php if ( ! $fmwp_backups ) : ?>
 		<p data-fmw-empty><?php esc_html_e( 'No backups yet. Create one on the Export page, or upload one on the Import page.', 'founders-migration-website' ); ?></p>
 	<?php else : ?>
@@ -67,6 +68,9 @@ $fmwp_backups = isset( $fmwp_data['backups'] ) && is_array( $fmwp_data['backups'
 						<td class="fmw-row-actions">
 							<a class="button" href="<?php echo esc_url( DownloadController::url( $fmwp_backup['name'] ) ); ?>"><?php esc_html_e( 'Download', 'founders-migration-website' ); ?></a>
 							<button type="button" class="button" data-fmw-action="restore"><?php esc_html_e( 'Restore', 'founders-migration-website' ); ?></button>
+							<?php if ( $fmwp_storages ) : ?>
+								<button type="button" class="button" data-fmw-action="upload"><?php esc_html_e( 'Upload', 'founders-migration-website' ); ?></button>
+							<?php endif; ?>
 							<?php if ( 'fmw' === ( $fmwp_backup['source'] ?? 'fmw' ) ) : ?>
 								<button type="button" class="button button-link-delete" data-fmw-action="delete"><?php esc_html_e( 'Delete', 'founders-migration-website' ); ?></button>
 							<?php endif; ?>

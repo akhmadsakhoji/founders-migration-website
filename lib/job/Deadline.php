@@ -43,6 +43,15 @@ final class Deadline {
 	}
 
 	/**
+	 * Seconds left, or null without a limit.
+	 *
+	 * @return float|null
+	 */
+	public function remaining(): ?float {
+		return null === $this->end ? null : max( 0.0, $this->end - microtime( true ) );
+	}
+
+	/**
 	 * Whether the budget is used up.
 	 *
 	 * @return bool

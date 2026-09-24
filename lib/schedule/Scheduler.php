@@ -21,6 +21,8 @@ use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
+use Founders\Migration\Remote\RemoteException;
+use Founders\Migration\Remote\Storages;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
 
@@ -354,6 +356,10 @@ final class Scheduler {
 			}
 			$flags['password'] = $password;
 		}
+		if ( '' !== (string) ( $schedule['storage'] ?? '' ) ) {
+			$flags['storage']      = (string) $schedule['storage'];
+			$flags['delete-local'] = empty( $schedule['keep_local'] );
+		}
 
 		try {
 			$options = BackupOptions::from_flags( $flags );
@@ -455,22 +461,29 @@ final class Scheduler {
 			'error'  => (string) $job->error,
 			'name'   => (string) ( $job->data['archive']['name'] ?? '' ),
 			'bytes'  => (int) ( $job->data['archive']['bytes'] ?? 0 ),
+			'remote' => isset( $job->data['remote']['key'] ) ? $job->data['remote']['name'] . ': ' . $job->data['remote']['key'] : '',
+			'local'  => empty( $job->data['archive']['deleted_local'] ),
 		);
 		if ( Job::STATUS_COMPLETED === $status ) {
 			$jobs->purge_work_files( $job->id );
 		}
 
-		$name    = $result['name'];
-		$needed  = self::archives_in_use( $jobs );
-		$deleted = array();
-		$current = self::store()->change(
+		// A finished archive on this server joins the local retention, even when the job failed later
+		// (for example in the upload): otherwise every failed night would leave an untracked backup behind.
+		$archive  = (string) ( $job->data['archive']['path'] ?? '' );
+		$name     = '' !== $archive && is_file( $archive ) && empty( $job->data['archive']['deleted_local'] ) ? basename( $archive ) : '';
+		$remote   = (array) ( $job->data['remote'] ?? array() );
+		$needed   = self::archives_in_use( $jobs );
+		$deleted  = array();
+		$obsolete = array();
+		$current  = self::store()->change(
 			$id,
-			static function ( array $schedule ) use ( $job, $status, $name, $needed, &$deleted ): array {
+			static function ( array $schedule ) use ( $job, $status, $name, $remote, $needed, &$deleted, &$obsolete ): array {
 				if ( (string) ( $schedule['state']['last_job'] ?? '' ) === $job->id || '' === (string) ( $schedule['state']['last_job'] ?? '' ) ) {
 					$schedule['state']['last_status'] = $status;
 					$schedule['state']['last_error']  = (string) $job->error;
 				}
-				if ( Job::STATUS_COMPLETED === $status && '' !== $name ) {
+				if ( Job::STATUS_CANCELLED !== $status && '' !== $name ) {
 					$list   = array_values( array_diff( (array) ( $schedule['state']['backups'] ?? array() ), array( $name ) ) );
 					$list[] = $name;
 					$keep   = (int) ( $schedule['keep'] ?? 0 );
@@ -486,6 +499,30 @@ final class Scheduler {
 					}
 					$schedule['state']['backups'] = $list;
 				}
+				if ( Job::STATUS_COMPLETED === $status && ! empty( $remote['key'] ) ) {
+					// Each upload is remembered with its storage, so a schedule moved to another storage still prunes the old one.
+					$entry = array(
+						'storage' => (string) $remote['storage'],
+						'key'     => (string) $remote['key'],
+					);
+					$list  = array();
+					foreach ( (array) ( $schedule['state']['remote_backups'] ?? array() ) as $item ) {
+						$item = is_array( $item ) ? $item : array(
+							'storage' => $entry['storage'],
+							'key'     => (string) $item,
+						);
+						if ( $item !== $entry ) {
+							$list[] = $item;
+						}
+					}
+					$list[] = $entry;
+					$keep   = (int) ( $schedule['remote_keep'] ?? 0 );
+					$extra  = count( $list ) - $keep;
+					if ( $keep > 0 && $extra > 0 ) {
+						$obsolete = array_splice( $list, 0, $extra ); // Oldest first; put back below if the delete fails.
+					}
+					$schedule['state']['remote_backups'] = $list;
+				}
 				return $schedule;
 			}
 		);
@@ -493,6 +530,31 @@ final class Scheduler {
 		foreach ( $deleted as $old ) {
 			$gone = Backups::delete( $old ) || null === Backups::get( $old );
 			$jobs->log( $job->id, sprintf( $gone ? 'Retention: deleted the older backup %s.' : 'Retention: could not delete %s.', $old ) );
+		}
+		$failed = array();
+		foreach ( $obsolete as $item ) {
+			$storage = Storages::get( (string) $item['storage'] );
+			try {
+				if ( null === $storage ) {
+					$jobs->log( $job->id, sprintf( 'Retention: could not delete the upload %s: its storage was removed from this site.', $item['key'] ) );
+					continue; // Nothing this site can do; forget it.
+				}
+				Storages::client( $storage )->delete( (string) $item['key'] );
+				$deleted[] = $item['key'] . ' (' . $storage['name'] . ')';
+				$jobs->log( $job->id, sprintf( 'Retention: deleted the older upload %s from "%s".', $item['key'], $storage['name'] ) );
+			} catch ( RemoteException $e ) {
+				$failed[] = $item;
+				$jobs->log( $job->id, sprintf( 'Retention: could not delete the upload %s (tried again after the next backup): %s', $item['key'], $e->getMessage() ) );
+			}
+		}
+		if ( $failed ) {
+			self::store()->change(
+				$id,
+				static function ( array $schedule ) use ( $failed ): array {
+					$schedule['state']['remote_backups'] = array_merge( $failed, (array) ( $schedule['state']['remote_backups'] ?? array() ) );
+					return $schedule;
+				}
+			);
 		}
 		if ( Job::STATUS_FAILED === $status ) {
 			$jobs->request_cancel( $job->id ); // Deletes the work files; the next run starts afresh.
@@ -505,6 +567,7 @@ final class Scheduler {
 		self::delete_old_jobs( $id, $job->id, $jobs );
 
 		if ( null !== $current ) {
+			$result['kept'] = Job::STATUS_FAILED === $status ? $name : '';
 			self::notify( $current, $result, $deleted );
 		}
 	}
@@ -555,7 +618,7 @@ final class Scheduler {
 	 * Sends the result by e-mail, as the schedule asks.
 	 *
 	 * @param array<string,mixed> $schedule Schedule.
-	 * @param array<string,mixed> $result   Job result: job, status, error, name, bytes.
+	 * @param array<string,mixed> $result   Job result: job, status, error, name, bytes, remote, local.
 	 * @param string[]            $deleted  Backups removed by retention.
 	 * @return void
 	 */
@@ -591,10 +654,20 @@ final class Scheduler {
 		if ( $failed ) {
 			/* translators: %s: error message. */
 			$lines[] = sprintf( __( 'Error: %s', 'founders-migration-website' ), $result['error'] );
-			$lines[] = __( 'The partial backup was deleted. The next run is at its usual time; see the job log with: wp fmw log <job>', 'founders-migration-website' );
+			$lines[] = ! empty( $result['kept'] )
+				/* translators: %s: file name. */
+				? sprintf( __( 'The backup itself was created and is kept on this server (%s); only the upload failed. The next run is at its usual time.', 'founders-migration-website' ), $result['kept'] )
+				: __( 'The partial backup was deleted. The next run is at its usual time; see the job log with: wp fmw log <job>', 'founders-migration-website' );
 		} else {
 			/* translators: 1: file name, 2: size. */
 			$lines[] = sprintf( __( 'Backup: %1$s (%2$s)', 'founders-migration-website' ), $result['name'], size_format( $result['bytes'] ) );
+			if ( ! empty( $result['remote'] ) ) {
+				/* translators: %s: storage name and object key. */
+				$lines[] = sprintf( __( 'Uploaded to %s', 'founders-migration-website' ), $result['remote'] );
+				if ( empty( $result['local'] ) ) {
+					$lines[] = __( 'The copy on the server was deleted after the upload, as the schedule asks.', 'founders-migration-website' );
+				}
+			}
 			foreach ( $deleted as $old ) {
 				/* translators: %s: file name. */
 				$lines[] = sprintf( __( 'Deleted by retention: %s', 'founders-migration-website' ), $old );

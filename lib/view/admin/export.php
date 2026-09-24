@@ -46,6 +46,31 @@ $fmwp_options = Founders\Migration\Controller\AdminController::exclusion_labels(
 		</div>
 	</fieldset>
 
+	<?php $fmwp_storages = Founders\Migration\Controller\AdminController::storage_choices(); ?>
+	<fieldset class="fmw-upload">
+		<?php if ( $fmwp_storages ) : ?>
+			<label><?php esc_html_e( 'Then upload to', 'founders-migration-website' ); ?>
+				<select data-fmw-export-storage>
+					<option value=""><?php esc_html_e( 'Nowhere (keep it on this server)', 'founders-migration-website' ); ?></option>
+					<?php foreach ( $fmwp_storages as $fmwp_storage ) : ?>
+						<option value="<?php echo esc_attr( $fmwp_storage['id'] ); ?>"><?php echo esc_html( $fmwp_storage['name'] ); ?></option>
+					<?php endforeach; ?>
+				</select>
+			</label>
+			<label class="fmw-option" data-fmw-export-delete-local hidden><input type="checkbox" /> <?php esc_html_e( 'Delete the copy on this server once the upload is complete', 'founders-migration-website' ); ?></label>
+		<?php else : ?>
+			<p class="description">
+				<?php
+				printf(
+					/* translators: %s: link to the Cloud storage page. */
+					esc_html__( 'Keep a copy off this server: add Amazon S3, Cloudflare R2, Wasabi or another S3-compatible storage on the %s page.', 'founders-migration-website' ),
+					'<a href="' . esc_url( add_query_arg( 'page', Founders\Migration\Controller\AdminController::SLUG_REMOTE, is_multisite() ? network_admin_url( 'admin.php' ) : admin_url( 'admin.php' ) ) ) . '">' . esc_html__( 'Cloud storage', 'founders-migration-website' ) . '</a>'
+				);
+				?>
+			</p>
+		<?php endif; ?>
+	</fieldset>
+
 	<p class="fmw-actions">
 		<button type="button" class="button button-primary button-hero" data-fmw-action="export"><?php esc_html_e( 'Export to file', 'founders-migration-website' ); ?></button>
 	</p>

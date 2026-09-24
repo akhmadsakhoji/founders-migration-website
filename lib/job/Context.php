@@ -123,6 +123,17 @@ final class Context {
 	}
 
 	/**
+	 * Seconds left in this slice (for sizing the next unit of work, such as an upload part).
+	 *
+	 * @return float
+	 */
+	public function remaining(): float {
+		$left     = max( 0.0, $this->slice_end - microtime( true ) );
+		$deadline = $this->deadline->remaining();
+		return null === $deadline ? $left : min( $left, $deadline );
+	}
+
+	/**
 	 * Job working folder, for temporary parts and lists.
 	 *
 	 * @return string

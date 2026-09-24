@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- S3-compatible cloud storage: `wp fmw storage list|add|update|delete|test|files|upload|download|remove` and a Cloud storage screen (Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO, others). Pure-PHP client on curl with AWS Signature V4 (checked against the AWS documentation examples), retries with backoff for network trouble and throttling, and clear hints for common errors (wrong secret, region, bucket, clock).
+- Uploads: `wp fmw backup --storage=<id> [--delete-local]`, "Then upload to" on the Export screen, "Upload" on the Backups screen. Multipart with part sizes adapted to the measured speed (8 MiB to 512 MiB, always under 10,000 parts), resumable at the next part, SHA-256-signed parts, size check at the end, abort on cancel.
+- Downloads back into the backups folder, resumable with ranged requests, then Restore.
+- Schedules can upload to a storage with their own retention there (`--remote-keep`) and optionally not keep the local copy (`--no-keep-local`); the e-mail says where each backup went.
+- Storages live in `fmw-storage/storages.json` with the secret key sealed (AES-256-GCM, site salts); the connection is tested before saving.
+
 - Scheduled backups: `wp fmw schedule list|add|update|delete|enable|disable|run` and a Schedules screen. Hourly, daily, weekly or monthly in the site time zone (daylight saving safe, missed runs are not caught up), the backup exclusions, an optional password (stored sealed), retention per schedule (`--keep`, only that schedule's backups are deleted) and e-mail on failure, always or never.
 - Background jobs without a browser: a WP-Cron event every five minutes works one slice, then the job continues through non-blocking loopback requests authenticated with the job token (`fmwp_background_request` filter for staging sites behind HTTP auth). Interrupted scheduled backups are continued (at most 12 times), failed ones are recorded, reported and their partial files deleted. `wp fmw schedule run` does the same from a system cron, in the foreground.
 - No scheduled backup starts, and "Run now" is refused, while a restore or reset is unfinished; retention never deletes a backup an unfinished restore reads. A job that makes no progress in 12 attempts is failed; each ended job is recorded exactly once.
