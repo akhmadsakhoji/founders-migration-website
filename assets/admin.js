@@ -456,6 +456,178 @@
 		} );
 	}
 
+	// -------------------------------------------------------------- schedules
+
+	var schedules = {};
+
+	function loadSchedules() {
+		var body = document.querySelector( '[data-fmw-schedule-rows]' );
+		return api( '/schedules' ).then( function ( data ) {
+			body.textContent = '';
+			schedules        = {};
+			if ( ! data.schedules.length ) {
+				body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '6', text: t.noSchedules } ) ] ) );
+			}
+			data.schedules.forEach( function ( schedule ) {
+				schedules[ schedule.id ] = schedule;
+				var state  = schedule.state || {};
+				var status = state.last_status ? ( t.runStatus[ state.last_status ] || state.last_status ) : '';
+				var last   = el( 'td', {}, [ state.last_run ? schedule.last_run_text : '—' ] );
+				if ( status ) {
+					last.appendChild( el( 'br' ) );
+					last.appendChild( el( 'span', { class: 'fmw-status fmw-status-' + state.last_status, text: status + ( state.last_error ? ': ' + state.last_error : '' ) } ) );
+				}
+				var name = el( 'td', {}, [ el( 'strong', { text: schedule.name } ) ] );
+				if ( schedule.encrypted ) {
+					name.appendChild( el( 'span', { class: 'dashicons dashicons-lock', title: t.encrypted } ) );
+				}
+				if ( ! schedule.enabled ) {
+					name.appendChild( el( 'span', { class: 'fmw-badge', text: t.disabled } ) );
+				}
+				body.appendChild( el( 'tr', { 'data-fmw-schedule': schedule.id }, [
+					name,
+					el( 'td', { text: schedule.description } ),
+					el( 'td', { text: schedule.enabled ? schedule.next_run_text : '—' } ),
+					last,
+					el( 'td', { text: schedule.keep ? String( schedule.keep ) : t.keepAll } ),
+					el( 'td', { class: 'fmw-row-actions' }, [
+						button( t.runNow, function () {
+							runSchedule( schedule );
+						}, true ),
+						button( t.edit, function () {
+							editSchedule( schedule );
+						} ),
+						button( schedule.enabled ? t.disable : t.enable, function () {
+							api( '/schedules/' + schedule.id, { method: 'POST', body: { enabled: ! schedule.enabled } } ).then( loadSchedules, function ( error ) {
+								window.alert( error.message );
+							} );
+						} ),
+						button( t.delete, function () {
+							if ( window.confirm( sprintf( t.confirmDeleteSchedule, schedule.name ) ) ) {
+								api( '/schedules/' + schedule.id, { method: 'DELETE' } ).then( loadSchedules, function ( error ) {
+									window.alert( error.message );
+								} );
+							}
+						} ),
+					] ),
+				] ) );
+			} );
+		} ).catch( function ( error ) {
+			body.textContent = '';
+			body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '6', class: 'fmw-error', text: error.message } ) ] ) );
+		} );
+	}
+
+	function runSchedule( schedule ) {
+		modal.open( schedule.name );
+		modal.progress( null, t.preparing );
+		api( '/schedules/' + schedule.id + '/run', { method: 'POST' } ).then( function ( created ) {
+			return runJob( created, created.token, schedule.name );
+		} ).catch( function ( error ) {
+			if ( ! error.shown ) {
+				modal.message( error.message, 'error' );
+				modal.actions( [ closeButton( false ) ] );
+			}
+		} ).then( loadSchedules );
+	}
+
+	function scheduleForm() {
+		return document.querySelector( '[data-fmw-schedule-form]' );
+	}
+
+	function showFrequency( form ) {
+		var frequency = form.elements.frequency.value;
+		form.querySelectorAll( '[data-fmw-when]' ).forEach( function ( part ) {
+			part.hidden = part.getAttribute( 'data-fmw-when' ) !== frequency;
+		} );
+	}
+
+	function showPassword( form, kept ) {
+		var on = form.elements.encrypt.checked;
+		form.querySelector( '[data-fmw-schedule-password]' ).hidden      = ! on;
+		form.querySelector( '[data-fmw-schedule-password-kept]' ).hidden = ! ( on && kept );
+	}
+
+	function resetScheduleForm() {
+		var form  = scheduleForm();
+		var title = document.querySelector( '[data-fmw-schedule-title]' );
+		form.reset();
+		form.elements.id.value = '';
+		title.textContent      = title.getAttribute( 'data-add' );
+		form.querySelector( '[data-fmw-schedule-cancel]' ).hidden = true;
+		form.querySelector( '[data-fmw-schedule-error]' ).textContent = '';
+		showFrequency( form );
+		showPassword( form, false );
+	}
+
+	function editSchedule( schedule ) {
+		var form  = scheduleForm();
+		var title = document.querySelector( '[data-fmw-schedule-title]' );
+		resetScheduleForm();
+		form.elements.id.value        = schedule.id;
+		form.elements.name.value      = schedule.name;
+		form.elements.frequency.value = schedule.frequency;
+		form.elements.time.value      = schedule.time;
+		form.elements.weekday.value   = String( schedule.weekday );
+		form.elements.monthday.value  = String( schedule.monthday );
+		form.elements.keep.value      = String( schedule.keep );
+		form.elements.notify.value    = schedule.notify;
+		form.elements.email.value     = schedule.email;
+		form.elements.enabled.checked = !! schedule.enabled;
+		form.elements.encrypt.checked = !! schedule.encrypted;
+		form.querySelectorAll( '[data-fmw-flag]' ).forEach( function ( box ) {
+			box.checked = !! ( schedule.flags && schedule.flags[ box.getAttribute( 'data-fmw-flag' ) ] );
+		} );
+		title.textContent = title.getAttribute( 'data-edit' ) + ': ' + schedule.name;
+		form.querySelector( '[data-fmw-schedule-cancel]' ).hidden = false;
+		showFrequency( form );
+		showPassword( form, schedule.encrypted );
+		form.scrollIntoView( { behavior: 'smooth', block: 'start' } );
+	}
+
+	function saveSchedule( form ) {
+		var error    = form.querySelector( '[data-fmw-schedule-error]' );
+		var id       = form.elements.id.value;
+		var existing = id ? schedules[ id ] : null;
+		var flags    = {};
+		form.querySelectorAll( '[data-fmw-flag]:checked' ).forEach( function ( box ) {
+			flags[ box.getAttribute( 'data-fmw-flag' ) ] = true;
+		} );
+		var body = {
+			name: form.elements.name.value,
+			frequency: form.elements.frequency.value,
+			time: form.elements.time.value,
+			weekday: form.elements.weekday.value,
+			monthday: form.elements.monthday.value,
+			keep: form.elements.keep.value,
+			notify: form.elements.notify.value,
+			email: form.elements.email.value,
+			enabled: form.elements.enabled.checked,
+			flags: flags,
+		};
+		var password = form.elements.password.value;
+		error.textContent = '';
+		if ( ! form.elements.encrypt.checked ) {
+			body.password = '';
+		} else if ( password || ! ( existing && existing.encrypted ) ) {
+			if ( password.length < 8 ) {
+				error.textContent = t.passwordShort;
+				return;
+			}
+			if ( password !== form.elements.password_repeat.value ) {
+				error.textContent = t.passwordMismatch;
+				return;
+			}
+			body.password = password;
+		}
+		api( '/schedules' + ( id ? '/' + id : '' ), { method: 'POST', body: body } ).then( function () {
+			resetScheduleForm();
+			return loadSchedules();
+		}, function ( e ) {
+			error.textContent = e.message;
+		} );
+	}
+
 	// ----------------------------------------------------------------- upload
 
 	function upload( file ) {
@@ -559,7 +731,7 @@
 			body.textContent = '';
 			panel.hidden     = ! jobs.length;
 			jobs.forEach( function ( job ) {
-				var label = ( 'backup' === job.type ? t.backup : ( 'reset' === job.type ? t.reset : t.restore + ' ' + ( job.archive || '' ) ) ) + ' · ' + job.id;
+				var label = ( 'backup' === job.type ? t.backup + ( job.schedule ? ' (' + job.schedule + ')' : '' ) : ( 'reset' === job.type ? t.reset : t.restore + ' ' + ( job.archive || '' ) ) ) + ' · ' + job.id;
 				var state = ( t.status && t.status[ job.status ] ) || job.status;
 				body.appendChild( el( 'tr', {}, [
 					el( 'td', { text: label } ),
@@ -652,6 +824,24 @@
 		};
 		resetPanel.addEventListener( 'input', update );
 		resetPanel.addEventListener( 'change', update );
+	}
+
+	var form = scheduleForm();
+	if ( form ) {
+		form.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			saveSchedule( form );
+		} );
+		form.elements.frequency.addEventListener( 'change', function () {
+			showFrequency( form );
+		} );
+		form.elements.encrypt.addEventListener( 'change', function () {
+			var id = form.elements.id.value;
+			showPassword( form, !! ( id && schedules[ id ] && schedules[ id ].encrypted ) );
+		} );
+		form.querySelector( '[data-fmw-schedule-cancel]' ).addEventListener( 'click', resetScheduleForm );
+		resetScheduleForm();
+		loadSchedules();
 	}
 
 	var jobs = document.querySelector( '[data-fmw-jobs]' );

@@ -28,6 +28,8 @@ use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreOptions;
 use Founders\Migration\Model\Reset\ResetOptions;
+use Founders\Migration\Schedule\Background;
+use Founders\Migration\Schedule\Scheduler;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
 use Founders\Migration\Storage\UploadOffsetException;
@@ -514,6 +516,14 @@ final class RestController {
 				delete_option( 'rewrite_rules' );
 			}
 		}
+		if ( '' !== (string) ( $job->options['schedule_id'] ?? '' ) && ( $job->is_finished() || Job::STATUS_FAILED === $job->status ) ) {
+			Scheduler::after( $job, true ); // Records the result, then starts the next due schedule.
+		} elseif ( ! empty( $request['background'] ) && Job::STATUS_RUNNING === $job->status ) {
+			$token = (string) $request->get_header( self::TOKEN_HEADER );
+			if ( '' !== $token ) {
+				Background::send( $job->id, $token ); // Next slice of a job that runs without a browser.
+			}
+		}
 		return new WP_REST_Response( self::summary( $job, $store ) );
 	}
 
@@ -566,7 +576,7 @@ final class RestController {
 	 * @param string $except Job id to ignore.
 	 * @return Job|null
 	 */
-	private static function active_job( string $except ): ?Job {
+	public static function active_job( string $except ): ?Job {
 		$store = Jobs::store();
 		foreach ( $store->all() as $job ) {
 			if ( $job->id === $except || $job->is_finished() ) {
@@ -584,7 +594,7 @@ final class RestController {
 	 *
 	 * @return WP_Error
 	 */
-	private static function busy(): WP_Error {
+	public static function busy(): WP_Error {
 		return new WP_Error( 'fmw_busy', __( 'Another backup or restore is running. Wait for it to finish, or cancel it on the Backups page.', 'founders-migration-website' ), array( 'status' => 409 ) );
 	}
 
@@ -625,6 +635,9 @@ final class RestController {
 		}
 		if ( Jobs::is_restore( $job->type ) ) {
 			$summary['archive'] = basename( (string) ( $job->options['archive'] ?? '' ) );
+		}
+		if ( '' !== (string) ( $job->options['schedule_name'] ?? '' ) ) {
+			$summary['schedule'] = (string) $job->options['schedule_name'];
 		}
 		return $summary;
 	}

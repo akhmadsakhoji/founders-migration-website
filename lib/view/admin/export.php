@@ -10,19 +10,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$fmwp_options = array(
-	'exclude-spam-comments'    => __( 'Do not export spam comments', 'founders-migration-website' ),
-	'exclude-post-revisions'   => __( 'Do not export post revisions', 'founders-migration-website' ),
-	'exclude-transients'       => __( 'Do not export transients (temporary cached data)', 'founders-migration-website' ),
-	'exclude-media'            => __( 'Do not export media library (files)', 'founders-migration-website' ),
-	'exclude-themes'           => __( 'Do not export themes (files)', 'founders-migration-website' ),
-	'exclude-inactive-themes'  => __( 'Do not export inactive themes (files)', 'founders-migration-website' ),
-	'exclude-muplugins'        => __( 'Do not export must-use plugins (files)', 'founders-migration-website' ),
-	'exclude-plugins'          => __( 'Do not export plugins (files)', 'founders-migration-website' ),
-	'exclude-inactive-plugins' => __( 'Do not export inactive plugins (files)', 'founders-migration-website' ),
-	'exclude-cache'            => __( 'Do not export cache (files)', 'founders-migration-website' ),
-	'exclude-database'         => __( 'Do not export database (SQL)', 'founders-migration-website' ),
-);
+$fmwp_options = Founders\Migration\Controller\AdminController::exclusion_labels();
 ?>
 <div class="fmw-panel" id="fmw-export">
 	<h2><?php esc_html_e( 'Export site', 'founders-migration-website' ); ?></h2>

@@ -21,23 +21,27 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * started it usually stops being valid half-way. The token is shown once and
  * stored only as a SHA-256 hash, in its own file in the job folder (outside
  * the database, and apart from the job state so issuing a token never races
- * with a running slice). Issuing a new token replaces the old one.
+ * with a running slice). Issuing a new token replaces the old one of the
+ * same kind: the browser's token and the background chain's token are kept
+ * apart, so neither cuts the other off.
  */
 final class JobToken {
 
-	const FILE = 'token';
+	const FILE       = 'token';
+	const BACKGROUND = 'token-background';
 
 	/**
 	 * Gives a job a new token (the old one stops working).
 	 *
 	 * @param Job      $job   Job.
 	 * @param JobStore $store Store.
+	 * @param string   $kind  FILE (a browser) or BACKGROUND (the background chain).
 	 * @return string The token (64 hex characters).
 	 * @throws JobException When it cannot be stored.
 	 */
-	public static function issue( Job $job, JobStore $store ): string {
+	public static function issue( Job $job, JobStore $store, string $kind = self::FILE ): string {
 		$token = bin2hex( random_bytes( 32 ) );
-		$path  = $store->dir( $job->id ) . '/' . self::FILE;
+		$path  = $store->dir( $job->id ) . '/' . ( self::BACKGROUND === $kind ? self::BACKGROUND : self::FILE );
 		if ( false === file_put_contents( $path . '.tmp', hash( 'sha256', $token ) ) || ! rename( $path . '.tmp', $path ) ) {
 			throw new JobException( 'Cannot store the job token.' );
 		}
@@ -53,7 +57,16 @@ final class JobToken {
 	 * @return bool
 	 */
 	public static function matches( Job $job, JobStore $store, string $token ): bool {
-		$hash = (string) @file_get_contents( $store->dir( $job->id ) . '/' . self::FILE ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- No token yet.
-		return 64 === strlen( $hash ) && 64 === strlen( $token ) && hash_equals( $hash, hash( 'sha256', $token ) );
+		if ( 64 !== strlen( $token ) ) {
+			return false;
+		}
+		$given = hash( 'sha256', $token );
+		foreach ( array( self::FILE, self::BACKGROUND ) as $kind ) {
+			$hash = (string) @file_get_contents( $store->dir( $job->id ) . '/' . $kind ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- No token of this kind.
+			if ( 64 === strlen( $hash ) && hash_equals( $hash, $given ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
