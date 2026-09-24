@@ -68,16 +68,7 @@ final class ReplaceStep implements Step {
 
 		$site     = (array) ( $job->data['manifest']['site'] ?? array() );
 		$target   = (array) ( $job->options['target'] ?? array() );
-		$replacer = new Replacer(
-			Replacer::site_pairs(
-				array(
-					(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
-					(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
-				),
-				array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) ),
-				! empty( $job->options['email_replace'] )
-			)
-		);
+		$replacer = new Replacer( self::pairs( $job ) );
 
 		$tables = $this->restore->imported_tables();
 		$count  = count( $tables );
@@ -91,9 +82,7 @@ final class ReplaceStep implements Step {
 			if ( $this->replace_batch( $tables[ $cursor['t'] ], $replacer ) ) {
 				++$cursor['t'];
 			}
-			$job->bytes_done  = (int) $cursor['t'];
-			$job->bytes_total = 0;
-			$context->report_progress();
+			$context->report_progress(); // Byte counters keep the previous step's totals: tables are not bytes.
 		}
 
 		if ( $cursor['t'] < $count ) {
@@ -108,6 +97,30 @@ final class ReplaceStep implements Step {
 				: sprintf( 'Replaced %s with %s in %d tables.', (string) ( $site['home_url'] ?? '' ), (string) ( $target['home_url'] ?? '' ), count( $tables ) )
 		);
 		return true;
+	}
+
+	/**
+	 * Search / replace pairs: the plan prepared by the check step (.wpress), or the manifest's site against the target.
+	 *
+	 * @param Job $job Job.
+	 * @return array<string,string>
+	 */
+	private static function pairs( Job $job ): array {
+		$plan = $job->data['replace'] ?? null;
+		if ( is_array( $plan ) ) {
+			return Replacer::site_pairs( (array) $plan['urls'], (array) $plan['paths'], ! empty( $plan['email'] ) )
+				+ Replacer::value_pairs( (array) ( $plan['raw'] ?? array() ) );
+		}
+		$site   = (array) ( $job->data['manifest']['site'] ?? array() );
+		$target = (array) ( $job->options['target'] ?? array() );
+		return Replacer::site_pairs(
+			array(
+				(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
+				(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
+			),
+			array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) ),
+			! empty( $job->options['email_replace'] )
+		);
 	}
 
 	/**

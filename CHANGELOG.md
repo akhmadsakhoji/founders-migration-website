@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `.wpress` import: `wp fmw restore <file>.wpress [--password=<password>]` restores All-in-One WP Migration backups, plain, encrypted (AES-256-CBC) or gzip / bzip2 compressed, from older (7.85, no checksums) and current (7.111, CRC-32) versions. Files are looked up in `wp-content/ai1wm-backups` too.
+- `.wpress` restore order for safety: every header and the archive CRC-32 are checked first, then `database.sql` is imported into `fmwtmp_*` tables, and only then are files written (each checked against its CRC-32). Resumable in the middle of large files.
+- All-in-One WP Migration's `SERVMASK_PREFIX_` placeholders are mapped back: tables to the target prefix, option names and user meta keys to their real names; its URL, path, uploads URL and export-time find / replace values are applied with the serialized-safe replacer.
+- `wp fmw inspect` and `wp fmw verify` accept `.wpress` files (verify needs no password).
+- `docs/wpress.md`: the `.wpress` layout as FMW reads it.
+- SQL dumps may contain `START TRANSACTION`, `COMMIT` and `SET autocommit`; they are ignored because the importer manages its own transactions.
+
 - `wp fmw restore <file>`: resumable restore of `.fmw` backups (check, restore parts, replace, swap, finish) with `--yes`, `--keep-old-tables`, `--exclude-email-replace`, `--skip-space-check` and `--[no-]progress`.
 - Restore safety: SHA-256 check of every part before use, free disk space check, import into `fmwtmp_*` tables and one atomic `RENAME TABLE` (previous tables kept as `fmwold_*` until the end), exactly-once SQL import and replacement through a progress table committed with the data.
 - Serialized-safe search-replace for URLs (plain, protocol-relative, JSON-escaped and URL-encoded), paths and e-mail domains; nested serialized strings are re-measured without `unserialize()`; table prefix changes applied to `user_roles` and user meta keys.

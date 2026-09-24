@@ -41,15 +41,22 @@ final class RestoreOptions {
 			}
 		}
 
+		$uploads = wp_upload_dir( null, false );
+
 		return array(
 			'archive'            => $archive,
 			'target'             => array(
-				'home_url'     => home_url(),
-				'site_url'     => site_url(),
-				'abspath'      => trailingslashit( wp_normalize_path( ABSPATH ) ),
-				'content_dir'  => $content,
-				'table_prefix' => (string) $wpdb->base_prefix,
-				'multisite'    => is_multisite(),
+				'home_url'       => home_url(),
+				'site_url'       => site_url(),
+				'abspath'        => trailingslashit( wp_normalize_path( ABSPATH ) ),
+				'content_dir'    => $content,
+				'uploads_dir'    => untrailingslashit( wp_normalize_path( (string) $uploads['basedir'] ) ),
+				'uploads_url'    => untrailingslashit( (string) $uploads['baseurl'] ),
+				'plugins_dir'    => untrailingslashit( wp_normalize_path( WP_PLUGIN_DIR ) ),
+				'mu_plugins_dir' => untrailingslashit( wp_normalize_path( WPMU_PLUGIN_DIR ) ),
+				'themes_dir'     => untrailingslashit( wp_normalize_path( get_theme_root() ) ),
+				'table_prefix'   => (string) $wpdb->base_prefix,
+				'multisite'      => is_multisite(),
 			),
 			'protect_paths'      => $protect,
 			'email_replace'      => empty( $flags['exclude-email-replace'] ),

@@ -135,6 +135,28 @@ final class Replacer {
 	}
 
 	/**
+	 * Pairs for arbitrary find / replace values: plain, URL-encoded (both styles) and JSON-escaped.
+	 *
+	 * @param array<string,string> $values Old => new.
+	 * @return array<string,string>
+	 */
+	public static function value_pairs( array $values ): array {
+		$pairs = array();
+		foreach ( $values as $old => $new ) {
+			$old = (string) $old;
+			$new = (string) $new;
+			if ( '' === $old || $old === $new ) {
+				continue;
+			}
+			$pairs[ $old ]                            = $new;
+			$pairs[ urlencode( $old ) ]               = urlencode( $new ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.urlencode_urlencode -- Form-encoded values are stored this way too.
+			$pairs[ rawurlencode( $old ) ]            = rawurlencode( $new );
+			$pairs[ str_replace( '/', '\\/', $old ) ] = str_replace( '/', '\\/', $new );
+		}
+		return $pairs;
+	}
+
+	/**
 	 * Host of a URL.
 	 *
 	 * @param string $url URL, possibly protocol-relative.

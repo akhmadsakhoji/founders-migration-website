@@ -25,7 +25,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 final class SqlGuard {
 
 	const ALLOWED_ENGINES = array( 'INNODB', 'MYISAM', 'ARIA', 'MEMORY' );
-	const ALLOWED_SET     = '/^SET\s+(NAMES|FOREIGN_KEY_CHECKS|UNIQUE_CHECKS|SQL_MODE|TIME_ZONE|CHARACTER_SET_CLIENT|AUTOCOMMIT|SQL_NOTES)\b/i';
+	const ALLOWED_SET     = '/^SET\s+(NAMES|FOREIGN_KEY_CHECKS|UNIQUE_CHECKS|SQL_MODE|TIME_ZONE|CHARACTER_SET_CLIENT|SQL_NOTES)\b/i';
 	const IDENTIFIER      = '(`(?:[^`]|``)+`|[A-Za-z0-9_$]+)';
 	const SYSTEM_SCHEMAS  = '/(?:`|\b)(mysql|information_schema|performance_schema|sys)`?\s*\./i';
 
@@ -71,7 +71,9 @@ final class SqlGuard {
 				'table' => '',
 			);
 		}
-		if ( preg_match( '/^(LOCK|UNLOCK)\s+TABLES\b/i', $code ) ) {
+		// The importer manages its own transactions (they carry the exactly-once progress record),
+		// so transaction control and table locks from a dump are ignored.
+		if ( preg_match( '/^(?:(?:LOCK|UNLOCK)\s+TABLES\b|START\s+TRANSACTION\b|BEGIN\s*(?:WORK\s*)?$|COMMIT\b|ROLLBACK\s*(?:WORK\s*)?$|SET\s+(?:@@(?:SESSION\.)?|SESSION\s+)?AUTOCOMMIT\s*=)/i', $code ) ) {
 			return array(
 				'kind'  => 'skip',
 				'sql'   => $sql,
@@ -131,6 +133,21 @@ final class SqlGuard {
 			throw new UnsafeSqlException( sprintf( 'View or trigger touches system schemas or files: %s', self::excerpt( $sql ) ) );
 		}
 		return $this->rewrite_identifiers( $sql );
+	}
+
+	/**
+	 * Whether a statement creates or drops a view or trigger (to be run after the swap).
+	 *
+	 * @param string $sql Statement.
+	 * @return bool
+	 */
+	public static function is_object_statement( string $sql ): bool {
+		try {
+			$code = self::code_only( $sql );
+		} catch ( UnsafeSqlException $e ) {
+			return false; // table_statement() reports it.
+		}
+		return 1 === preg_match( '/^(DROP\s+(VIEW|TRIGGER)\b|CREATE\s+(OR\s+REPLACE\s+)?(ALGORITHM\s*=\s*\w+\s+)?(DEFINER\s*=\s*\S+\s+)?(SQL\s+SECURITY\s+\w+\s+)?(VIEW|TRIGGER)\b)/i', $code );
 	}
 
 	/**

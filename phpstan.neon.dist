@@ -17,6 +17,7 @@ parameters:
 		- vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
 	bootstrapFiles:
 		- tests/phpstan-bootstrap.php
+		- tests/phpstan-cli-tools-stub.php
 	ignoreErrors:
 		-
 			# The main plugin file deliberately guards against PHP versions below the analysed range.

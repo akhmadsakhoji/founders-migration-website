@@ -7,17 +7,17 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Resumable everywhere.** Backup, upload and restore continue from the last checkpoint after a timeout, a dropped SSH session or a server restart.
 - **Standard formats, no lock-in.** An `.fmw` file is a TAR archive of TAR/gzip parts, gzip SQL and a JSON manifest. You can restore it by hand with `tar`, `gunzip` and `mysql` if the plugin or WordPress is broken. See [docs/format-v1.md](docs/format-v1.md).
 - **Honest progress.** Percentage, speed and ETA in both the browser and the terminal.
-- **Imports `.wpress`.** Existing All-in-One WP Migration backups can be restored.
+- **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 1 complete (CLI).** `wp fmw backup`, `restore`, `verify` and `inspect` work end to end and are resumable. The admin screens and `.wpress` import come in phase 2. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** From WP-CLI, `wp fmw backup`, `restore` (`.fmw` and `.wpress`), `verify` and `inspect` work end to end and are resumable. The admin screens come next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
 | | Minimum | Recommended |
 |---|---|---|
 | PHP | 7.4, **64-bit** | 8.3 or newer |
-| PHP extensions | zlib, hash, mysqli, json | openssl (encrypted backups), pcntl (clean Ctrl+C in WP-CLI) |
+| PHP extensions | zlib, hash, mysqli, json | openssl (encrypted backups), bz2 (bzip2-compressed `.wpress`), pcntl (clean Ctrl+C in WP-CLI) |
 | WordPress | 6.0 | Latest |
 | MySQL / MariaDB | 5.7 / 10.3 | 8.0 / 10.11 |
 | WP-CLI | 2.5 | Latest |
@@ -54,6 +54,16 @@ wp fmw restore <file> --keep-old-tables
 wp fmw cleanup --tables                # drop fmwold_* / leftover fmwtmp_* tables
 ```
 
+All-in-One WP Migration backups restore the same way, found by name in `wp-content/ai1wm-backups` too:
+
+```bash
+wp fmw inspect site.wpress             # source site, plugin version, encryption, compression
+wp fmw verify site.wpress              # headers + CRC-32 (archives from recent versions), no password needed
+wp fmw restore site.wpress --password=<password>   # password only for encrypted backups; asked for when omitted
+```
+
+Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. Multisite `.wpress` backups arrive in phase 3.
+
 How a restore protects the site:
 
 - Every part is checked against its SHA-256 before it is used; a damaged archive stops the restore before anything live changes.
@@ -70,7 +80,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.wpress`: phase 2) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
