@@ -715,38 +715,64 @@
 			}
 			data.storages.forEach( function ( storage ) {
 				storages[ storage.id ] = storage;
+				var drive   = 'gdrive' === storage.provider;
+				var service = drive ? storage.provider_label + ' · ' + ( storage.connected ? storage.account : t.notConnected ) : storage.provider_label + ( storage.region ? ' · ' + storage.region : '' );
+				var ready   = ! drive || storage.connected;
+				var actions = [
+					ready ? button( t.browse, function () {
+						browseStorage( storage );
+					}, true ) : button( t.connect, function () {
+						connectStorage( storage );
+					}, true ),
+				];
+				if ( ready ) {
+					actions.push( button( t.test, function () {
+						storageStatus( t.testing );
+						api( '/storages/' + storage.id + '/test', { method: 'POST' } ).then( function ( result ) {
+							storageStatus( storage.name + ': ' + sprintf( t.testOk, result.result ), 'completed' );
+						}, function ( error ) {
+							storageStatus( storage.name + ': ' + error.message, 'failed' );
+						} );
+					} ) );
+				}
+				actions.push( button( t.edit, function () {
+					editStorage( storage );
+				} ) );
+				if ( drive && storage.connected ) {
+					actions.push( button( t.disconnect, function () {
+						if ( window.confirm( sprintf( t.confirmDisconnect, storage.name ) ) ) {
+							api( '/storages/' + storage.id + '/disconnect', { method: 'POST' } ).then( loadStorages, function ( error ) {
+								window.alert( error.message );
+							} );
+						}
+					} ) );
+				}
+				actions.push( button( t.delete, function () {
+					if ( window.confirm( sprintf( t.confirmDeleteStorage, storage.name ) ) ) {
+						api( '/storages/' + storage.id, { method: 'DELETE' } ).then( loadStorages, function ( error ) {
+							window.alert( error.message );
+						} );
+					}
+				} ) );
 				body.appendChild( el( 'tr', {}, [
 					el( 'td', {}, [ el( 'strong', { text: storage.name } ), el( 'br' ), el( 'code', { text: storage.id } ) ] ),
-					el( 'td', { text: storage.provider_label + ( storage.region ? ' · ' + storage.region : '' ) } ),
+					el( 'td', { text: service } ),
 					el( 'td', {}, [ el( 'code', { text: storage.location } ) ] ),
-					el( 'td', { class: 'fmw-row-actions' }, [
-						button( t.browse, function () {
-							browseStorage( storage );
-						}, true ),
-						button( t.test, function () {
-							storageStatus( t.testing );
-							api( '/storages/' + storage.id + '/test', { method: 'POST' } ).then( function ( result ) {
-								storageStatus( storage.name + ': ' + sprintf( t.testOk, result.result ), 'completed' );
-							}, function ( error ) {
-								storageStatus( storage.name + ': ' + error.message, 'failed' );
-							} );
-						} ),
-						button( t.edit, function () {
-							editStorage( storage );
-						} ),
-						button( t.delete, function () {
-							if ( window.confirm( sprintf( t.confirmDeleteStorage, storage.name ) ) ) {
-								api( '/storages/' + storage.id, { method: 'DELETE' } ).then( loadStorages, function ( error ) {
-									window.alert( error.message );
-								} );
-							}
-						} ),
-					] ),
+					el( 'td', { class: 'fmw-row-actions' }, actions ),
 				] ) );
 			} );
 		} ).catch( function ( error ) {
 			body.textContent = '';
 			body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '4', class: 'fmw-error', text: error.message } ) ] ) );
+		} );
+	}
+
+	function connectStorage( storage ) {
+		storageStatus( t.connecting );
+		api( '/storages/' + storage.id + '/connect', { method: 'POST' } ).then( function ( result ) {
+			window.location.href = result.url; // Google's consent page; it comes back to this page.
+		}, function ( error ) {
+			storageStatus( storage.name + ': ' + error.message, 'failed' );
 		} );
 	}
 
@@ -799,6 +825,14 @@
 	}
 
 	function applyProvider( form, fill ) {
+		var drive = 'gdrive' === form.elements.provider.value;
+		form.querySelectorAll( '[data-fmw-kind]' ).forEach( function ( row ) {
+			row.hidden = row.getAttribute( 'data-fmw-kind' ) !== ( drive ? 'gdrive' : 's3' );
+		} );
+		if ( drive ) {
+			form.elements.prefix.placeholder = 'FMW Backups/' + window.location.hostname;
+			return;
+		}
 		var option  = form.elements.provider.selectedOptions[ 0 ];
 		var region  = form.elements.region.value || option.getAttribute( 'data-region' );
 		var pattern = option.getAttribute( 'data-endpoint' );
@@ -818,7 +852,8 @@
 		form.reset();
 		form.elements.id.value = '';
 		title.textContent      = title.getAttribute( 'data-add' );
-		form.elements.secret_key.placeholder = '';
+		form.elements.secret_key.placeholder    = '';
+		form.elements.client_secret.placeholder = '';
 		form.querySelector( '[data-fmw-storage-cancel]' ).hidden = true;
 		form.querySelector( '[data-fmw-storage-error]' ).textContent = '';
 		applyProvider( form, true );
@@ -839,6 +874,8 @@
 		form.elements.path_style.checked  = !! storage.path_style;
 		form.elements.storage_class.value = storage.storage_class || '';
 		form.elements.secret_key.placeholder = t.secretKept;
+		form.elements.client_id.value        = storage.client_id || '';
+		form.elements.client_secret.placeholder = t.secretKept;
 		title.textContent = title.getAttribute( 'data-edit' ) + ': ' + storage.name;
 		form.querySelector( '[data-fmw-storage-cancel]' ).hidden = false;
 		applyProvider( form, false );
@@ -850,14 +887,24 @@
 		var submit = form.querySelector( '[type=submit]' );
 		var id     = form.elements.id.value;
 		var body   = {};
-		[ 'provider', 'region', 'endpoint', 'bucket', 'prefix', 'access_key', 'secret_key', 'name', 'storage_class' ].forEach( function ( field ) {
+		var drive  = 'gdrive' === form.elements.provider.value;
+		( drive ? [ 'provider', 'prefix', 'name', 'client_id', 'client_secret' ] : [ 'provider', 'region', 'endpoint', 'bucket', 'prefix', 'access_key', 'secret_key', 'name', 'storage_class' ] ).forEach( function ( field ) {
 			body[ field ] = form.elements[ field ].value;
 		} );
-		body.path_style   = form.elements.path_style.checked;
+		if ( ! drive ) {
+			body.path_style = form.elements.path_style.checked;
+		}
+		if ( drive && ! body.prefix ) {
+			delete body.prefix; // Keeps the default folder.
+		}
 		error.textContent = t.testing;
 		submit.disabled   = true;
 		api( '/storages' + ( id ? '/' + id : '' ), { method: 'POST', body: body } ).then( function ( saved ) {
 			submit.disabled = false;
+			if ( 'gdrive' === saved.provider && ! saved.connected ) {
+				connectStorage( saved ); // Straight to Google's consent page.
+				return null;
+			}
 			resetStorageForm();
 			storageStatus( sprintf( t.testOk, saved.name ), 'completed' );
 			return loadStorages();

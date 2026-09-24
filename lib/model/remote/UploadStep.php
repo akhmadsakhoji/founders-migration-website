@@ -16,31 +16,32 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 use Founders\Migration\Remote\RemoteException;
-use Founders\Migration\Remote\S3Client;
 use Founders\Migration\Remote\StorageOptions;
 use Founders\Migration\Remote\Storages;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 /**
- * Uploads a backup to cloud storage, resumably.
+ * Uploads a backup to cloud storage, resumably, through the storage's driver.
  *
- * Small files go in one request; larger ones as a multipart upload whose
- * parts are sized from the measured speed (so each request stays well
- * inside a web time slice) and never exceed S3's 10,000 parts. The upload
- * ID and the ETags of finished parts are checkpointed with the job, so an
- * interrupted upload continues at the next part. The object's size is
- * checked at the end. A cancelled job aborts the multipart upload.
+ * Chunks are sized from the measured speed, so each request stays well
+ * inside a web time slice; the driver rounds them to its own rules (S3
+ * parts of at least 5 MiB and at most 10,000 of them, Google Drive chunks
+ * of 256 KiB multiples). The driver's upload state is checkpointed with the
+ * job, and synchronised with the storage at the start of every slice, so an
+ * interrupted upload continues where the storage says it stopped. The size
+ * is checked at the end, and a cancelled job aborts the upload.
  *
  * Reads job options: remote (storage, delete_local), upload_path (upload jobs).
  * Reads job data: archive.path (backup jobs). Sets job data: remote.
  */
 final class UploadStep implements Step, Discardable {
 
-	const SINGLE_MAX = 8388608;    // 8 MiB: one PUT.
-	const PART_MIN   = 8388608;    // 8 MiB, unless the time slice asks for less.
-	const PART_MAX   = 536870912;  // 512 MiB.
-	const TARGET     = 10.0;       // Seconds per part.
+	const PART_MIN = 8388608;    // 8 MiB, unless the time slice asks for less.
+	const PART_MAX = 536870912;  // 512 MiB.
+	const TARGET   = 10.0;       // Seconds per part.
+
+	const MAX_RESTARTS = 3; // Uploads started again because the storage forgot them.
 
 	/**
 	 * {@inheritDoc}
@@ -71,121 +72,84 @@ final class UploadStep implements Step, Discardable {
 		}
 
 		$size             = (int) filesize( $path );
-		$key              = StorageOptions::key( $storage, basename( $path ) );
-		$state            = (array) ( $job->data['upload'] ?? array() ) + array(
-			'key'    => $key,
-			'id'     => '',
-			'parts'  => array(),
-			'offset' => 0,
-			'speed'  => 0.0,
-		);
+		$name             = basename( $path );
+		$where            = self::where( $storage );
+		$state            = self::saved_state( $job, $storage, $where, $name, $size );
 		$job->bytes_total = $size;
 
 		try {
-			$client = Storages::client( $storage );
-			if ( '' !== $state['id'] && $state['key'] !== $key ) {
-				// The storage folder was changed during the upload: drop the old upload and start again.
-				$client->abort_multipart( (string) $state['key'], (string) $state['id'] );
-				$state = array(
-					'key'    => $key,
-					'id'     => '',
-					'parts'  => array(),
-					'offset' => 0,
-					'speed'  => $state['speed'],
+			$driver = Storages::driver( $storage );
+			if ( null !== $state && ( $state['where'] !== $where || $state['name'] !== $name || (int) $state['size'] !== $size ) ) {
+				// The storage settings (or the file) changed during the upload: drop the old upload and start again.
+				self::abort( $driver, (array) $state['driver'] );
+				$state = null;
+			}
+			if ( null === $state ) {
+				$job->data['upload'] = array(
+					'where'  => $where,
+					'name'   => $name,
+					'size'   => $size,
+					'driver' => $driver->upload_open( $name, $size ),
+					'speed'  => 0.0,
+					'last'   => 0,
 				);
+				return false; // Checkpoint the upload now, so a crash cannot leave an unknown upload behind.
 			}
-			if ( $size <= self::SINGLE_MAX ) {
-				$client->put_file( $key, $path, 0, $size, Storages::upload_headers( $storage ) );
-			} else {
-				if ( '' === $state['id'] ) {
-					$state['id']         = $client->create_multipart( $key, Storages::upload_headers( $storage ) );
-					$job->data['upload'] = $state;
-					return false; // Checkpoint the upload ID now, so a crash cannot leave an unknown upload behind.
-				}
-				$first = true;
-				do {
-					$left = $size - (int) $state['offset'];
-					if ( $left <= 0 ) {
-						break;
-					}
-					$number = count( $state['parts'] ) + 1;
-					$length = min( $left, self::part_size( $left, $number, (float) $state['speed'] ) );
-					if ( ! empty( $state['last'] ) ) {
-						$length = min( $length, max( 4 * (int) $state['last'], self::needed( $left, $number ) ) ); // Grow step by step.
-					}
-					if ( $state['speed'] > 0 ) {
-						// Keep each request inside the time slice, so progress is saved before the host may end the request.
-						$fits = self::fit( (float) $state['speed'] * $context->remaining() * 0.8, $left, $number );
-						if ( ! $first && $length > $fits ) {
-							break;
-						}
-						$length = min( $length, max( $fits, self::needed( $left, $number ) ) );
-					}
-					$first = false;
-					$start = microtime( true );
-					try {
-						$etag = $client->upload_part( $key, (string) $state['id'], $number, $path, (int) $state['offset'], $length );
-					} catch ( RemoteException $e ) {
-						if ( 'NoSuchUpload' !== $e->error_code ) {
-							throw new JobException( sprintf( 'Upload to "%s" failed: %s', (string) $storage['name'], $e->getMessage() ) );
-						}
-						// The storage dropped the unfinished upload (expired): start it again.
-						$context->log( 'The storage no longer knows the unfinished upload; starting it again.' );
-						$state               = array(
-							'key'    => $key,
-							'id'     => $client->create_multipart( $key, Storages::upload_headers( $storage ) ),
-							'parts'  => array(),
-							'offset' => 0,
-							'speed'  => $state['speed'],
-						);
-						$job->data['upload'] = $state;
-						return false;
-					}
-					$seconds                            = max( 0.001, microtime( true ) - $start );
-					$state['parts'][ (string) $number ] = $etag;
-					$state['offset']                    = (int) $state['offset'] + $length;
-					$state['last']                      = $length;
-					$state['speed']                     = $state['speed'] > 0 ? 0.5 * $state['speed'] + 0.5 * $length / $seconds : $length / $seconds;
-					$job->data['upload']                = $state;
-					$job->bytes_done                    = (int) $state['offset'];
-					$context->report_progress();
-				} while ( $context->should_continue() );
+			// What the storage really has: bytes may have arrived after the last checkpoint.
+			$state['driver'] = $driver->upload_sync( (array) $state['driver'], $size );
 
-				if ( (int) $state['offset'] < $size ) {
-					return false;
+			$first = true;
+			do {
+				$offset = (int) $state['driver']['offset'];
+				if ( $offset >= $size ) {
+					break;
 				}
-				$parts = array();
-				foreach ( $state['parts'] as $number => $etag ) {
-					$parts[ (int) $number ] = (string) $etag;
+				$length = $driver->chunk_length( (array) $state['driver'], $size, self::wanted( (float) $state['speed'], (int) $state['last'], $context->remaining() ) );
+				if ( ! $first && $state['speed'] > 0 && $length > $state['speed'] * $context->remaining() * 0.8 ) {
+					break; // The next chunk would not fit in this slice: checkpoint first.
 				}
-				try {
-					$client->complete_multipart( $key, (string) $state['id'], $parts );
-				} catch ( RemoteException $e ) {
-					// Completed already (a retried request, or a crash right after it): fine when the object is whole.
-					$done = 'NoSuchUpload' === $e->error_code ? $client->head( $key ) : null;
-					if ( null === $done || $done['size'] !== $size ) {
-						throw new JobException( sprintf( 'Upload to "%s" failed: %s', (string) $storage['name'], $e->getMessage() ) );
-					}
-				}
+				$first               = false;
+				$start               = microtime( true );
+				$state['driver']     = $driver->upload_chunk( (array) $state['driver'], $path, $length, $size );
+				$sent                = max( 1, (int) $state['driver']['offset'] - $offset );
+				$seconds             = max( 0.001, microtime( true ) - $start );
+				$state['last']       = $sent;
+				$state['speed']      = $state['speed'] > 0 ? 0.5 * $state['speed'] + 0.5 * $sent / $seconds : $sent / $seconds;
+				$job->data['upload'] = $state;
+				$job->bytes_done     = (int) $state['driver']['offset'];
+				$context->report_progress();
+			} while ( $context->should_continue() );
+
+			$job->data['upload'] = $state;
+			if ( (int) $state['driver']['offset'] < $size ) {
+				return false;
 			}
-
-			$object = $client->head( $key );
+			$result = $driver->upload_close( (array) $state['driver'], $size );
 		} catch ( RemoteException $e ) {
-			throw new JobException( sprintf( 'Upload to "%s" failed: %s', (string) $storage['name'], $e->getMessage() ) );
-		}
-		if ( null === $object || $object['size'] !== $size ) {
-			throw new JobException( sprintf( 'The uploaded copy in "%s" has %s bytes instead of %d.', (string) $storage['name'], null === $object ? 'no' : (string) $object['size'], $size ) );
+			if ( 'UploadExpired' !== $e->error_code ) {
+				throw new JobException( sprintf( 'Upload to "%s" failed: %s', (string) $storage['name'], $e->getMessage() ) );
+			}
+			$restarts = (int) ( $job->data['upload_restarts'] ?? 0 ) + 1;
+			if ( $restarts > self::MAX_RESTARTS ) {
+				throw new JobException( sprintf( 'Upload to "%s" failed: the storage kept dropping the unfinished upload.', (string) $storage['name'] ) );
+			}
+			$context->log( 'The storage no longer knows the unfinished upload; starting it again.' );
+			$job->data['upload_restarts'] = $restarts;
+			unset( $job->data['upload'] );
+			return false;
 		}
 
-		unset( $job->data['upload'] );
+		unset( $job->data['upload'], $job->data['upload_restarts'] );
+		$label               = StorageOptions::key( $storage, $name );
 		$job->data['remote'] = array(
 			'storage' => (string) $storage['id'],
 			'name'    => (string) $storage['name'],
-			'key'     => $key,
+			'key'     => $result['key'],
+			'label'   => $label,
 			'size'    => $size,
 		);
 		$job->bytes_done     = $size;
-		$context->log( sprintf( 'Uploaded %s (%d bytes) to "%s" as %s.', basename( $path ), $size, (string) $storage['name'], $key ) );
+		$context->log( sprintf( 'Uploaded %s (%d bytes) to "%s" as %s.', $name, $size, (string) $storage['name'], $label ) );
 
 		if ( ! empty( $remote['delete_local'] ) && 'backup' === $job->type ) {
 			unlink( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Plain PHP in jobs.
@@ -196,31 +160,7 @@ final class UploadStep implements Step, Discardable {
 	}
 
 	/**
-	 * Largest part that fits $bytes: whole MiB, at least 5 MiB (S3's minimum for all but the last part).
-	 *
-	 * @param float $bytes  Bytes that fit in the time left.
-	 * @param int   $left   Bytes left.
-	 * @param int   $number Part number.
-	 * @return int
-	 */
-	private static function fit( float $bytes, int $left, int $number ): int {
-		$fits = max( S3Client::MIN_PART, (int) ( floor( $bytes / 1048576 ) * 1048576 ) );
-		return min( $left, max( $fits, self::needed( $left, $number ) ) );
-	}
-
-	/**
-	 * Smallest part that still keeps the upload within 10,000 parts.
-	 *
-	 * @param int $left   Bytes left.
-	 * @param int $number Part number.
-	 * @return int
-	 */
-	private static function needed( int $left, int $number ): int {
-		return (int) ( ceil( $left / max( 1, S3Client::MAX_PARTS - $number + 1 ) / 1048576 ) * 1048576 );
-	}
-
-	/**
-	 * Aborts an unfinished multipart upload of a cancelled job.
+	 * Aborts an unfinished upload of a cancelled job.
 	 *
 	 * @param Job $job Job.
 	 * @return void
@@ -228,29 +168,99 @@ final class UploadStep implements Step, Discardable {
 	public function discard( Job $job ): void {
 		$state   = (array) ( $job->data['upload'] ?? array() );
 		$storage = Storages::get( (string) ( $job->options['remote']['storage'] ?? '' ) );
-		if ( '' === (string) ( $state['id'] ?? '' ) || null === $storage ) {
+		if ( empty( $state['driver'] ) || null === $storage ) {
 			return;
 		}
 		try {
-			Storages::client( $storage )->abort_multipart( (string) $state['key'], (string) $state['id'] );
+			self::abort( Storages::driver( $storage ), (array) $state['driver'] );
 		} catch ( RemoteException $e ) {
-			unset( $e ); // Best effort: storages also expire unfinished uploads by lifecycle rules.
+			unset( $e );
 		}
 	}
 
 	/**
-	 * Size of the next part: about TARGET seconds at the measured speed,
-	 * within 8 MiB..512 MiB, and large enough to stay under 10,000 parts.
+	 * The checkpointed upload, or null. Converts the multipart state saved by
+	 * version 0.x before the driver refactor (key, id, parts, offset), so an
+	 * S3 upload that was running during a plugin update continues.
 	 *
-	 * @param int   $left   Bytes left.
-	 * @param int   $number Number of this part.
-	 * @param float $speed  Measured bytes per second (0 before the first part).
+	 * @param Job                 $job     Job.
+	 * @param array<string,mixed> $storage Storage.
+	 * @param string              $where   Where uploads of the storage go.
+	 * @param string              $name    File name.
+	 * @param int                 $size    Bytes.
+	 * @return array<string,mixed>|null
+	 */
+	private static function saved_state( Job $job, array $storage, string $where, string $name, int $size ): ?array {
+		$saved = $job->data['upload'] ?? null;
+		if ( ! is_array( $saved ) ) {
+			return null;
+		}
+		if ( isset( $saved['driver'] ) ) {
+			return $saved;
+		}
+		if ( '' === (string) ( $saved['id'] ?? '' ) || 'gdrive' === ( $storage['provider'] ?? '' ) ) {
+			return null; // Nothing unfinished in the storage.
+		}
+		$same = (string) ( $saved['key'] ?? '' ) === StorageOptions::key( $storage, $name );
+		return array(
+			'where'  => $same ? $where : '',
+			'name'   => $name,
+			'size'   => $size,
+			'driver' => array(
+				'key'    => (string) ( $saved['key'] ?? '' ),
+				'id'     => (string) $saved['id'],
+				'parts'  => (array) ( $saved['parts'] ?? array() ),
+				'offset' => (int) ( $saved['offset'] ?? 0 ),
+			),
+			'speed'  => (float) ( $saved['speed'] ?? 0 ),
+			'last'   => (int) ( $saved['last'] ?? 0 ),
+		);
+	}
+
+	/**
+	 * Bytes worth sending next: about TARGET seconds at the measured speed
+	 * (8 MiB to 512 MiB), growing at most fourfold per request, and fitting
+	 * the time left in the slice. Drivers round it to their own rules.
+	 *
+	 * @param float $speed     Measured bytes per second (0 before the first chunk).
+	 * @param int   $last      Bytes of the previous chunk (0 for none).
+	 * @param float $remaining Seconds left in the slice.
 	 * @return int
 	 */
-	public static function part_size( int $left, int $number, float $speed ): int {
+	public static function wanted( float $speed, int $last, float $remaining ): int {
 		$wanted = $speed > 0 ? (int) ( $speed * self::TARGET ) : self::PART_MIN;
 		$wanted = max( self::PART_MIN, min( self::PART_MAX, $wanted ) );
-		$size   = max( $wanted, self::needed( $left, $number ) );
-		return (int) ( ceil( $size / 1048576 ) * 1048576 ); // Whole MiB.
+		if ( $last > 0 ) {
+			$wanted = min( $wanted, 4 * $last ); // One fast request says little about the link.
+		}
+		if ( $speed > 0 ) {
+			$wanted = min( $wanted, max( 262144, (int) ( $speed * $remaining * 0.8 ) ) );
+		}
+		return $wanted;
+	}
+
+	/**
+	 * Where uploads of a storage go; an upload started elsewhere cannot continue after a change.
+	 *
+	 * @param array<string,mixed> $storage Storage.
+	 * @return string
+	 */
+	private static function where( array $storage ): string {
+		return md5( implode( "\n", array( (string) $storage['provider'], (string) ( $storage['endpoint'] ?? '' ), (string) ( $storage['bucket'] ?? '' ), (string) $storage['prefix'], (string) ( $storage['client_id'] ?? '' ) ) ) );
+	}
+
+	/**
+	 * Abandons an upload, best effort.
+	 *
+	 * @param \Founders\Migration\Remote\Driver $driver Driver.
+	 * @param array<string,mixed>               $state  Driver state.
+	 * @return void
+	 */
+	private static function abort( $driver, array $state ): void {
+		try {
+			$driver->upload_abort( $state );
+		} catch ( RemoteException $e ) {
+			unset( $e ); // Storages also expire unfinished uploads (S3 lifecycle rules, Drive after a week).
+		}
 	}
 }

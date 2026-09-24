@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups and S3-compatible cloud storage work end to end and are resumable, both in the admin screens and from WP-CLI. Google Drive comes next. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups and cloud storage (S3-compatible and Google Drive) work end to end and are resumable, both in the admin screens and from WP-CLI. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -114,7 +114,8 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw reset` | Reset Hub | now (single site) |
 | `wp fmw schedule list\|add\|update\|delete\|enable\|disable` | Schedules (Unlimited) | now |
 | `wp fmw schedule run [<id>]` | — | now (for a system cron) |
-| `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze extensions | now |
+| `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze / Google Drive extensions | now |
+| `wp fmw storage connect\|disconnect` | — | now (Google Drive) |
 | `wp fmw storage files\|upload\|download\|remove` | — | now |
 | `wp fmw pull <url>` | — | phase 3 |
 
@@ -139,6 +140,24 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 - Pure PHP (curl), no SDK. Multipart uploads with part sizes adapted to the connection (up to 5 TiB, 10,000 parts), resumable after an interruption, every part signed with its SHA-256 so the storage refuses damaged bytes. A cancelled upload is aborted in the storage.
 - Download a backup back to the server (resumable, ranged) and restore it from there.
 - The secret key is stored encrypted with the site's keys in `fmw-storage/storages.json`, never in the database or in job files. The connection is tested (write, read, list, delete) before a storage is saved.
+
+**Google Drive** uses your own Google OAuth client, so backups go straight from your server to your Drive with no third-party server in between:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/library/drive.googleapis.com), create or pick a project and enable the Google Drive API.
+2. Configure the OAuth consent screen (External). Publish the app ("In production"): while it is in "Testing", Google ends the sign-in after 7 days. FMW only asks for the `drive.file` scope, which Google does not require an app review for.
+3. Create an OAuth client ID of type "Web application" with the redirect URI shown on the Cloud storage screen: `https://example.com/wp-admin/admin-post.php?action=fmw_gdrive_callback`.
+4. Add the storage with the client ID and secret, then click **Connect** (or run `wp fmw storage connect <id>` and open the printed link) and allow access.
+
+```bash
+wp fmw storage add --provider=gdrive --client-id=123-abc.apps.googleusercontent.com --client-secret=GOCSPX-... --prefix="FMW Backups/example.com"
+wp fmw storage connect <id>        # prints the Google sign-in link
+wp fmw storage test <id>
+wp fmw backup --storage=<id>
+```
+
+- With `drive.file`, FMW sees only the files it created itself. Backups you put into the folder by hand do not show in the list; upload them with FMW instead.
+- Resumable uploads in 256 KiB-aligned chunks sized to the connection. After an interruption, the upload asks Google how much arrived and continues from there. Older copies with the same name in the folder are replaced.
+- The folder (default `FMW Backups/<domain>`) is created on first use. The client secret and the Google tokens are stored encrypted like S3 keys. **Disconnect** revokes the sign-in; the backups stay in Drive.
 
 Every backup, restore and reset runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
 
@@ -196,6 +215,8 @@ constants.php, functions.php     FMWP_* constants and fmwp_* helpers
 loader.php                       autoloader: Founders\Migration\Archive\TarWriter -> lib/archive/TarWriter.php
 lib/archive/                     TAR (PAX) writer and reader, multi-member gzip, safe extractor
 lib/storage/                     data folders, protection, backup listing
+lib/schedule/                    scheduled backups, WP-Cron and background requests
+lib/remote/                      cloud storage drivers (S3 SigV4, Google Drive OAuth), shared curl transport
 lib/controller/, lib/view/       admin pages
 lib/cli/                         wp fmw
 docs/format-v1.md                archive format specification
@@ -211,7 +232,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 |---|---|
 | 0 — Foundation | Repository, CI, archive library with tests, synthetic site generator |
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
-| 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive |
+| 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP |
 | 3 — Pull and multisite | Server-to-server migration, network and subsite scenarios |
 | 4 — Public release | WordPress.org, documentation site, translations |

@@ -76,7 +76,7 @@ final class JobRunner {
 			}
 			if ( 'upload' === $job->type ) {
 				Jobs::store()->purge_work_files( $job->id );
-				WP_CLI::success( sprintf( 'Uploaded to "%s" as %s.', $job->data['remote']['name'], $job->data['remote']['key'] ) );
+				WP_CLI::success( sprintf( 'Uploaded to "%s" as %s.', $job->data['remote']['name'], ( $job->data['remote']['label'] ?? $job->data['remote']['key'] ) ) );
 				return;
 			}
 			if ( isset( $job->data['archive']['path'] ) ) {
@@ -85,9 +85,9 @@ final class JobRunner {
 					WP_CLI::line( (string) $job->data['archive']['name'] );
 					return;
 				}
-				$where = isset( $job->data['remote']['key'] ) ? sprintf( ', uploaded to "%s" as %s', $job->data['remote']['name'], $job->data['remote']['key'] ) : '';
+				$where = isset( $job->data['remote']['key'] ) ? sprintf( ', uploaded to "%s" as %s', $job->data['remote']['name'], ( $job->data['remote']['label'] ?? $job->data['remote']['key'] ) ) : '';
 				if ( ! empty( $job->data['archive']['deleted_local'] ) ) {
-					WP_CLI::success( sprintf( 'Backup %s (%s) uploaded to "%s" as %s; the copy on this server was deleted.', $job->data['archive']['name'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ), $job->data['remote']['name'], $job->data['remote']['key'] ) );
+					WP_CLI::success( sprintf( 'Backup %s (%s) uploaded to "%s" as %s; the copy on this server was deleted.', $job->data['archive']['name'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ), $job->data['remote']['name'], ( $job->data['remote']['label'] ?? $job->data['remote']['key'] ) ) );
 					return;
 				}
 				WP_CLI::success( sprintf( 'Backup created: %s (%s)%s.', $job->data['archive']['path'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ), $where ) );

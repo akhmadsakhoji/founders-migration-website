@@ -12,7 +12,9 @@ namespace Founders\Migration\Tests\Unit;
 
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Remote\UploadStep;
+use Founders\Migration\Remote\DriveDriver;
 use Founders\Migration\Remote\RemoteException;
+use Founders\Migration\Remote\S3Driver;
 use Founders\Migration\Remote\S3Client;
 use Founders\Migration\Remote\SigV4;
 use Founders\Migration\Remote\StorageOptions;
@@ -129,22 +131,94 @@ final class RemoteTest extends TestCase {
 		}
 	}
 
-	public function test_part_sizes_stay_within_s3_limits(): void {
+	public function test_chunk_sizes_follow_speed_time_and_storage_rules(): void {
 		$mib = 1048576;
-		$this->assertSame( 8 * $mib, UploadStep::part_size( 10 * 1024 * $mib, 1, 0.0 ), 'First part: 8 MiB.' );
-		$this->assertSame( 8 * $mib, UploadStep::part_size( 10 * 1024 * $mib, 2, 100000.0 ), 'Slow link: never below 8 MiB.' );
-		$this->assertSame( 11 * $mib, UploadStep::part_size( 100 * 1024 * $mib, 2, 100000.0 ), '100 GiB: big enough for 10,000 parts.' );
-		$this->assertSame( 512 * $mib, UploadStep::part_size( 100 * 1024 * $mib, 2, 1e9 ), 'Fast link: at most 512 MiB.' );
-		$this->assertSame( 0, UploadStep::part_size( 5 * 1024 * 1024 * $mib, 1, 0.0 ) % $mib );
+		// What the job would like to send.
+		$this->assertSame( 8 * $mib, UploadStep::wanted( 0.0, 0, 20.0 ), 'First chunk: 8 MiB.' );
+		$this->assertSame( 32 * $mib, UploadStep::wanted( 1e9, 8 * $mib, 20.0 ), 'Grows at most fourfold per request.' );
+		$this->assertSame( 512 * $mib, UploadStep::wanted( 1e9, 256 * $mib, 20.0 ), 'At most 512 MiB.' );
+		$this->assertSame( (int) ( 5e6 * 2.0 * 0.8 ), UploadStep::wanted( 5e6, 64 * $mib, 2.0 ), 'Fits the time left in the slice.' );
 
-		// A 5 TiB file on a slow link still fits in 10,000 parts.
-		$left   = 5 * 1024 * 1024 * $mib;
-		$number = 1;
+		// S3: parts of at least 5 MiB (whole MiB), at most 10,000 of them.
+		$s3    = new S3Driver( array( 'prefix' => '' ), new S3Client( array( 'endpoint' => 'https://s3.example.com', 'bucket' => 'b', 'access_key' => 'a', 'secret_key' => 's' ) ) );
+		$state = array(
+			'key'    => 'x',
+			'id'     => 'upload',
+			'parts'  => array(),
+			'offset' => 0,
+		);
+		$this->assertSame( 5 * $mib, $s3->chunk_length( $state, 10 * 1024 * $mib, 262144 ) );
+		$this->assertSame( 11 * $mib, $s3->chunk_length( $state, 100 * 1024 * $mib, 8 * $mib ), '100 GiB needs 11 MiB parts.' );
+		$this->assertSame( 3 * $mib, $s3->chunk_length( array( 'offset' => 7 * $mib ) + $state, 10 * $mib, 8 * $mib ), 'The last part may be small.' );
+		$this->assertSame( 7 * $mib, $s3->chunk_length( array( 'id' => '' ) + $state, 7 * $mib, $mib ), 'Small files: one PUT.' );
+		$left   = 5 * 1024 * 1024 * $mib; // 5 TiB on a slow link still fits in 10,000 parts.
+		$number = 0;
 		while ( $left > 0 ) {
-			$left -= min( $left, UploadStep::part_size( $left, $number, 100000.0 ) );
+			$state['parts'] = array_fill( 1, max( 1, $number ), 'etag' );
+			if ( 0 === $number ) {
+				$state['parts'] = array();
+			}
+			$left -= $s3->chunk_length( array( 'offset' => 0 ) + $state, $left, 262144 );
 			++$number;
 		}
-		$this->assertLessThanOrEqual( S3Client::MAX_PARTS + 1, $number );
+		$this->assertLessThanOrEqual( S3Client::MAX_PARTS, $number );
+
+		// Google Drive: 256 KiB multiples except the last chunk.
+		$drive = new DriveDriver( array( 'id' => 'x' ) );
+		$state = array( 'offset' => 0 );
+		$this->assertSame( 262144, $drive->chunk_length( $state, 10 * $mib, 1000 ) );
+		$this->assertSame( 8 * $mib, $drive->chunk_length( $state, 100 * $mib, 8 * $mib + 5000 ) );
+		$this->assertSame( 12345, $drive->chunk_length( array( 'offset' => 10 * $mib - 12345 ), 10 * $mib, 8 * $mib ) );
+	}
+
+	public function test_google_drive_settings_are_checked_and_sealed(): void {
+		$storage = StorageOptions::build(
+			array(
+				'provider'      => 'gdrive',
+				'client_id'     => '1234567890-abc.apps.googleusercontent.com',
+				'client_secret' => 'GOCSPX-very-secret',
+				'prefix'        => '/Backups/example.com/',
+			),
+			null,
+			1
+		);
+		$this->assertSame( 'own', $storage['auth'] );
+		$this->assertSame( 'Backups/example.com', $storage['prefix'] );
+		$this->assertSame( 'GOCSPX-very-secret', Secrets::open( $storage['secret'] ) );
+		$view = StorageOptions::public_view( array_merge( $storage, array( 'refresh' => Secrets::seal( 'r' ) ) ) );
+		$this->assertTrue( $view['connected'] );
+		$this->assertArrayNotHasKey( 'refresh', $view );
+		$this->assertArrayNotHasKey( 'secret', $view );
+		$this->assertSame( 'My Drive/Backups/example.com', $view['location'] );
+
+		$connected = array(
+			'refresh'   => 'sealed',
+			'access'    => 'sealed',
+			'account'   => 'a@example.com',
+			'folder_id' => 'F1',
+		) + $storage;
+		$renamed   = StorageOptions::build( array( 'name' => 'Drive kantor' ), $connected, 1 );
+		$this->assertSame( 'sealed', $renamed['refresh'], 'Other edits keep the sign-in.' );
+		$moved = StorageOptions::build( array( 'prefix' => 'Elsewhere' ), $connected, 1 );
+		$this->assertSame( '', $moved['folder_id'], 'Another folder is looked up again.' );
+		$this->assertSame( 'sealed', $moved['refresh'] );
+		$other = StorageOptions::build( array( 'client_id' => '999-other.apps.googleusercontent.com' ), $connected, 1 );
+		$this->assertSame( '', $other['refresh'], 'Another OAuth client drops the sign-in.' );
+
+		foreach ( array( array( 'client_id' => 'not-a-client' ), array( 'client_secret' => '' ), array( 'prefix' => '..' ) ) as $change ) {
+			try {
+				StorageOptions::build( array_merge( array( 'provider' => 'gdrive', 'client_id' => '1-a.apps.googleusercontent.com', 'client_secret' => 'secret-123' ), $change ), null, 1 );
+				$this->fail( 'Accepted ' . json_encode( $change ) );
+			} catch ( \InvalidArgumentException $e ) {
+				$this->assertNotSame( '', $e->getMessage() );
+			}
+		}
+		try {
+			StorageOptions::build( array( 'provider' => 'aws' ), $storage, 1 );
+			$this->fail( 'A Drive storage cannot become S3.' );
+		} catch ( \InvalidArgumentException $e ) {
+			$this->assertStringContainsString( 'cannot change', $e->getMessage() );
+		}
 	}
 
 	public function test_xml_values_and_retryable_errors(): void {

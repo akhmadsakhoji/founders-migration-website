@@ -62,6 +62,12 @@ final class StorageOptions {
 				'region'     => 'sgp1',
 				'path_style' => false,
 			),
+			'gdrive' => array(
+				'label'      => 'Google Drive',
+				'endpoint'   => '',
+				'region'     => '',
+				'path_style' => false,
+			),
 			'custom' => array(
 				'label'      => 'Other S3-compatible (MinIO, ...)',
 				'endpoint'   => '',
@@ -102,11 +108,20 @@ final class StorageOptions {
 			if ( ! isset( $providers[ $provider ] ) ) {
 				throw new \InvalidArgumentException( sprintf( 'Provider must be one of: %s.', implode( ', ', array_keys( $providers ) ) ) );
 			}
+			if ( null !== $existing && ( 'gdrive' === $provider ) !== ( 'gdrive' === $existing['provider'] ) ) {
+				throw new \InvalidArgumentException( 'A storage cannot change between Google Drive and S3; add a new storage instead.' );
+			}
 			$storage['provider'] = $provider;
+			if ( 'gdrive' === $provider ) {
+				return self::build_drive( $input, $existing, $now, (string) $storage['id'] );
+			}
 			if ( null === $existing ) {
 				$storage['path_style'] = $providers[ $provider ]['path_style'];
 				$storage['region']     = $providers[ $provider ]['region'];
 			}
+		}
+		if ( 'gdrive' === $storage['provider'] ) {
+			return self::build_drive( $input, $existing, $now, (string) $storage['id'] );
 		}
 		$preset = $providers[ $storage['provider'] ];
 
@@ -179,9 +194,92 @@ final class StorageOptions {
 	 * @return array<string,mixed>
 	 */
 	public static function public_view( array $storage ): array {
-		unset( $storage['secret'] );
 		$storage['provider_label'] = self::providers()[ $storage['provider'] ]['label'] ?? (string) $storage['provider'];
-		$storage['location']       = $storage['bucket'] . ( '' !== $storage['prefix'] ? '/' . $storage['prefix'] : '' );
+		if ( 'gdrive' === $storage['provider'] ) {
+			$storage['connected'] = ! empty( $storage['refresh'] );
+			$storage['location']  = 'My Drive/' . $storage['prefix'];
+		} else {
+			$storage['location'] = $storage['bucket'] . ( '' !== $storage['prefix'] ? '/' . $storage['prefix'] : '' );
+		}
+		unset( $storage['secret'], $storage['refresh'], $storage['access'] );
+		return $storage;
+	}
+
+	/**
+	 * A new or changed Google Drive storage.
+	 *
+	 * Fields: client_id and client_secret of the site's own OAuth client
+	 * ("Web application" in the Google Cloud Console), prefix (folder path
+	 * in My Drive). A new client ID drops the Google sign-in.
+	 *
+	 * @param array<string,mixed>      $input    Fields; client_secret '' keeps the saved one.
+	 * @param array<string,mixed>|null $existing Storage being changed.
+	 * @param int                      $now      Unix time.
+	 * @param string                   $id       ID of a new storage.
+	 * @return array<string,mixed>
+	 * @throws \InvalidArgumentException On an invalid value.
+	 */
+	private static function build_drive( array $input, ?array $existing, int $now, string $id ): array {
+		$host    = function_exists( 'home_url' ) ? (string) wp_parse_url( home_url(), PHP_URL_HOST ) : '';
+		$storage = $existing ?? array(
+			'id'           => $id,
+			'name'         => '',
+			'provider'     => 'gdrive',
+			'auth'         => 'own',
+			'client_id'    => '',
+			'secret'       => '',
+			'prefix'       => 'FMW Backups' . ( '' !== $host ? '/' . $host : '' ),
+			'folder_id'    => '',
+			'folder_path'  => '',
+			'refresh'      => '',
+			'access'       => '',
+			'account'      => '',
+			'connected_at' => 0,
+			'created_at'   => $now,
+		);
+		if ( array_key_exists( 'name', $input ) ) {
+			$storage['name'] = self::clean( (string) $input['name'], 100 );
+		}
+		if ( array_key_exists( 'client_id', $input ) ) {
+			$client = trim( (string) $input['client_id'], " \t\n\r\0\x0B" );
+			if ( 1 !== preg_match( '/^[A-Za-z0-9._-]{8,200}\.apps\.googleusercontent\.com$/', $client ) ) {
+				throw new \InvalidArgumentException( 'The client ID looks wrong; it ends with .apps.googleusercontent.com.' );
+			}
+			if ( $client !== $storage['client_id'] ) {
+				// Another OAuth client: the earlier sign-in belongs to the old one.
+				$storage['refresh']   = '';
+				$storage['access']    = '';
+				$storage['account']   = '';
+				$storage['folder_id'] = '';
+			}
+			$storage['client_id'] = $client;
+		}
+		if ( '' === (string) $storage['client_id'] ) {
+			throw new \InvalidArgumentException( 'Enter the client ID of your Google OAuth client.' );
+		}
+		if ( isset( $input['client_secret'] ) && '' !== (string) $input['client_secret'] ) {
+			$secret = trim( (string) $input['client_secret'], " \t\n\r\0\x0B" );
+			if ( 1 !== preg_match( '/^\S{8,200}$/', $secret ) ) {
+				throw new \InvalidArgumentException( 'The client secret looks wrong.' );
+			}
+			$storage['secret'] = Secrets::seal( $secret );
+		}
+		if ( '' === (string) $storage['secret'] ) {
+			throw new \InvalidArgumentException( 'Enter the client secret of your Google OAuth client.' );
+		}
+		if ( array_key_exists( 'prefix', $input ) ) {
+			$prefix = self::prefix( (string) $input['prefix'] );
+			if ( '' === $prefix ) {
+				throw new \InvalidArgumentException( 'Enter a folder for the backups in Google Drive, for example "FMW Backups".' );
+			}
+			if ( $prefix !== $storage['prefix'] ) {
+				$storage['folder_id'] = '';
+			}
+			$storage['prefix'] = $prefix;
+		}
+		if ( '' === $storage['name'] ) {
+			$storage['name'] = 'Google Drive · ' . $storage['prefix'];
+		}
 		return $storage;
 	}
 

@@ -14,6 +14,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\JobToken;
+use Founders\Migration\Remote\GoogleAuth;
 use Founders\Migration\Remote\RemoteException;
 use Founders\Migration\Remote\StorageOptions;
 use Founders\Migration\Remote\Storages;
@@ -58,6 +59,8 @@ final class RemoteRestController {
 				'DELETE' => 'delete',
 			),
 			'/storages/' . self::STORAGE_ID . '/test'     => array( 'POST' => 'test' ),
+			'/storages/' . self::STORAGE_ID . '/connect'  => array( 'POST' => 'connect' ),
+			'/storages/' . self::STORAGE_ID . '/disconnect' => array( 'POST' => 'disconnect' ),
 			'/storages/' . self::STORAGE_ID . '/files'    => array( 'GET' => 'files' ),
 			'/storages/' . self::STORAGE_ID . '/files/delete' => array( 'POST' => 'remove_file' ),
 			'/storages/' . self::STORAGE_ID . '/download' => array( 'POST' => 'download' ),
@@ -86,6 +89,7 @@ final class RemoteRestController {
 			array(
 				'storages'  => array_values( array_map( array( StorageOptions::class, 'public_view' ), Storages::store()->all() ) ),
 				'providers' => StorageOptions::providers(),
+				'redirect'  => GoogleAuth::redirect_uri(),
 				'curl'      => function_exists( 'curl_init' ),
 			)
 		);
@@ -141,6 +145,39 @@ final class RemoteRestController {
 	}
 
 	/**
+	 * POST /storages/<id>/connect: Google's consent page for this user (the browser goes there).
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function connect( WP_REST_Request $request ) {
+		$storage = Storages::get( (string) $request['id'] );
+		if ( null === $storage || 'gdrive' !== $storage['provider'] ) {
+			return self::not_found();
+		}
+		try {
+			return new WP_REST_Response( array( 'url' => GoogleAuth::authorize_url( $storage, get_current_user_id() ) ) );
+		} catch ( RemoteException $e ) {
+			return self::remote_error( $e );
+		}
+	}
+
+	/**
+	 * POST /storages/<id>/disconnect: forgets the Google sign-in.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function disconnect( WP_REST_Request $request ) {
+		$storage = Storages::get( (string) $request['id'] );
+		if ( null === $storage || 'gdrive' !== $storage['provider'] ) {
+			return self::not_found();
+		}
+		GoogleAuth::disconnect( $storage );
+		return new WP_REST_Response( array( 'disconnected' => true ) );
+	}
+
+	/**
 	 * GET /storages/<id>/files: backups in the storage folder, newest first.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -180,7 +217,7 @@ final class RemoteRestController {
 			return new WP_Error( 'fmw_invalid_name', __( 'Unknown backup.', 'founders-migration-website' ), array( 'status' => 400 ) );
 		}
 		try {
-			Storages::client( $storage )->delete( StorageOptions::key( $storage, $name ) );
+			Storages::delete_backup( $storage, $name );
 		} catch ( RemoteException $e ) {
 			return self::remote_error( $e );
 		}
@@ -237,23 +274,27 @@ final class RemoteRestController {
 	 */
 	private function save( WP_REST_Request $request, ?array $existing ) {
 		$input = array();
-		foreach ( array( 'name', 'provider', 'endpoint', 'region', 'bucket', 'prefix', 'access_key', 'path_style', 'storage_class' ) as $field ) {
+		foreach ( array( 'name', 'provider', 'endpoint', 'region', 'bucket', 'prefix', 'access_key', 'path_style', 'storage_class', 'client_id' ) as $field ) {
 			if ( null !== $request[ $field ] ) {
 				$input[ $field ] = is_bool( $request[ $field ] ) ? $request[ $field ] : sanitize_text_field( (string) $request[ $field ] );
 			}
 		}
-		if ( is_string( $request['secret_key'] ) && '' !== $request['secret_key'] ) {
-			$input['secret_key'] = $request['secret_key']; // Raw: a secret must not be "sanitized".
+		foreach ( array( 'secret_key', 'client_secret' ) as $field ) {
+			if ( is_string( $request[ $field ] ) && '' !== $request[ $field ] ) {
+				$input[ $field ] = $request[ $field ]; // Raw: a secret must not be "sanitized".
+			}
 		}
 		try {
 			$storage = StorageOptions::build( $input, $existing, time() );
-			Storages::test( $storage );
+			if ( 'gdrive' !== $storage['provider'] || ! empty( $storage['refresh'] ) ) {
+				Storages::test( $storage ); // A new Google Drive storage is tested once connected.
+			}
 		} catch ( \InvalidArgumentException $e ) {
 			return new WP_Error( 'fmw_invalid_storage', $e->getMessage(), array( 'status' => 400 ) );
 		} catch ( RemoteException $e ) {
 			return self::remote_error( $e );
 		}
-		Storages::store()->save( $storage );
+		$storage = Storages::save_settings( $storage );
 		return new WP_REST_Response( StorageOptions::public_view( $storage ), null === $existing ? 201 : 200 );
 	}
 
