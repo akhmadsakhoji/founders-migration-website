@@ -30,7 +30,11 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * one in a single step. Live tables that the backup does not contain are
  * left alone (a shared database may hold other sites' tables).
  *
- * Reads job options: target.table_prefix, keep_active_plugin.
+ * With the replace_all_tables option (a reset) every other table of the site
+ * (see RestoreDatabase::site_tables()) is moved aside to fmwold_* as well,
+ * in the same statement, and the site's views are removed.
+ *
+ * Reads job options: target.table_prefix, keep_active_plugin, replace_all_tables.
  * Reads job data: manifest.site.table_prefix, sql_prefix (prefix used in the
  * dump, if different), deferred.
  */
@@ -78,9 +82,38 @@ final class SwapStep implements Step {
 					}
 					$renames[] = Connection::identifier( $table ) . ' TO ' . Connection::identifier( $dest );
 				}
+				if ( ! empty( $job->options['replace_all_tables'] ) ) {
+					$fresh = array();
+					foreach ( $imported as $table ) {
+						$fresh[ $to . substr( $table, strlen( RestoreDatabase::TMP ) ) ] = true;
+					}
+					foreach ( $restore->site_tables( $to ) as $table ) {
+						$base = substr( $table, strlen( $to ) );
+						if ( isset( $fresh[ $table ] ) || '' === $base ) {
+							continue;
+						}
+						if ( strlen( RestoreDatabase::OLD . $base ) > 64 ) {
+							throw new JobException( sprintf( 'Table name for %s would be longer than 64 characters.', $base ) );
+						}
+						$old[]     = RestoreDatabase::OLD . $base;
+						$renames[] = Connection::identifier( $table ) . ' TO ' . Connection::identifier( RestoreDatabase::OLD . $base );
+					}
+				}
 				$restore->drop( $old ); // Leftovers from an earlier restore that kept its old tables.
 				$db->query( 'RENAME TABLE ' . implode( ', ', $renames ) );
-				$context->log( sprintf( 'Switched %d tables to the restored database (%d previous tables kept as %s*).', count( $imported ), count( $old ), RestoreDatabase::OLD ) );
+				$context->log( sprintf( 'Switched %d tables to the %s database (%d previous tables kept as %s*).', count( $imported ), 'reset' === $job->type ? 'fresh' : 'restored', count( $old ), RestoreDatabase::OLD ) );
+				if ( function_exists( 'wp_cache_flush' ) ) {
+					wp_cache_flush(); // A persistent object cache still holds the previous database's options.
+				}
+			}
+			if ( ! empty( $job->options['replace_all_tables'] ) ) {
+				$views = $restore->site_tables( $to, 'VIEW' ); // They would point at tables that are gone.
+				foreach ( $views as $view ) {
+					$db->query( 'DROP VIEW IF EXISTS ' . Connection::identifier( $view ) );
+				}
+				if ( $views ) {
+					$context->log( sprintf( 'Removed %d views of the previous database.', count( $views ) ) );
+				}
 			}
 			$restore->set_progress( 'swap', 'done' );
 		}

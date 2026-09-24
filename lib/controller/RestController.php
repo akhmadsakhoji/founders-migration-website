@@ -27,6 +27,7 @@ use Founders\Migration\Job\Runner;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreOptions;
+use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
 use Founders\Migration\Storage\UploadOffsetException;
@@ -381,7 +382,7 @@ final class RestController {
 	}
 
 	/**
-	 * POST /jobs: {type: backup, flags} or {type: restore, backup, password, flags}.
+	 * POST /jobs: {type: backup, flags}, {type: restore, backup, password, flags} or {type: reset, parts, confirm, flags}.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -431,6 +432,13 @@ final class RestController {
 						$options['secret_wpress_key'] = Secrets::seal( $package->key_for( $password ) );
 					}
 				}
+			} elseif ( 'reset' === $type ) {
+				if ( ! ResetOptions::confirmed( (string) $request['confirm'] ) ) {
+					/* translators: %s: site host name. */
+					return new WP_Error( 'fmw_not_confirmed', sprintf( __( 'Type %s to confirm the reset.', 'founders-migration-website' ), ResetOptions::confirm_word() ), array( 'status' => 400 ) );
+				}
+				$parts   = array_values( array_filter( (array) $request['parts'], 'is_string' ) );
+				$options = ResetOptions::build( $parts, array( get_current_user_id() ), ! empty( $flags['keep-old-tables'] ) );
 			} else {
 				return new WP_Error( 'fmw_invalid_type', __( 'Unknown job type.', 'founders-migration-website' ), array( 'status' => 400 ) );
 			}
@@ -501,7 +509,7 @@ final class RestController {
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
 			$store->purge_work_files( $job->id );
-			if ( Jobs::is_restore( $job->type ) ) {
+			if ( Jobs::changes_site( $job->type ) ) {
 				wp_cache_flush();
 				delete_option( 'rewrite_rules' );
 			}

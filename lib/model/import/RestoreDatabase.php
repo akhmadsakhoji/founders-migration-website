@@ -90,16 +90,61 @@ final class RestoreDatabase {
 	}
 
 	/**
-	 * Base tables whose names start with $prefix, sorted.
+	 * Base tables (or views) whose names start with $prefix, sorted.
 	 *
 	 * @param string $prefix Prefix.
+	 * @param string $type   BASE TABLE or VIEW.
 	 * @return string[]
 	 */
-	public function tables( string $prefix ): array {
+	public function tables( string $prefix, string $type = 'BASE TABLE' ): array {
 		$like = $this->db->escape( str_replace( array( '\\', '_', '%' ), array( '\\\\', '\\_', '\\%' ), $prefix ) ) . '%';
 		return array_map(
 			'strval',
-			$this->db->column( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE '{$like}' ORDER BY TABLE_NAME" )
+			$this->db->column( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = {$this->db->quote( $type )} AND TABLE_NAME LIKE '{$like}' ORDER BY TABLE_NAME" )
+		);
+	}
+
+	/**
+	 * Tables of this site: those starting with $prefix, minus those of other
+	 * WordPress installs sharing the database with a longer prefix (wp_shop_
+	 * when this site is wp_), recognised by their own <prefix>options table.
+	 * When unsure, a table is left out: better kept than dropped. The
+	 * fmwtmp_* and fmwold_* tables of restores never count.
+	 *
+	 * @param string $prefix Site table prefix.
+	 * @param string $type   BASE TABLE or VIEW.
+	 * @return string[]
+	 */
+	public function site_tables( string $prefix, string $type = 'BASE TABLE' ): array {
+		$all     = array_values(
+			array_filter(
+				$this->tables( $prefix, $type ),
+				static function ( string $table ): bool {
+					return 0 !== strpos( $table, self::TMP ) && 0 !== strpos( $table, self::OLD );
+				}
+			)
+		);
+		$foreign = array();
+		foreach ( 'BASE TABLE' === $type ? $all : $this->tables( $prefix ) as $table ) {
+			if ( 'options' === substr( $table, -7 ) && $prefix . 'options' !== $table ) {
+				$candidate = substr( $table, 0, -7 );
+				if ( '_' === substr( $candidate, -1 ) ) {
+					$foreign[] = $candidate;
+				}
+			}
+		}
+		return array_values(
+			array_filter(
+				$all,
+				static function ( string $table ) use ( $foreign ): bool {
+					foreach ( $foreign as $other ) {
+						if ( 0 === strpos( $table, $other ) ) {
+							return false;
+						}
+					}
+					return true;
+				}
+			)
 		);
 	}
 

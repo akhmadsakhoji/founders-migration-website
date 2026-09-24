@@ -22,6 +22,7 @@ $fmwp_tabs = array(
 	'export'  => array( Founders\Migration\Controller\AdminController::SLUG_EXPORT, __( 'Export', 'founders-migration-website' ) ),
 	'import'  => array( Founders\Migration\Controller\AdminController::SLUG_IMPORT, __( 'Import', 'founders-migration-website' ) ),
 	'backups' => array( Founders\Migration\Controller\AdminController::SLUG_BACKUPS, __( 'Backups', 'founders-migration-website' ) ),
+	'reset'   => array( Founders\Migration\Controller\AdminController::SLUG_RESET, __( 'Reset', 'founders-migration-website' ) ),
 );
 $fmwp_base = is_multisite() ? network_admin_url( 'admin.php' ) : admin_url( 'admin.php' );
 ?>

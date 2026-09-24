@@ -212,8 +212,9 @@
 
 	/**
 	 * Runs a job slice after slice until it ends; resolves with the final summary.
+	 * With chained, a completed job leaves the modal to the caller (the next job).
 	 */
-	function runJob( job, token, title ) {
+	function runJob( job, token, title, chained ) {
 		var meter   = new Meter();
 		var failures = 0;
 		busy        = true;
@@ -260,12 +261,15 @@
 
 		return loop().then( function ( summary ) {
 			busy = false;
-			finish( summary );
+			if ( ! ( chained && 'completed' === summary.status ) ) {
+				finish( summary );
+			}
 			return summary;
 		}, function ( error ) {
 			busy = false;
 			modal.message( t.failed + ' ' + error.message, 'error' );
 			modal.actions( [ closeButton( true ) ] );
+			error.shown = true;
 			throw error;
 		} );
 	}
@@ -278,6 +282,9 @@
 				el( 'a', { class: 'button button-primary', href: config.download + '&name=' + encodeURIComponent( summary.backup.name ), text: t.download } ),
 				closeButton( false ),
 			] );
+		} else if ( 'completed' === summary.status && 'reset' === summary.type ) {
+			modal.message( t.resetDone, 'success' );
+			modal.actions( [ closeButton( true ) ] );
 		} else if ( 'completed' === summary.status ) {
 			modal.message( t.restoreDone, 'success' );
 			modal.actions( [ el( 'a', { class: 'button button-primary', href: config.loginUrl, text: t.logIn } ) ] );
@@ -395,6 +402,60 @@
 		} );
 	}
 
+	// ------------------------------------------------------------------ reset
+
+	function resetParts( panel ) {
+		return Array.prototype.map.call( panel.querySelectorAll( '[data-fmw-reset-part]:checked' ), function ( box ) {
+			return box.value;
+		} );
+	}
+
+	function resetReady( panel ) {
+		var confirm = panel.querySelector( '[data-fmw-reset-confirm]' );
+		return resetParts( panel ).length > 0 && confirm.value.trim().toLowerCase() === confirm.getAttribute( 'data-fmw-reset-confirm' );
+	}
+
+	function resetSite( panel ) {
+		var parts = resetParts( panel );
+		if ( ! parts.length ) {
+			window.alert( t.resetNothing );
+			return;
+		}
+		if ( ! resetReady( panel ) ) {
+			window.alert( t.resetConfirm );
+			return;
+		}
+		var request = { type: 'reset', parts: parts, confirm: panel.querySelector( '[data-fmw-reset-confirm]' ).value.trim() };
+		var backup  = panel.querySelector( '[data-fmw-reset-backup]' ).checked;
+		modal.open( t.reset );
+		modal.progress( null, t.preparing );
+		var first = backup
+			? api( '/jobs', { method: 'POST', body: { type: 'backup', flags: {} } } ).then( function ( created ) {
+				return runJob( created, created.token, t.safetyBackup, true );
+			} )
+			: Promise.resolve( null );
+
+		first.then( function ( summary ) {
+			if ( summary && 'completed' !== summary.status ) {
+				return null; // The backup failed or was cancelled: runJob shows why, and nothing is reset.
+			}
+			var name = summary && summary.backup ? summary.backup.name : '';
+			return api( '/jobs', { method: 'POST', body: request } ).then( function ( created ) {
+				return runJob( created, created.token, t.reset );
+			} ).then( function ( result ) {
+				if ( name && 'completed' === result.status ) {
+					modal.part( 'modal-body' ).appendChild( el( 'p', { text: sprintf( t.safetyBackupKept, name ) } ) );
+				}
+			} );
+		} ).catch( function ( error ) {
+			if ( error.shown ) {
+				return; // runJob already shows it.
+			}
+			modal.message( error.message, 'error' );
+			modal.actions( [ closeButton( true ) ] );
+		} );
+	}
+
 	// ----------------------------------------------------------------- upload
 
 	function upload( file ) {
@@ -498,7 +559,7 @@
 			body.textContent = '';
 			panel.hidden     = ! jobs.length;
 			jobs.forEach( function ( job ) {
-				var label = ( 'backup' === job.type ? t.backup : t.restore + ' ' + ( job.archive || '' ) ) + ' · ' + job.id;
+				var label = ( 'backup' === job.type ? t.backup : ( 'reset' === job.type ? t.reset : t.restore + ' ' + ( job.archive || '' ) ) ) + ' · ' + job.id;
 				var state = ( t.status && t.status[ job.status ] ) || job.status;
 				body.appendChild( el( 'tr', {}, [
 					el( 'td', { text: label } ),
@@ -507,7 +568,7 @@
 					el( 'td', {}, [
 						button( t.continue, function () {
 							api( '/jobs/' + job.id + '/token', { method: 'POST' } ).then( function ( renewed ) {
-								runJob( renewed, renewed.token, 'backup' === job.type ? t.export : t.restore ).catch( function () {} );
+								runJob( renewed, renewed.token, { backup: t.export, reset: t.reset }[ job.type ] || t.restore ).catch( function () {} );
 							}, function ( error ) {
 								window.alert( error.message );
 							} );
@@ -540,6 +601,8 @@
 			confirmRestore( target.closest( '[data-fmw-backup]' ).getAttribute( 'data-fmw-backup' ) );
 		} else if ( 'delete' === action ) {
 			deleteBackup( target.closest( '[data-fmw-backup]' ) );
+		} else if ( 'reset' === action ) {
+			resetSite( document.getElementById( 'fmw-reset' ) );
 		}
 	} );
 
@@ -580,6 +643,15 @@
 		encrypt.addEventListener( 'change', function () {
 			document.querySelector( '[data-fmw-encrypt-fields]' ).hidden = ! encrypt.checked;
 		} );
+	}
+
+	var resetPanel = document.getElementById( 'fmw-reset' );
+	if ( resetPanel && resetPanel.querySelector( '[data-fmw-action=reset]' ) ) {
+		var update = function () {
+			resetPanel.querySelector( '[data-fmw-action=reset]' ).disabled = ! resetReady( resetPanel );
+		};
+		resetPanel.addEventListener( 'input', update );
+		resetPanel.addEventListener( 'change', update );
 	}
 
 	var jobs = document.querySelector( '[data-fmw-jobs]' );

@@ -51,7 +51,7 @@ final class FinalizeStep implements Step {
 			$restore->drop( array( RestoreDatabase::PROGRESS ) );
 			$restore->db()->close();
 		}
-		$context->log( 'Restore finished.' );
+		$context->log( 'reset' === $job->type ? 'Reset finished.' : 'Restore finished.' );
 		return true;
 	}
 }

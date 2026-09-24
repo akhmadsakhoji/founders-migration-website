@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`) and password encryption work end to end and are resumable, both in the admin screens and from WP-CLI. `reset`, schedules and cloud storage come next. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption and reset work end to end and are resumable, both in the admin screens and from WP-CLI. Schedules and cloud storage come next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -111,10 +111,17 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw cleanup` | — | now |
 | `wp fmw verify <file>` | — | now |
 | `wp fmw inspect <file>` | — | now |
-| `wp fmw reset` | `wp ai1wm reset` | phase 2 |
+| `wp fmw reset` | Reset Hub | now (single site) |
 | `wp fmw pull <url>` | — | phase 3 |
 
-Every backup and restore runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
+`wp fmw reset --database --media --plugins --themes` (or `--all`, and the Reset screen) brings parts of a site back to a fresh WordPress install:
+
+- A backup of the whole site is made first (unless `--skip-backup`), so a reset can be undone with `wp fmw restore`.
+- You confirm by typing the site's domain (`--yes` in scripts).
+- The fresh database is built in `fmwtmp_*` tables and switched in with one atomic `RENAME TABLE`. It keeps the site address, title, language, time zone, permalinks and the kept users (all administrators by default, `--keep-user=<id|login|email>`), who stay logged in. This plugin and the active theme stay active.
+- Tables and views of other WordPress installs in the same database (another prefix) are not touched. Must-use plugins, drop-ins and `wp-config.php` are never deleted.
+
+Every backup, restore and reset runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
 
 ```bash
 wp fmw jobs                  # find the job ID
