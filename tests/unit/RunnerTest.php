@@ -17,6 +17,7 @@ use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
 use Founders\Migration\Job\StepRegistry;
+use Founders\Migration\Model\Export\PackageStep;
 use Founders\Migration\Tests\Fixtures\BusyStep;
 use Founders\Migration\Tests\Fixtures\CountingStep;
 use Founders\Migration\Tests\Fixtures\FailOnceStep;
@@ -158,9 +159,12 @@ final class RunnerTest extends TestCase {
 	}
 
 	public function test_cancel_request_stops_and_removes_work_files(): void {
-		$job = $this->store->create( 'count' );
+		$job = $this->store->create( 'count', array( 'archive_dir' => $this->tmp, 'archive_name' => 'site.fmw' ) );
 		$dir = $this->store->dir( $job->id );
 		file_put_contents( $dir . '/part-0001.tar.gz', 'partial' );
+		file_put_contents( $dir . '/' . JobStore::MARKER_PREFIX . 'kept', '' );
+		file_put_contents( $this->tmp . '/site.fmw.partial', 'half an archive' );
+		$this->registry->register( 'count', array( CountingStep::class, PackageStep::class ) );
 		$this->store->request_cancel( $job->id );
 
 		$job = $this->run_fresh( $job->id, Deadline::unlimited() );
@@ -170,6 +174,8 @@ final class RunnerTest extends TestCase {
 		$this->assertFileDoesNotExist( $dir . '/cancel' );
 		$this->assertFileExists( $dir . '/state.json' );
 		$this->assertFileExists( $dir . '/job.log' );
+		$this->assertFileExists( $dir . '/' . JobStore::MARKER_PREFIX . 'kept' );
+		$this->assertFileDoesNotExist( $this->tmp . '/site.fmw.partial', 'Steps that write elsewhere clean up (Discardable).' );
 		$this->assertSame( 0, CountingStep::$calls );
 	}
 

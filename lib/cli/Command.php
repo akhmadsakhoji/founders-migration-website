@@ -740,6 +740,7 @@ final class Command {
 		$store->log( $job->id, 'Cancelled.' );
 		$store->save( $job );
 		$store->purge_work_files( $job->id );
+		( new Runner( $store, Jobs::registry() ) )->discard( $job );
 		$lock->release();
 		WP_CLI::success( sprintf( 'Job %s cancelled and its temporary files deleted.', $job->id ) );
 	}

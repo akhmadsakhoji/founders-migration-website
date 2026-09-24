@@ -4,7 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Cancelling a backup (browser, `wp fmw cancel`, or a failed scheduled run) now also deletes its unfinished `.fmw.partial` archive in the backups folder.
+
 ### Added
+
+- Scheduled backups: `wp fmw schedule list|add|update|delete|enable|disable|run` and a Schedules screen. Hourly, daily, weekly or monthly in the site time zone (daylight saving safe, missed runs are not caught up), the backup exclusions, an optional password (stored sealed), retention per schedule (`--keep`, only that schedule's backups are deleted) and e-mail on failure, always or never.
+- Background jobs without a browser: a WP-Cron event every five minutes works one slice, then the job continues through non-blocking loopback requests authenticated with the job token (`fmwp_background_request` filter for staging sites behind HTTP auth). Interrupted scheduled backups are continued (at most 12 times), failed ones are recorded, reported and their partial files deleted. `wp fmw schedule run` does the same from a system cron, in the foreground.
+- No scheduled backup starts, and "Run now" is refused, while a restore or reset is unfinished; retention never deletes a backup an unfinished restore reads. A job that makes no progress in 12 attempts is failed; each ended job is recorded exactly once.
+- Schedules live in `fmw-storage/schedules.json` (atomic writes under a lock, a damaged file is never overwritten), so a restore, migration or reset leaves them alone. The WP-Cron event exists only while a schedule is enabled and is removed on deactivation and uninstall.
 
 - `wp fmw reset` and a Reset screen (the Reset Hub of All-in-One WP Migration): `--database`, `--media`, `--plugins`, `--themes` or `--all`. A safety backup is made first (`--skip-backup` to skip), the site's domain must be typed to confirm (`--yes` in scripts), and multisite is refused for now.
 - Database reset: WordPress's own schema, default options and roles are built in `fmwtmp_*` tables, keeping the site address, title, language, time zone, date formats, permalinks, database-stored salts and the kept users (`--keep-user`, default all administrators; the Reset screen keeps you) as administrators with their sessions. One atomic `RENAME TABLE` replaces every table of the site, plugin tables included, and removes its views; other installs sharing the database are recognised by their own `<prefix>options` table and left alone.

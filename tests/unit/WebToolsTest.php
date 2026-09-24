@@ -115,6 +115,15 @@ final class WebToolsTest extends TestCase {
 		$this->assertFalse( JobToken::matches( $store->load( $job->id ), $store, $first ) );
 		$this->assertTrue( JobToken::matches( $store->load( $job->id ), $store, $second ) );
 		$this->assertFalse( JobToken::matches( $store->create( 'backup', array() ), $store, $second ) ); // Another job.
+
+		// The background chain has its own token: issuing one never cuts off the browser, and the reverse.
+		$background = JobToken::issue( $store->load( $job->id ), $store, JobToken::BACKGROUND );
+		$this->assertTrue( JobToken::matches( $store->load( $job->id ), $store, $second ) );
+		$this->assertTrue( JobToken::matches( $store->load( $job->id ), $store, $background ) );
+		$third = JobToken::issue( $store->load( $job->id ), $store );
+		$this->assertTrue( JobToken::matches( $store->load( $job->id ), $store, $background ) );
+		$this->assertFalse( JobToken::matches( $store->load( $job->id ), $store, $second ) );
+		$this->assertTrue( JobToken::matches( $store->load( $job->id ), $store, $third ) );
 	}
 
 	public function test_download_ranges(): void {

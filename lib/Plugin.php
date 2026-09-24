@@ -13,9 +13,12 @@ namespace Founders\Migration;
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Cli\Command;
+use Founders\Migration\Cli\ScheduleCommand;
 use Founders\Migration\Controller\AdminController;
 use Founders\Migration\Controller\DownloadController;
 use Founders\Migration\Controller\RestController;
+use Founders\Migration\Controller\ScheduleRestController;
+use Founders\Migration\Schedule\Scheduler;
 use Founders\Migration\Storage\Paths;
 
 /**
@@ -51,9 +54,12 @@ final class Plugin {
 		( new AdminController() )->register();
 		( new RestController() )->register();
 		( new DownloadController() )->register();
+		( new ScheduleRestController() )->register();
+		Scheduler::register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'fmw', Command::class );
+			\WP_CLI::add_command( 'fmw schedule', ScheduleCommand::class );
 		}
 	}
 
@@ -74,6 +80,15 @@ final class Plugin {
 		}
 
 		Paths::ensure_all();
+	}
+
+	/**
+	 * Deactivation: stops the scheduler's WP-Cron event (schedules stay, and resume on reactivation).
+	 *
+	 * @return void
+	 */
+	public static function deactivate(): void {
+		wp_clear_scheduled_hook( Scheduler::HOOK );
 	}
 
 	/**

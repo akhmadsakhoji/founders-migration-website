@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption and reset work end to end and are resumable, both in the admin screens and from WP-CLI. Schedules and cloud storage come next. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset and scheduled backups work end to end and are resumable, both in the admin screens and from WP-CLI. Cloud storage (S3-compatible, Google Drive) comes next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -112,6 +112,8 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw verify <file>` | — | now |
 | `wp fmw inspect <file>` | — | now |
 | `wp fmw reset` | Reset Hub | now (single site) |
+| `wp fmw schedule list\|add\|update\|delete\|enable\|disable` | Schedules (Unlimited) | now |
+| `wp fmw schedule run [<id>]` | — | now (for a system cron) |
 | `wp fmw pull <url>` | — | phase 3 |
 
 `wp fmw reset --database --media --plugins --themes` (or `--all`, and the Reset screen) brings parts of a site back to a fresh WordPress install:
@@ -120,6 +122,14 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 - You confirm by typing the site's domain (`--yes` in scripts).
 - The fresh database is built in `fmwtmp_*` tables and switched in with one atomic `RENAME TABLE`. It keeps the site address, title, language, time zone, permalinks and the kept users (all administrators by default, `--keep-user=<id|login|email>`), who stay logged in. This plugin and the active theme stay active.
 - Tables and views of other WordPress installs in the same database (another prefix) are not touched. Must-use plugins, drop-ins and `wp-config.php` are never deleted.
+
+**Scheduled backups** (`wp fmw schedule add`, or the Schedules screen) run hourly, daily, weekly or monthly in the site time zone, with the same exclusions and optional password as a manual backup:
+
+- `--keep=<n>` keeps the newest *n* backups of that schedule and deletes older ones; backups made by hand are never touched.
+- E-mail on failure (default), after every backup, or never.
+- Without a browser: WP-Cron checks every five minutes, and the backup continues in short background requests to the site itself. An interrupted backup is continued automatically (up to 12 times); a failed one is cleaned up, reported and tried again at the next run.
+- WP-Cron needs visitors. For reliable schedules on large sites, use a system cron: `0-59/5 * * * * wp fmw schedule run --path=/var/www/example.com --quiet`.
+- Schedules are stored in the storage folder, not the database, so restoring, migrating or resetting the site never removes or copies them.
 
 Every backup, restore and reset runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
 

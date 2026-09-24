@@ -16,3 +16,4 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 delete_option( 'fmwp_settings' );
 delete_site_option( 'fmwp_settings' );
 delete_site_transient( 'fmwp_exposure_check' );
+wp_clear_scheduled_hook( 'fmwp_schedule_tick' );

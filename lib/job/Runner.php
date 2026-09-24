@@ -235,7 +235,22 @@ final class Runner {
 		$logger( 'Cancelled.' );
 		$this->store->save( $job );
 		$this->store->purge_work_files( $job->id );
+		$this->discard( $job );
 		$this->notify( $job );
+	}
+
+	/**
+	 * Lets the job's steps delete what they wrote outside the job folder (for example a partial archive).
+	 *
+	 * @param Job $job Cancelled job.
+	 * @return void
+	 */
+	public function discard( Job $job ): void {
+		foreach ( $this->registry->steps( $job->type ) as $step ) {
+			if ( $step instanceof Discardable ) {
+				$step->discard( $job );
+			}
+		}
 	}
 
 	/**

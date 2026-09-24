@@ -17,6 +17,7 @@ use Founders\Migration\Archive\TarEntry;
 use Founders\Migration\Archive\TarHeader;
 use Founders\Migration\Archive\TarWriter;
 use Founders\Migration\Job\Context;
+use Founders\Migration\Job\Discardable;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Secrets;
@@ -50,7 +51,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * secret_password. Writes job data: archive = { path, name, bytes },
  * encrypted_parts.
  */
-final class PackageStep implements Step {
+final class PackageStep implements Step, Discardable {
 
 	const COPY_BYTES = 67108864;
 	const READ_BYTES = 1048560; // A multiple of the AES block size.
@@ -61,6 +62,20 @@ final class PackageStep implements Step {
 	 */
 	public function label(): string {
 		return 'Package';
+	}
+
+	/**
+	 * Deletes the unfinished archive of a cancelled backup.
+	 *
+	 * @param Job $job Job.
+	 * @return void
+	 */
+	public function discard( Job $job ): void {
+		$dir  = rtrim( (string) ( $job->options['archive_dir'] ?? '' ), '/' );
+		$name = (string) ( $job->options['archive_name'] ?? '' );
+		if ( '' !== $dir && '' !== $name && basename( $name ) === $name && is_file( $dir . '/' . $name . '.partial' ) ) {
+			unlink( $dir . '/' . $name . '.partial' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Plain PHP in jobs.
+		}
 	}
 
 	/**

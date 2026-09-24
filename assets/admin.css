@@ -261,3 +261,50 @@
 	background: #8a2424;
 	border-color: #8a2424;
 }
+
+.fmw-schedules .fmw-row-actions .button {
+	margin: 0 4px 4px 0;
+}
+
+.fmw-schedules .dashicons-lock {
+	color: #646970;
+	font-size: 16px;
+	margin-left: 4px;
+}
+
+.fmw-badge {
+	background: #f0f0f1;
+	border-radius: 3px;
+	color: #50575e;
+	font-size: 11px;
+	margin-left: 6px;
+	padding: 1px 6px;
+}
+
+.fmw-status-completed {
+	color: #008a20;
+}
+
+.fmw-status-failed {
+	color: #b32d2e;
+}
+
+.fmw-inline label {
+	margin-left: 8px;
+}
+
+.fmw-schedule-flags {
+	display: grid;
+	gap: 6px 24px;
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.fmw-code {
+	background: #f6f7f7;
+	overflow-x: auto;
+	padding: 8px 12px;
+}
+
+.fmw-wrap [hidden] {
+	display: none !important;
+}

@@ -50,5 +50,6 @@ require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/loader.php';
 
 register_activation_hook( __FILE__, array( 'Founders\\Migration\\Plugin', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'Founders\\Migration\\Plugin', 'deactivate' ) );
 
 Founders\Migration\Plugin::boot();

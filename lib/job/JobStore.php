@@ -25,6 +25,11 @@ final class JobStore {
 	const CANCEL_FILE = 'cancel';
 
 	/**
+	 * Files named like this are small markers kept with the state and log (for example "a scheduled job was recorded").
+	 */
+	const MARKER_PREFIX = 'marker-';
+
+	/**
 	 * Jobs folder, no trailing slash.
 	 *
 	 * @var string
@@ -198,7 +203,7 @@ final class JobStore {
 	}
 
 	/**
-	 * Deletes everything in the job folder except its state and log.
+	 * Deletes everything in the job folder except its state, log and markers.
 	 *
 	 * @param string $id Job ID.
 	 * @return void
@@ -207,7 +212,7 @@ final class JobStore {
 		$keep = array( self::STATE_FILE, self::LOG_FILE );
 		$dir  = $this->dir( $id );
 		foreach ( (array) scandir( $dir ) as $name ) {
-			if ( ! is_string( $name ) || '.' === $name || '..' === $name || in_array( $name, $keep, true ) ) {
+			if ( ! is_string( $name ) || '.' === $name || '..' === $name || in_array( $name, $keep, true ) || 0 === strpos( $name, self::MARKER_PREFIX ) ) {
 				continue;
 			}
 			self::remove( $dir . '/' . $name );
