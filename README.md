@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups can be restored.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 0 (foundation).** The archive library, data folders, admin screens and a few commands are in place. `wp fmw backup` and `wp fmw restore` arrive in phase 1. Do not use this on production sites yet.
+> **Status: phase 1 in progress.** `wp fmw backup`, `verify` and `inspect` work and produce complete `.fmw` archives. `wp fmw restore` is next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -37,6 +37,15 @@ wp fmw status
 
 ## Command line
 
+```bash
+wp fmw backup --exclude-cache --exclude-post-revisions
+wp fmw list-backups
+wp fmw inspect <file>        # what is inside, without reading the parts
+wp fmw verify <file>         # SHA-256 check of every part
+```
+
+Backup flags follow `wp ai1wm backup`: `--exclude-spam-comments`, `--exclude-post-revisions`, `--exclude-media`, `--exclude-themes`, `--exclude-inactive-themes`, `--exclude-muplugins`, `--exclude-plugins`, `--exclude-inactive-plugins`, `--exclude-cache`, `--exclude-database`. FMW adds `--exclude-transients`, `--exclude-tables=a,b`, `--exclude-paths="uploads/old/*"`, `--part-size=512M` and `--porcelain`.
+
 Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to type `fmw backup`.
 
 | Command | ai1wm equivalent | Available |
@@ -44,15 +53,15 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw list-backups` | `wp ai1wm list-backups` | now |
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
-| `wp fmw backup` | `wp ai1wm backup` | phase 1 |
+| `wp fmw backup` | `wp ai1wm backup` | now |
 | `wp fmw restore <file>` | `wp ai1wm restore <file>` | phase 1 (`.wpress`: phase 2) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
 | `wp fmw log <job_id>` | — | now |
 | `wp fmw cleanup` | — | now |
-| `wp fmw verify <file>` | — | phase 1 |
-| `wp fmw inspect <file>` | — | phase 1 |
+| `wp fmw verify <file>` | — | now |
+| `wp fmw inspect <file>` | — | now |
 | `wp fmw reset` | `wp ai1wm reset` | phase 2 |
 | `wp fmw pull <url>` | — | phase 3 |
 

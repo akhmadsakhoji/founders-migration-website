@@ -37,7 +37,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * - Within one process all reads share one consistent snapshot
  *   (InnoDB). A resumed dump starts a new snapshot.
  *
- * Reads job options: table_prefix, exclude_tables, exclude (spam-comments,
+ * Reads job options: exclude_database, table_prefix, exclude_tables, exclude (spam-comments,
  * post-revisions, transients), sql_chunk_bytes, batch_rows.
  * Writes job data: parts (database part records), database (totals).
  */
@@ -74,6 +74,11 @@ final class DatabaseStep implements Step {
 	 * @throws JobException When the dump folder cannot be created.
 	 */
 	public function run( Job $job, Context $context ): bool {
+		if ( ! empty( $job->options['exclude_database'] ) ) {
+			$context->log( 'Database excluded.' );
+			return true;
+		}
+
 		$db  = $this->connection();
 		$dir = $context->dir() . '/' . self::DIR;
 		if ( ! is_dir( $dir ) && ! mkdir( $dir, 0700, true ) && ! is_dir( $dir ) ) {

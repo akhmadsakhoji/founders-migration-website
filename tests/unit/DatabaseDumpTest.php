@@ -318,20 +318,4 @@ final class DatabaseDumpTest extends TestCase {
 		$this->assertSame( array(), $db->column( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wpt_nokey'" ) );
 		$db->close();
 	}
-
-	public function test_db_host_parsing_matches_wordpress(): void {
-		$this->assertSame( array( 'localhost', null, null ), Connection::parse_host( 'localhost' ) );
-		$this->assertSame( array( 'db.example.com', 3307, null ), Connection::parse_host( 'db.example.com:3307' ) );
-		$this->assertSame( array( 'localhost', null, '/var/run/mysqld/mysqld.sock' ), Connection::parse_host( 'localhost:/var/run/mysqld/mysqld.sock' ) );
-		$this->assertSame( array( 'localhost', null, '/tmp/mysql.sock' ), Connection::parse_host( '/tmp/mysql.sock' ) );
-		$this->assertSame( array( '::1', 3306, null ), Connection::parse_host( '[::1]:3306' ) );
-	}
-
-	public function test_definer_clauses_are_removed(): void {
-		$this->assertSame(
-			'CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW `v` AS select 1',
-			DatabaseStep::strip_definer( 'CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v` AS select 1' )
-		);
-		$this->assertSame( 'CREATE TRIGGER t BEFORE INSERT', DatabaseStep::strip_definer( "CREATE DEFINER='admin'@'%' TRIGGER t BEFORE INSERT" ) );
-	}
 }

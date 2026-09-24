@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `wp fmw backup`: complete, resumable backups into `.fmw` archives (scan, database, files, package), with the `wp ai1wm backup` exclusion flags plus `--exclude-transients`, `--exclude-tables`, `--exclude-paths`, `--part-size` and `--porcelain`.
+- Package step: writes `fmw.json`, database parts, file parts and `manifest.json` into the TAR container as `<name>.fmw.partial` and renames it when complete; parts are deleted as they are packed, so a backup needs little more than one copy of the site on disk.
+- `wp fmw inspect`: site, versions, totals and exclusions from the manifest without reading the parts (`--format=json` for the full manifest).
+- `wp fmw verify`: SHA-256 check of every part against the manifest, reporting corrupt, missing, duplicate and unexpected entries.
+- Archive reader that refuses newer format versions with a clear message.
+
 - Export database step: plain-SQL dump per table in `database/NNNN-<table>.CCCC.sql.gz` chunks, restorable with the stock `mysql` client. Keyset pagination on the primary key (or a NOT NULL unique key, else LIMIT/OFFSET), consistent snapshot per process, resumable mid-table, binary values as hex, BIT read as numbers, generated columns left out, views and triggers without DEFINER (triggers restored after the data).
 - Database row exclusions matching `wp ai1wm backup`: spam comments, post revisions, transients (subsite tables included), plus `exclude_tables`.
 - Own mysqli connection built from `DB_HOST` (host, port, socket and IPv6 forms); credentials are never written to job state.

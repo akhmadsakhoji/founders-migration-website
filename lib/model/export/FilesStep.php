@@ -68,7 +68,7 @@ final class FilesStep implements Step {
 
 		// Work on copies: the job is only updated when the slice ends cleanly,
 		// so a failure never records a part whose cursor was not saved.
-		$cursor = $job->cursor + array(
+		$cursor           = $job->cursor + array(
 			'offset'       => 0,
 			'entry_offset' => 0,
 			'next_part'    => 1,
@@ -77,8 +77,10 @@ final class FilesStep implements Step {
 			'skipped'      => 0,
 			'changed'      => 0,
 		);
-		$parts  = isset( $job->data['parts'] ) ? (array) $job->data['parts'] : array();
-		$open   = new OpenParts( $part_dir, $part_size, $level, $cursor, $parts );
+		$parts            = isset( $job->data['parts'] ) ? (array) $job->data['parts'] : array();
+		$open             = new OpenParts( $part_dir, $part_size, $level, $cursor, $parts );
+		$job->bytes_total = (int) ( $job->data['scan']['bytes'] ?? $job->bytes_total );
+		$job->bytes_done  = (int) $cursor['bytes'];
 
 		$list = new FileList( $context->dir() . '/' . ScanStep::LIST_FILE );
 		$list->open_for_read( (int) $cursor['offset'] );

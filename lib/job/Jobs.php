@@ -44,6 +44,15 @@ final class Jobs {
 	public static function registry(): StepRegistry {
 		if ( null === self::$registry ) {
 			self::$registry = new StepRegistry();
+			self::$registry->register(
+				'backup',
+				array(
+					\Founders\Migration\Model\Export\ScanStep::class,
+					\Founders\Migration\Model\Export\DatabaseStep::class,
+					\Founders\Migration\Model\Export\FilesStep::class,
+					\Founders\Migration\Model\Export\PackageStep::class,
+				)
+			);
 
 			/**
 			 * Fires once to let code register job types.

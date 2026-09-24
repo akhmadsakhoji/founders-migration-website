@@ -12,6 +12,8 @@ namespace Founders\Migration\Cli;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
+use Founders\Migration\Archive\ArchiveException;
+use Founders\Migration\Archive\FmwArchive;
 use Founders\Migration\Job\Deadline;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
@@ -19,6 +21,7 @@ use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
@@ -180,19 +183,99 @@ final class Command {
 	}
 
 	/**
-	 * Creates a backup. Planned for phase 1.
+	 * Creates a .fmw backup in the backups folder.
+	 *
+	 * Resumable: if it stops (Ctrl+C, lost SSH session, server restart), run
+	 * `wp fmw resume <job_id>`. Exit codes: 0 done, 1 failed, 3 stopped.
 	 *
 	 * ## OPTIONS
 	 *
-	 * [--<field>=<value>]
-	 * : Flags follow `wp ai1wm backup` (see docs/format-v1.md and the README).
+	 * [--exclude-spam-comments]
+	 * : Leave out spam comments and their meta.
+	 *
+	 * [--exclude-post-revisions]
+	 * : Leave out post revisions and their meta.
+	 *
+	 * [--exclude-transients]
+	 * : Leave out transients from the options (and network meta) tables.
+	 *
+	 * [--exclude-media]
+	 * : Leave out uploads.
+	 *
+	 * [--exclude-themes]
+	 * : Leave out all themes.
+	 *
+	 * [--exclude-inactive-themes]
+	 * : Leave out themes that are not active.
+	 *
+	 * [--exclude-muplugins]
+	 * : Leave out must-use plugins.
+	 *
+	 * [--exclude-plugins]
+	 * : Leave out all plugins.
+	 *
+	 * [--exclude-inactive-plugins]
+	 * : Leave out plugins that are not active.
+	 *
+	 * [--exclude-cache]
+	 * : Leave out cache folders (cache, et-cache, litespeed).
+	 *
+	 * [--exclude-database]
+	 * : Leave out the database.
+	 *
+	 * [--exclude-tables=<tables>]
+	 * : Comma-separated table names to leave out.
+	 *
+	 * [--exclude-paths=<patterns>]
+	 * : Comma-separated patterns relative to wp-content, for example "uploads/old/*".
+	 *
+	 * [--part-size=<size>]
+	 * : Target size of each part before compression, from 128M to 4G.
+	 * ---
+	 * default: 1G
+	 * ---
+	 *
+	 * [--[no-]progress]
+	 * : Show the progress bar (default).
+	 *
+	 * [--porcelain]
+	 * : Print only the backup file name.
+	 *
+	 * [--password=<password>]
+	 * : Encrypt the backup. Planned for phase 2.
+	 *
+	 * [--sites=<ids>]
+	 * : Back up selected subsites only. Planned for phase 3.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp fmw backup
+	 *     wp fmw backup --exclude-cache --exclude-post-revisions
+	 *     wp fmw backup --exclude-media --porcelain
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function backup( $args, $assoc_args ) {
-		$this->planned( 'backup', 1 );
+		if ( isset( $assoc_args['password'] ) ) {
+			$this->planned( 'backup --password', 2 );
+		}
+		if ( isset( $assoc_args['sites'] ) ) {
+			$this->planned( 'backup --sites', 3 );
+		}
+
+		try {
+			$options = BackupOptions::from_flags( $assoc_args );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		Paths::ensure_all();
+		$porcelain = (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'porcelain', false );
+		$job       = Jobs::store()->create( 'backup', $options );
+		$this->run_job( $job, $porcelain || ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ), $porcelain );
 	}
 
 	/**
@@ -426,35 +509,137 @@ final class Command {
 	}
 
 	/**
-	 * Verifies the checksums of every part of a backup. Planned for phase 1.
+	 * Checks every part of a backup against the SHA-256 checksums in its manifest.
 	 *
 	 * ## OPTIONS
 	 *
-	 * [<file>]
-	 * : Backup file name or path.
+	 * <file>
+	 * : Backup file name (in the backups folder) or path.
+	 *
+	 * [--[no-]progress]
+	 * : Show the progress bar (default).
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp fmw verify example.com-20260924-180000-a1b2c3.fmw
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function verify( $args, $assoc_args ) {
-		$this->planned( 'verify', 1 );
+		$archive  = $this->open_archive( $args[0] );
+		$bar      = WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) ? new ProgressBar() : null;
+		$problems = $archive->verify(
+			static function ( int $done, int $total ) use ( $bar ) {
+				if ( null !== $bar ) {
+					$bar->update( 'Verify', $done, $total );
+				}
+			}
+		);
+		if ( null !== $bar ) {
+			$bar->finish();
+		}
+
+		if ( $problems ) {
+			foreach ( $problems as $problem ) {
+				WP_CLI::warning( $problem );
+			}
+			WP_CLI::error( sprintf( '%s failed verification (%d problem(s)).', basename( $args[0] ), count( $problems ) ) );
+		}
+		WP_CLI::success( sprintf( 'All %d parts of %s are intact.', count( $archive->manifest()['parts'] ), basename( $args[0] ) ) );
 	}
 
 	/**
-	 * Shows the manifest of a backup. Planned for phase 1.
+	 * Shows what a backup contains, without reading its parts.
 	 *
 	 * ## OPTIONS
 	 *
-	 * [<file>]
-	 * : Backup file name or path.
+	 * <file>
+	 * : Backup file name (in the backups folder) or path.
+	 *
+	 * [--format=<format>]
+	 * : table for a summary, json for the full manifest.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - json
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp fmw inspect example.com-20260924-180000-a1b2c3.fmw
+	 *     wp fmw inspect example.com-20260924-180000-a1b2c3.fmw --format=json
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function inspect( $args, $assoc_args ) {
-		$this->planned( 'inspect', 1 );
+		try {
+			$manifest = $this->open_archive( $args[0] )->manifest();
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		if ( 'json' === WP_CLI\Utils\get_flag_value( $assoc_args, 'format', 'table' ) ) {
+			WP_CLI::line( (string) wp_json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+			return;
+		}
+
+		$site   = (array) ( $manifest['site'] ?? array() );
+		$totals = (array) ( $manifest['totals'] ?? array() );
+		$db     = (array) ( $site['db'] ?? array() );
+		$rows   = array(
+			'Created'         => (string) ( $manifest['created_at'] ?? '' ),
+			'Generator'       => (string) ( $manifest['generator'] ?? '' ),
+			'Site URL'        => (string) ( $site['home_url'] ?? '' ),
+			'WordPress'       => (string) ( $site['wp_version'] ?? '' ),
+			'PHP'             => (string) ( $site['php_version'] ?? '' ),
+			'Database server' => trim( ( $db['engine'] ?? '' ) . ' ' . ( $db['version'] ?? '' ), ' ' ),
+			'Table prefix'    => (string) ( $site['table_prefix'] ?? '' ),
+			'Multisite'       => ! empty( $site['multisite'] ) ? sprintf( 'yes (%d sites)', count( (array) ( $site['sites'] ?? array() ) ) ) : 'no',
+			'Files'           => number_format( (int) ( $totals['files'] ?? 0 ) ),
+			'Tables / rows'   => sprintf( '%d / %s', (int) ( $totals['tables'] ?? 0 ), number_format( (int) ( $totals['rows'] ?? 0 ) ) ),
+			'Parts'           => (string) count( (array) $manifest['parts'] ),
+			'Size'            => sprintf( '%s (%s before compression)', ProgressBar::bytes( (int) ( $totals['bytes_archived'] ?? 0 ) ), ProgressBar::bytes( (int) ( $totals['bytes_raw'] ?? 0 ) ) ),
+			'Excluded'        => implode( ', ', (array) ( $manifest['options']['exclude'] ?? array() ) ),
+		);
+
+		$items = array();
+		foreach ( $rows as $field => $value ) {
+			$items[] = array(
+				'field' => $field,
+				'value' => '' === $value ? '-' : $value,
+			);
+		}
+		WP_CLI\Utils\format_items( 'table', $items, array( 'field', 'value' ) );
+	}
+
+	/**
+	 * Opens a backup by name (backups folder) or path, or stops with an error.
+	 *
+	 * @param string $file Name or path.
+	 * @return FmwArchive
+	 */
+	private function open_archive( string $file ): FmwArchive {
+		$path = Backups::find( $file );
+		if ( null === $path && is_file( $file ) ) {
+			$path = $file;
+		}
+		if ( null === $path ) {
+			WP_CLI::error( sprintf( 'Backup "%s" not found in %s.', $file, fmwp_backups_path() ) );
+		}
+		try {
+			$archive = new FmwArchive( (string) $path );
+			$archive->header();
+			return $archive;
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		}
+		exit( 1 ); // Not reached: WP_CLI::error() exits.
 	}
 
 	/**
@@ -477,9 +662,10 @@ final class Command {
 	 *
 	 * @param Job  $job         Job.
 	 * @param bool $no_progress Hide the progress bar.
+	 * @param bool $porcelain   Print only the result (backup file name).
 	 * @return void
 	 */
-	private function run_job( Job $job, bool $no_progress ): void {
+	private function run_job( Job $job, bool $no_progress, bool $porcelain = false ): void {
 		$bar    = $no_progress ? null : new ProgressBar();
 		$runner = new Runner(
 			Jobs::store(),
@@ -491,7 +677,9 @@ final class Command {
 			}
 		);
 
-		WP_CLI::log( sprintf( 'FMW %s · job %s', FMWP_VERSION, $job->id ) );
+		if ( ! $porcelain ) {
+			WP_CLI::log( sprintf( 'FMW %s · job %s', FMWP_VERSION, $job->id ) );
+		}
 		try {
 			$runner->run( $job, Deadline::unlimited(), true );
 		} catch ( JobException $e ) {
@@ -503,6 +691,15 @@ final class Command {
 		}
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
+			if ( isset( $job->data['archive']['path'] ) ) {
+				Jobs::store()->purge_work_files( $job->id );
+				if ( $porcelain ) {
+					WP_CLI::line( (string) $job->data['archive']['name'] );
+					return;
+				}
+				WP_CLI::success( sprintf( 'Backup created: %s (%s).', $job->data['archive']['path'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ) ) );
+				return;
+			}
 			WP_CLI::success( sprintf( 'Job %s completed.', $job->id ) );
 			return;
 		}
