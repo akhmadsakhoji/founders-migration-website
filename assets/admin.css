@@ -1,0 +1,222 @@
+/**
+ * Founders Migration Website: admin screens.
+ *
+ * @package   Founders\Migration
+ * @copyright Copyright (C) 2026 PT Founder Media Partner
+ * @license   GPL-2.0-or-later
+ */
+
+.fmw-wrap .fmw-panel {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	margin: 16px 0;
+	max-width: 960px;
+	padding: 8px 24px 20px;
+}
+
+.fmw-wrap .fmw-panel[hidden] {
+	display: none;
+}
+
+.fmw-advanced {
+	margin: 16px 0;
+}
+
+.fmw-advanced summary {
+	cursor: pointer;
+	font-weight: 600;
+	padding: 6px 0;
+}
+
+.fmw-advanced fieldset {
+	display: grid;
+	gap: 8px 24px;
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+	margin-top: 8px;
+}
+
+.fmw-option {
+	align-items: center;
+	display: flex;
+	gap: 6px;
+}
+
+.fmw-actions {
+	margin-top: 20px;
+}
+
+.fmw-dropzone {
+	border: 2px dashed #8c8f94;
+	border-radius: 8px;
+	margin: 16px 0;
+	padding: 32px 16px;
+	text-align: center;
+	transition: background-color 0.15s, border-color 0.15s;
+}
+
+.fmw-dropzone.fmw-dragging,
+.fmw-dropzone:focus {
+	background: #f0f6fc;
+	border-color: #2271b1;
+	outline: none;
+}
+
+.fmw-dropzone .dashicons {
+	color: #2271b1;
+	font-size: 48px;
+	height: 48px;
+	width: 48px;
+}
+
+.fmw-dropzone-title {
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.fmw-backups code {
+	word-break: break-all;
+}
+
+.fmw-row-actions {
+	white-space: nowrap;
+}
+
+.fmw-row-actions .button {
+	margin: 2px 4px 2px 0;
+}
+
+.fmw-badge {
+	background: #f0f0f1;
+	border-radius: 10px;
+	color: #50575e;
+	display: inline-block;
+	font-size: 11px;
+	margin-left: 6px;
+	padding: 1px 8px;
+}
+
+/* Progress / confirmation dialog */
+
+.fmw-modal {
+	align-items: center;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	inset: 0;
+	justify-content: center;
+	padding: 16px;
+	position: fixed;
+	z-index: 100000;
+}
+
+.fmw-modal[hidden] {
+	display: none;
+}
+
+.fmw-modal-box {
+	background: #fff;
+	border-radius: 6px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	max-height: calc(100vh - 32px);
+	max-width: 560px;
+	overflow: auto;
+	padding: 8px 24px 16px;
+	width: 100%;
+}
+
+.fmw-modal-box h2 {
+	word-break: break-all;
+}
+
+.fmw-progress {
+	background: #f0f0f1;
+	border-radius: 4px;
+	height: 12px;
+	margin: 16px 0 8px;
+	overflow: hidden;
+	position: relative;
+}
+
+.fmw-progress-bar {
+	background: #2271b1;
+	height: 100%;
+	transition: width 0.3s ease;
+	width: 0;
+}
+
+.fmw-progress.fmw-indeterminate .fmw-progress-bar {
+	animation: fmw-slide 1.2s ease-in-out infinite;
+	position: absolute;
+}
+
+@keyframes fmw-slide {
+	0% {
+		left: -30%;
+	}
+
+	100% {
+		left: 100%;
+	}
+}
+
+.fmw-progress-text {
+	font-weight: 600;
+	margin: 4px 0;
+}
+
+.fmw-log {
+	color: #50575e;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+	margin: 8px 0 0;
+	max-height: 96px;
+	overflow: auto;
+}
+
+.fmw-log li {
+	margin: 0;
+	word-break: break-word;
+}
+
+.fmw-facts {
+	border-collapse: collapse;
+	margin: 8px 0;
+}
+
+.fmw-facts th {
+	color: #50575e;
+	font-weight: 400;
+	padding: 2px 16px 2px 0;
+	text-align: left;
+	vertical-align: top;
+}
+
+.fmw-facts td {
+	word-break: break-all;
+}
+
+.fmw-error {
+	color: #d63638;
+	font-weight: 600;
+}
+
+.fmw-modal-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fmw-progress-bar,
+	.fmw-dropzone {
+		transition: none;
+	}
+
+	.fmw-progress.fmw-indeterminate .fmw-progress-bar {
+		animation: none;
+		left: 0;
+		width: 100%;
+	}
+}

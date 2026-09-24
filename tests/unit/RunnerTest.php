@@ -103,6 +103,20 @@ final class RunnerTest extends TestCase {
 		$this->assertSame( 10, CountingStep::$calls );
 	}
 
+	public function test_a_stale_copy_continues_from_the_saved_state(): void {
+		$job   = $this->store->create( 'count' );
+		$stale = $this->store->load( $job->id ); // Loaded before another request ran slices.
+		for ( $i = 0; $i < 4; $i++ ) {
+			$this->run_fresh( $job->id, new Deadline( 0.0 ) );
+		}
+
+		$runner = new Runner( $this->store, $this->registry );
+		$runner->run( $stale, Deadline::unlimited() );
+
+		$this->assertSame( Job::STATUS_COMPLETED, $stale->status );
+		$this->assertSame( 10, CountingStep::$calls, 'no unit ran twice' );
+	}
+
 	public function test_slices_end_on_time_and_are_checkpointed(): void {
 		$job = $this->store->create( 'busy' );
 

@@ -106,6 +106,17 @@ final class Runner {
 			throw new JobException( sprintf( 'Job %s is being run by another process.', $job->id ) );
 		}
 
+		// Another process may have advanced the job between loading it and taking the lock
+		// (a retried web request, for example): continue from the saved state, not a stale copy.
+		$fresh = $this->store->load( $job->id );
+		foreach ( get_object_vars( $fresh ) as $property => $value ) {
+			$job->$property = $value;
+		}
+		if ( $job->is_finished() ) {
+			$lock->release();
+			return $job;
+		}
+
 		$this->stop_requested = false;
 		$restore_signals      = $handle_signals ? $this->install_signal_handlers() : false;
 
@@ -219,6 +230,7 @@ final class Runner {
 	private function cancel( Job $job, callable $logger ): void {
 		$job->status      = Job::STATUS_CANCELLED;
 		$job->finished_at = time();
+		unset( $job->options['wpress_key'] ); // A cancelled job never needs the backup's key again.
 		$logger( 'Cancelled.' );
 		$this->store->save( $job );
 		$this->store->purge_work_files( $job->id );

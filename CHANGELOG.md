@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Admin screens: Export (the same exclusions as `wp fmw backup`, a progress dialog with step, bytes, speed and remaining time, then Download), Import (drag and drop of `.fmw` or `.wpress` files, chunked uploads of any size, then a restore confirmation with a password field for encrypted `.wpress`) and Backups (download, restore and delete, `ai1wm-backups` listed read-only, unfinished jobs to continue or cancel).
+- Resumable uploads: each chunk carries its offset and is accepted only at the end of the partial file. Choosing the same file again after a dropped connection or a closed tab continues the upload. The chunk size follows `post_max_size` and halves when a proxy answers 413.
+- Resumable downloads through `admin-post.php` with HTTP byte ranges; the backups folder stays closed to the web.
+- REST API `fmw/v1` (backups, uploads, jobs). Every route needs the plugin capability, except running, reading and cancelling a job, which also accept the job's own token (hashed on disk). This lets a restore finish after it replaced the users table. Only one job runs at a time.
+- `fmwp_web_slice_seconds` filter: how long one browser request works on a job (default 20 s, less when `max_execution_time` is lower).
+
 - `.wpress` import: `wp fmw restore <file>.wpress [--password=<password>]` restores All-in-One WP Migration backups, plain, encrypted (AES-256-CBC) or gzip / bzip2 compressed, from older (7.85, no checksums) and current (7.111, CRC-32) versions. Files are looked up in `wp-content/ai1wm-backups` too.
 - `.wpress` restore order for safety: every header and the archive CRC-32 are checked first, then `database.sql` is imported into `fmwtmp_*` tables, and only then are files written (each checked against its CRC-32). Resumable in the middle of large files.
 - All-in-One WP Migration's `SERVMASK_PREFIX_` placeholders are mapped back: tables to the target prefix, option names and user meta keys to their real names; its URL, path, uploads URL and export-time find / replace values are applied with the serialized-safe replacer.
@@ -38,6 +44,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - `tools/pack-dir.php` now runs the real scan and files steps as a job: Ctrl+C and `--resume=<job id>` work outside WordPress.
 
 ### Changed
+
+- Backups no longer include `wp-content/ai1wm-backups`.
+- `.wpress` restores run the search-replace before writing files, so files and database disagree for as short a time as possible.
+- The runner reloads a job's state after taking its lock, so a retried request never continues from an outdated copy.
+- A cancelled job no longer keeps a `.wpress` decryption key.
+- `wp fmw list-backups` also lists `.wpress` files in `wp-content/ai1wm-backups`; `wp fmw delete` refuses to delete them.
 
 - A job slice always performs at least one unit of work, so jobs progress even when a web request's time budget is nearly spent.
 - Job engine: resumable jobs with atomic `state.json` checkpoints, per-step cursors, an exclusive lock with heartbeat and stale-holder takeover, time-boxed slices for web requests, graceful Ctrl+C / SIGTERM, and cancellation.

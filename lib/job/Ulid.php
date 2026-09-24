@@ -54,6 +54,6 @@ final class Ulid {
 	 * @return bool
 	 */
 	public static function is_valid( string $id ): bool {
-		return 1 === preg_match( '/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/', $id );
+		return 1 === preg_match( '/^[0-7][0-9A-HJKMNP-TV-Z]{25}\z/', $id );
 	}
 }

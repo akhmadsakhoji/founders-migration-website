@@ -83,7 +83,7 @@ final class RestoreWpressTest extends TestCase {
 			}
 		);
 		$this->registry = new StepRegistry();
-		$this->registry->register( 'restore-wpress', array( WpressCheckStep::class, WpressDatabaseStep::class, WpressFilesStep::class, ReplaceStep::class, SwapStep::class, FinalizeStep::class ) );
+		$this->registry->register( 'restore-wpress', array( WpressCheckStep::class, WpressDatabaseStep::class, ReplaceStep::class, WpressFilesStep::class, SwapStep::class, FinalizeStep::class ) );
 
 		$this->files = array(
 			'index.php'                                  => '<?php // Silence is golden.',

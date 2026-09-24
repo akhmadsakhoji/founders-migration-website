@@ -19,7 +19,7 @@ Founders Migration Website (FMW) moves and backs up WordPress sites of any size.
 * Imports .wpress backups from All-in-One WP Migration.
 * Multisite support, encryption and cloud storage, all free and open source.
 
-This is an early development version. Backup and restore work from WP-CLI (`wp fmw backup`, `wp fmw restore`); the admin screens are planned.
+This is an early development version. Backup and restore work from the Export / Import / Backups screens and from WP-CLI (`wp fmw backup`, `wp fmw restore`).
 
 == Installation ==
 

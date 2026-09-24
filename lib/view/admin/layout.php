@@ -13,6 +13,7 @@
  * @var array<string,mixed> $fmwp_data            View data.
  * @var string|null         $fmwp_exposure        Result of the backups folder web exposure check.
  * @var string[]            $fmwp_recommendations Non-blocking server suggestions.
+ * @var int                 $fmwp_unfinished      Unfinished jobs (0 on the Backups page, which lists them).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -51,5 +52,31 @@ $fmwp_base = is_multisite() ? network_admin_url( 'admin.php' ) : admin_url( 'adm
 		</div>
 	<?php endif; ?>
 
+	<?php if ( $fmwp_unfinished > 0 ) : ?>
+		<div class="notice notice-warning">
+			<p>
+				<?php
+				printf(
+					/* translators: %s: link to the Backups page. */
+					esc_html__( 'A backup or restore stopped before the end. Continue or cancel it on the %s page.', 'founders-migration-website' ),
+					'<a href="' . esc_url( add_query_arg( 'page', Founders\Migration\Controller\AdminController::SLUG_BACKUPS, $fmwp_base ) ) . '">' . esc_html__( 'Backups', 'founders-migration-website' ) . '</a>'
+				);
+				?>
+			</p>
+		</div>
+	<?php endif; ?>
+
 	<?php require __DIR__ . '/' . $fmwp_view . '.php'; ?>
+
+	<div class="fmw-modal" data-fmw-modal hidden>
+		<div class="fmw-modal-box" role="dialog" aria-modal="true" aria-labelledby="fmw-modal-title">
+			<h2 id="fmw-modal-title" data-fmw-modal-title></h2>
+			<div data-fmw-modal-body></div>
+			<div class="fmw-progress" data-fmw-progress hidden><div class="fmw-progress-bar" data-fmw-progress-bar></div></div>
+			<p class="fmw-progress-text" data-fmw-progress-text></p>
+			<p class="description" data-fmw-progress-detail></p>
+			<ul class="fmw-log" data-fmw-log></ul>
+			<p class="fmw-modal-actions" data-fmw-modal-actions></p>
+		</div>
+	</div>
 </div>

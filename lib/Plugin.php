@@ -14,6 +14,8 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Cli\Command;
 use Founders\Migration\Controller\AdminController;
+use Founders\Migration\Controller\DownloadController;
+use Founders\Migration\Controller\RestController;
 use Founders\Migration\Storage\Paths;
 
 /**
@@ -47,6 +49,8 @@ final class Plugin {
 		}
 
 		( new AdminController() )->register();
+		( new RestController() )->register();
+		( new DownloadController() )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'fmw', Command::class );
