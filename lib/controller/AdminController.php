@@ -153,6 +153,11 @@ final class AdminController {
 				'confirmDeleteRemote'   => /* translators: 1: file name, 2: storage name. */ __( 'Delete %1$s from "%2$s"? This cannot be undone.', 'founders-migration-website' ),
 				'secretKept'            => __( 'Saved. Leave empty to keep it.', 'founders-migration-website' ),
 				'loading'               => __( 'Loading…', 'founders-migration-website' ),
+				'connect'               => __( 'Connect', 'founders-migration-website' ),
+				'connecting'            => __( 'Opening Google sign-in…', 'founders-migration-website' ),
+				'disconnect'            => __( 'Disconnect', 'founders-migration-website' ),
+				'notConnected'          => __( 'not connected', 'founders-migration-website' ),
+				'confirmDisconnect'     => /* translators: %s: storage name. */ __( 'Sign "%s" out of Google? The backups in Drive stay; uploads stop until you connect again.', 'founders-migration-website' ),
 				'jobType'               => array(
 					'upload'   => __( 'Upload', 'founders-migration-website' ),
 					'download' => __( 'Download', 'founders-migration-website' ),

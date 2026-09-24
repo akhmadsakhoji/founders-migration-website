@@ -461,7 +461,7 @@ final class Scheduler {
 			'error'  => (string) $job->error,
 			'name'   => (string) ( $job->data['archive']['name'] ?? '' ),
 			'bytes'  => (int) ( $job->data['archive']['bytes'] ?? 0 ),
-			'remote' => isset( $job->data['remote']['key'] ) ? $job->data['remote']['name'] . ': ' . $job->data['remote']['key'] : '',
+			'remote' => isset( $job->data['remote']['key'] ) ? $job->data['remote']['name'] . ': ' . ( $job->data['remote']['label'] ?? $job->data['remote']['key'] ) : '',
 			'local'  => empty( $job->data['archive']['deleted_local'] ),
 		);
 		if ( Job::STATUS_COMPLETED === $status ) {
@@ -504,6 +504,7 @@ final class Scheduler {
 					$entry = array(
 						'storage' => (string) $remote['storage'],
 						'key'     => (string) $remote['key'],
+						'label'   => (string) ( $remote['label'] ?? $remote['key'] ),
 					);
 					$list  = array();
 					foreach ( (array) ( $schedule['state']['remote_backups'] ?? array() ) as $item ) {
@@ -511,7 +512,7 @@ final class Scheduler {
 							'storage' => $entry['storage'],
 							'key'     => (string) $item,
 						);
-						if ( $item !== $entry ) {
+						if ( $item['storage'] !== $entry['storage'] || $item['key'] !== $entry['key'] ) {
 							$list[] = $item;
 						}
 					}
@@ -539,9 +540,10 @@ final class Scheduler {
 					$jobs->log( $job->id, sprintf( 'Retention: could not delete the upload %s: its storage was removed from this site.', $item['key'] ) );
 					continue; // Nothing this site can do; forget it.
 				}
-				Storages::client( $storage )->delete( (string) $item['key'] );
-				$deleted[] = $item['key'] . ' (' . $storage['name'] . ')';
-				$jobs->log( $job->id, sprintf( 'Retention: deleted the older upload %s from "%s".', $item['key'], $storage['name'] ) );
+				Storages::driver( $storage )->delete( (string) $item['key'] );
+				$label     = (string) ( $item['label'] ?? $item['key'] );
+				$deleted[] = $label . ' (' . $storage['name'] . ')';
+				$jobs->log( $job->id, sprintf( 'Retention: deleted the older upload %s from "%s".', $label, $storage['name'] ) );
 			} catch ( RemoteException $e ) {
 				$failed[] = $item;
 				$jobs->log( $job->id, sprintf( 'Retention: could not delete the upload %s (tried again after the next backup): %s', $item['key'], $e->getMessage() ) );

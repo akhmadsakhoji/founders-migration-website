@@ -44,7 +44,21 @@ final class Storages {
 	}
 
 	/**
-	 * A client for a storage.
+	 * The driver of a storage.
+	 *
+	 * @param array<string,mixed> $storage Storage.
+	 * @return Driver
+	 * @throws RemoteException When the saved keys cannot be read, or Google Drive is not connected yet.
+	 */
+	public static function driver( array $storage ): Driver {
+		if ( 'gdrive' === ( $storage['provider'] ?? '' ) ) {
+			return new DriveDriver( $storage );
+		}
+		return new S3Driver( $storage, self::client( $storage ) );
+	}
+
+	/**
+	 * An S3 client for an S3-compatible storage.
 	 *
 	 * @param array<string,mixed> $storage Storage.
 	 * @return S3Client
@@ -68,35 +82,94 @@ final class Storages {
 	}
 
 	/**
-	 * Headers for new objects (storage class).
+	 * Saves edited settings. Google sign-in data written meanwhile (a refreshed
+	 * token, the folder found on first use) is kept unless the edit dropped it
+	 * on purpose (another client ID or folder).
 	 *
-	 * @param array<string,mixed> $storage Storage.
-	 * @return array<string,string>
+	 * @param array<string,mixed> $storage Storage built from the edit.
+	 * @return array<string,mixed> What was saved.
 	 */
-	public static function upload_headers( array $storage ): array {
-		return '' !== (string) ( $storage['storage_class'] ?? '' ) ? array( 'x-amz-storage-class' => (string) $storage['storage_class'] ) : array();
+	public static function save_settings( array $storage ): array {
+		$saved = self::store()->update(
+			static function ( array &$data ) use ( $storage ): array {
+				$current = $data['records'][ $storage['id'] ] ?? null;
+				if ( is_array( $current ) && 'gdrive' === $storage['provider'] ) {
+					if ( ( $current['client_id'] ?? '' ) === $storage['client_id'] ) {
+						foreach ( array( 'refresh', 'access', 'account', 'connected_at' ) as $field ) {
+							$storage[ $field ] = $current[ $field ] ?? $storage[ $field ];
+						}
+					}
+					if ( ( $current['prefix'] ?? '' ) === $storage['prefix'] ) {
+						$storage['folder_id']   = $current['folder_id'] ?? $storage['folder_id'];
+						$storage['folder_path'] = $current['folder_path'] ?? $storage['folder_path'];
+					}
+				}
+				$data['records'][ $storage['id'] ] = $storage;
+				return $storage;
+			}
+		);
+		return (array) $saved;
 	}
 
 	/**
-	 * Backups (.fmw, .wpress) in a storage's folder, newest first.
+	 * Backups in a storage's folder, newest first.
 	 *
 	 * @param array<string,mixed> $storage Storage.
 	 * @return array<int,array{name:string,key:string,size:int,mtime:int}>
 	 */
 	public static function backups( array $storage ): array {
-		$prefix = '' !== (string) $storage['prefix'] ? $storage['prefix'] . '/' : '';
-		$items  = array();
-		foreach ( self::client( $storage )->list( $prefix ) as $object ) {
-			$name = substr( $object['key'], strlen( $prefix ) );
-			if ( '' !== $name && in_array( strtolower( (string) pathinfo( $name, PATHINFO_EXTENSION ) ), self::EXTENSIONS, true ) ) {
-				$items[] = $object + array( 'name' => $name );
-			}
+		return self::driver( $storage )->backups();
+	}
+
+	/**
+	 * Checks that the storage can be written, read, listed and cleaned up.
+	 *
+	 * @param array<string,mixed> $storage Storage.
+	 * @return string What was checked.
+	 */
+	public static function test( array $storage ): string {
+		return self::driver( $storage )->test();
+	}
+
+	/**
+	 * Deletes a backup from a storage by file name.
+	 *
+	 * @param array<string,mixed> $storage Storage.
+	 * @param string              $name    File name.
+	 * @return bool Whether it was there.
+	 */
+	public static function delete_backup( array $storage, string $name ): bool {
+		$driver = self::driver( $storage );
+		$found  = $driver->find( $name );
+		if ( null === $found ) {
+			return false;
 		}
+		$driver->delete( $found['key'] );
+		return true;
+	}
+
+	/**
+	 * Whether a file name is a backup this plugin can restore.
+	 *
+	 * @param string $name File name.
+	 * @return bool
+	 */
+	public static function is_backup_name( string $name ): bool {
+		return false === strpos( $name, '/' ) && in_array( strtolower( (string) pathinfo( $name, PATHINFO_EXTENSION ) ), self::EXTENSIONS, true );
+	}
+
+	/**
+	 * Sorts backups newest first (then by name).
+	 *
+	 * @param array<int,array<string,mixed>> $items Backups with mtime and name.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public static function newest_first( array $items ): array {
 		usort(
 			$items,
 			static function ( array $a, array $b ): int {
 				$order = $b['mtime'] <=> $a['mtime'];
-				return 0 !== $order ? $order : strcmp( $a['name'], $b['name'] );
+				return 0 !== $order ? $order : strcmp( (string) $a['name'], (string) $b['name'] );
 			}
 		);
 		return $items;
@@ -133,6 +206,7 @@ final class Storages {
 		}
 		$dir  = fmwp_backups_path();
 		$want = Uploads::sanitize_name( $name );
+		$file = $want;
 		for ( $attempt = 0; $attempt < 20; $attempt++ ) {
 			$file = Backups::unique_name( $want );
 			// Reserve the name: two downloads of the same backup must not share one .partial file.
@@ -141,38 +215,15 @@ final class Storages {
 				fclose( $reserved ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Pairs with fopen().
 				break;
 			}
-			$want = preg_replace( '/(\.[a-z]+)$/i', '-' . ( $attempt + 2 ) . '$1', Uploads::sanitize_name( $name ) );
+			$want = (string) preg_replace( '/(\.[a-z]+)$/i', '-' . ( $attempt + 2 ) . '$1', Uploads::sanitize_name( $name ) );
 		}
 		return array(
 			'archive_dir'  => $dir,
 			'archive_name' => $file,
 			'remote'       => array(
 				'storage' => (string) $storage['id'],
-				'key'     => StorageOptions::key( $storage, $name ),
+				'name'    => $name,
 			),
 		);
-	}
-
-	/**
-	 * Checks that the storage can be written, read, listed and cleaned up.
-	 *
-	 * @param array<string,mixed> $storage Storage.
-	 * @return string What was checked.
-	 * @throws RemoteException When a check fails.
-	 */
-	public static function test( array $storage ): string {
-		$client = self::client( $storage );
-		$key    = StorageOptions::key( $storage, '.fmw-connection-test-' . bin2hex( random_bytes( 4 ) ) );
-		$body   = 'Founders Migration Website connection test ' . gmdate( 'c' );
-		$client->put_string( $key, $body, self::upload_headers( $storage ) );
-		try {
-			if ( $client->get_string( $key ) !== $body ) {
-				throw new RemoteException( 'The test file came back different from what was written.' );
-			}
-			$client->list( '' !== (string) $storage['prefix'] ? $storage['prefix'] . '/' : '', 1 );
-		} finally {
-			$client->delete( $key );
-		}
-		return 'write, read, list and delete work';
 	}
 }

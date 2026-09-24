@@ -14,6 +14,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Controller\RestController;
 use Founders\Migration\Job\Jobs;
+use Founders\Migration\Remote\GoogleAuth;
 use Founders\Migration\Remote\RemoteException;
 use Founders\Migration\Remote\StorageOptions;
 use Founders\Migration\Remote\Storages;
@@ -22,15 +23,18 @@ use Founders\Migration\Storage\Paths;
 use WP_CLI;
 
 /**
- * Manages cloud storages (S3-compatible) and the backups in them.
+ * Manages cloud storages (Google Drive and S3-compatible) and the backups in them.
  *
- * Works with Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean
- * Spaces, MinIO and other S3-compatible services. The secret key is stored
- * encrypted with this site's keys, outside the database.
+ * Works with Google Drive, Amazon S3, Cloudflare R2, Wasabi, Backblaze B2,
+ * DigitalOcean Spaces, MinIO and other S3-compatible services. Secret keys
+ * and Google tokens are stored encrypted with this site's keys, outside the
+ * database.
  *
  * ## EXAMPLES
  *
  *     wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=my-backups --prefix=example.com --access-key=AKIA... --secret-key=...
+ *     wp fmw storage add --provider=gdrive --client-id=123-abc.apps.googleusercontent.com --client-secret=GOCSPX-...
+ *     wp fmw storage connect 5e6f7a8b
  *     wp fmw storage test 1a2b3c4d
  *     wp fmw backup --storage=1a2b3c4d
  *     wp fmw storage files 1a2b3c4d
@@ -65,23 +69,24 @@ final class StorageCommand {
 		$rows   = array();
 		foreach ( Storages::store()->all() as $storage ) {
 			$view   = StorageOptions::public_view( $storage );
+			$drive  = 'gdrive' === $view['provider'];
 			$rows[] = array(
 				'id'            => $view['id'],
 				'name'          => $view['name'],
 				'provider'      => $view['provider_label'],
-				'endpoint'      => $view['endpoint'],
-				'region'        => $view['region'],
+				'endpoint'      => $drive ? '' : (string) $view['endpoint'],
+				'region'        => $drive ? '' : (string) $view['region'],
 				'location'      => $view['location'],
-				'access_key'    => $view['access_key'],
-				'path_style'    => $view['path_style'] ? 'yes' : 'no',
-				'storage_class' => $view['storage_class'],
+				'account'       => $drive ? ( $view['connected'] ? (string) $view['account'] : 'not connected' ) : (string) $view['access_key'],
+				'path_style'    => $drive ? '' : ( $view['path_style'] ? 'yes' : 'no' ),
+				'storage_class' => $drive ? '' : (string) $view['storage_class'],
 			);
 		}
 		if ( ! $rows && 'table' === $format ) {
 			WP_CLI::log( 'No cloud storage yet. Add one with `wp fmw storage add`.' );
 			return;
 		}
-		WP_CLI\Utils\format_items( $format, $rows, array( 'id', 'name', 'provider', 'endpoint', 'region', 'location', 'access_key', 'path_style', 'storage_class' ) );
+		WP_CLI\Utils\format_items( $format, $rows, array( 'id', 'name', 'provider', 'endpoint', 'region', 'location', 'account', 'path_style', 'storage_class' ) );
 	}
 
 	/**
@@ -89,11 +94,11 @@ final class StorageCommand {
 	 *
 	 * ## OPTIONS
 	 *
-	 * --bucket=<bucket>
-	 * : Bucket name.
+	 * [--bucket=<bucket>]
+	 * : Bucket name (S3-compatible storages).
 	 *
-	 * --access-key=<key>
-	 * : Access key ID.
+	 * [--access-key=<key>]
+	 * : Access key ID (S3-compatible storages).
 	 *
 	 * [--secret-key=<secret>]
 	 * : Secret access key. Asked for without echo when missing.
@@ -108,6 +113,7 @@ final class StorageCommand {
 	 *   - wasabi
 	 *   - b2
 	 *   - spaces
+	 *   - gdrive
 	 *   - custom
 	 * ---
 	 *
@@ -129,6 +135,12 @@ final class StorageCommand {
 	 * [--storage-class=<class>]
 	 * : Amazon S3 storage class: STANDARD, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING or GLACIER_IR.
 	 *
+	 * [--client-id=<id>]
+	 * : Google Drive: client ID of your OAuth client (Google Cloud Console, type "Web application").
+	 *
+	 * [--client-secret=<secret>]
+	 * : Google Drive: its client secret. Asked for without echo when missing.
+	 *
 	 * [--skip-test]
 	 * : Save without the write/read/delete check.
 	 *
@@ -141,14 +153,23 @@ final class StorageCommand {
 	 */
 	public function add( $args, $assoc_args ) {
 		$input = $this->input( $assoc_args );
-		if ( ! isset( $input['secret_key'] ) ) {
-			$input['secret_key'] = $this->ask_secret();
+		$drive = 'gdrive' === ( $input['provider'] ?? '' );
+		if ( $drive && ! isset( $input['client_secret'] ) ) {
+			$input['client_secret'] = $this->ask_secret( 'Client secret' );
+		} elseif ( ! $drive && ! isset( $input['secret_key'] ) ) {
+			$input['secret_key'] = $this->ask_secret( 'Secret key' );
 		}
 		$storage = $this->build( $input, null );
-		$this->check( $storage, $assoc_args );
+		if ( ! $drive ) {
+			$this->check( $storage, $assoc_args );
+		}
 		Storages::store()->save( $storage );
 		if ( WP_CLI\Utils\get_flag_value( $assoc_args, 'porcelain', false ) ) {
 			WP_CLI::line( $storage['id'] );
+			return;
+		}
+		if ( $drive ) {
+			WP_CLI::success( sprintf( 'Storage %s added. Now sign in to Google: run `wp fmw storage connect %s` and open the link while logged in to wp-admin. The OAuth client must list this redirect URI: %s', $storage['id'], $storage['id'], GoogleAuth::redirect_uri() ) );
 			return;
 		}
 		WP_CLI::success( sprintf( 'Storage %s added: %s (%s). Use it with `wp fmw backup --storage=%s`.', $storage['id'], $storage['name'], StorageOptions::public_view( $storage )['location'], $storage['id'] ) );
@@ -189,6 +210,12 @@ final class StorageCommand {
 	 * [--storage-class=<class>]
 	 * : Storage class ("" for the default).
 	 *
+	 * [--client-id=<id>]
+	 * : Google Drive: client ID (a new one needs `wp fmw storage connect` again).
+	 *
+	 * [--client-secret=<secret>]
+	 * : Google Drive: client secret.
+	 *
 	 * [--skip-test]
 	 * : Save without the check.
 	 *
@@ -200,11 +227,13 @@ final class StorageCommand {
 		$existing = $this->get( $args[0] );
 		$input    = $this->input( $assoc_args );
 		if ( isset( $assoc_args['secret-key'] ) && true === $assoc_args['secret-key'] ) {
-			$input['secret_key'] = $this->ask_secret();
+			$input['secret_key'] = $this->ask_secret( 'Secret key' );
 		}
 		$storage = $this->build( $input, $existing );
-		$this->check( $storage, $assoc_args );
-		Storages::store()->save( $storage );
+		if ( 'gdrive' !== $storage['provider'] || ! empty( $storage['refresh'] ) ) {
+			$this->check( $storage, $assoc_args );
+		}
+		Storages::save_settings( $storage );
 		WP_CLI::success( sprintf( 'Storage %s updated.', $storage['id'] ) );
 	}
 
@@ -245,6 +274,61 @@ final class StorageCommand {
 		} catch ( RemoteException $e ) {
 			WP_CLI::error( $e->getMessage() );
 		}
+	}
+
+	/**
+	 * Signs a Google Drive storage in to a Google account.
+	 *
+	 * Prints Google's consent link. Open it in a browser where you are logged
+	 * in to this site's wp-admin as an administrator; Google then sends you
+	 * back to the site, which stores the sign-in. The OAuth client must list
+	 * the redirect URI printed here.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <id>
+	 * : Storage ID.
+	 *
+	 * @param string[]             $args       Positional arguments.
+	 * @param array<string,string> $assoc_args Flags.
+	 * @return void
+	 */
+	public function connect( $args, $assoc_args ) {
+		$storage = $this->get( $args[0] );
+		if ( 'gdrive' !== $storage['provider'] ) {
+			WP_CLI::error( 'Only Google Drive storages sign in; S3 storages use their keys.' );
+		}
+		try {
+			$url = GoogleAuth::authorize_url( $storage, 0 );
+		} catch ( RemoteException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		WP_CLI::log( 'Redirect URI (must be listed in the OAuth client): ' . GoogleAuth::redirect_uri() );
+		WP_CLI::log( 'Open this link within 20 minutes, logged in to wp-admin:' );
+		WP_CLI::line( $url );
+		WP_CLI::log( sprintf( 'Then check it with `wp fmw storage test %s`.', $storage['id'] ) );
+	}
+
+	/**
+	 * Signs a Google Drive storage out (the backups in Drive stay).
+	 *
+	 * ## OPTIONS
+	 *
+	 * <id>
+	 * : Storage ID.
+	 *
+	 * @param string[]             $args       Positional arguments.
+	 * @param array<string,string> $assoc_args Flags.
+	 * @return void
+	 */
+	public function disconnect( $args, $assoc_args ) {
+		$storage = $this->get( $args[0] );
+		if ( 'gdrive' !== $storage['provider'] ) {
+			WP_CLI::error( 'Only Google Drive storages sign in.' );
+		}
+		GoogleAuth::disconnect( $storage );
+		WP_CLI::success( sprintf( '"%s" is signed out of Google.', $storage['name'] ) );
 	}
 
 	/**
@@ -384,7 +468,9 @@ final class StorageCommand {
 		}
 		WP_CLI::confirm( sprintf( 'Delete %s from "%s"? This cannot be undone.', $args[0], $storage['name'] ), $assoc_args );
 		try {
-			Storages::client( $storage )->delete( StorageOptions::key( $storage, $args[0] ) );
+			if ( ! Storages::delete_backup( $storage, $args[0] ) ) {
+				WP_CLI::error( sprintf( '%s is not in "%s".', $args[0], $storage['name'] ) );
+			}
 		} catch ( RemoteException $e ) {
 			WP_CLI::error( $e->getMessage() );
 		}
@@ -434,6 +520,8 @@ final class StorageCommand {
 			'prefix'        => 'prefix',
 			'access-key'    => 'access_key',
 			'secret-key'    => 'secret_key',
+			'client-id'     => 'client_id',
+			'client-secret' => 'client_secret',
 			'storage-class' => 'storage_class',
 		);
 		foreach ( $map as $flag => $field ) {
@@ -485,14 +573,15 @@ final class StorageCommand {
 	}
 
 	/**
-	 * Secret key typed without echo.
+	 * A secret typed without echo.
 	 *
+	 * @param string $label Prompt.
 	 * @return string
 	 */
-	private function ask_secret(): string {
+	private function ask_secret( string $label ): string {
 		if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {
-			WP_CLI::error( 'Pass --secret-key=<secret> (no terminal to ask it on).' );
+			WP_CLI::error( sprintf( 'Pass the %s as a flag (no terminal to ask it on).', strtolower( $label ) ) );
 		}
-		return (string) \cli\prompt( 'Secret key', false, ': ', true );
+		return (string) \cli\prompt( $label, false, ': ', true );
 	}
 }

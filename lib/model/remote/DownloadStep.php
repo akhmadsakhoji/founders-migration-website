@@ -61,27 +61,33 @@ final class DownloadStep implements Step, Discardable {
 		if ( null === $storage ) {
 			throw new JobException( 'The cloud storage of this job was deleted.' );
 		}
-		$key     = (string) ( $remote['key'] ?? '' );
+		$name    = (string) ( $remote['name'] ?? basename( (string) ( $remote['key'] ?? '' ) ) );
 		$final   = rtrim( (string) ( $job->options['archive_dir'] ?? '' ), '/' ) . '/' . basename( (string) ( $job->options['archive_name'] ?? '' ) );
 		$partial = $final . '.partial';
 		$state   = (array) ( $job->data['download'] ?? array() ) + array(
+			'key'    => '',
 			'size'   => -1,
 			'etag'   => '',
 			'offset' => 0,
 			'speed'  => 0.0,
 		);
+		if ( '' === (string) $state['key'] && $state['size'] >= 0 ) {
+			$state['key'] = (string) ( $remote['key'] ?? '' ); // Saved before the driver refactor: the key was an option.
+		}
 
 		try {
-			$client = Storages::client( $storage );
+			$driver = Storages::driver( $storage );
 			if ( $state['size'] < 0 ) {
-				$object = $client->head( $key );
+				$object = $driver->find( $name );
 				if ( null === $object ) {
-					throw new JobException( sprintf( '%s is not in "%s" (any more).', $key, (string) $storage['name'] ) );
+					throw new JobException( sprintf( '%s is not in "%s" (any more).', $name, (string) $storage['name'] ) );
 				}
+				$state['key']          = $object['key'];
 				$state['size']         = $object['size'];
 				$state['etag']         = $object['etag'];
 				$job->data['download'] = $state;
 			}
+			$key              = (string) $state['key'];
 			$size             = (int) $state['size'];
 			$job->bytes_total = $size;
 
@@ -106,7 +112,7 @@ final class DownloadStep implements Step, Discardable {
 					}
 					$length = min( $size - (int) $state['offset'], $length );
 					$start  = microtime( true );
-					$client->get_range( $key, (int) $state['offset'], (int) $state['offset'] + $length - 1, $handle, (string) $state['etag'] );
+					$driver->download_range( $key, (int) $state['offset'], (int) $state['offset'] + $length - 1, $handle, (string) $state['etag'] );
 					fflush( $handle );
 					$seconds               = max( 0.001, microtime( true ) - $start );
 					$state['offset']       = (int) $state['offset'] + $length;
@@ -142,7 +148,7 @@ final class DownloadStep implements Step, Discardable {
 			'path'  => $final,
 			'bytes' => $size,
 		);
-		$context->log( sprintf( 'Downloaded %s (%d bytes) from "%s" to %s.', $key, $size, (string) $storage['name'], $final ) );
+		$context->log( sprintf( 'Downloaded %s (%d bytes) from "%s" to %s.', $name, $size, (string) $storage['name'], $final ) );
 		return true;
 	}
 

@@ -308,3 +308,11 @@
 .fmw-wrap [hidden] {
 	display: none !important;
 }
+
+.fmw-steps {
+	margin: 0 0 0 18px;
+}
+
+.fmw-steps li {
+	margin-bottom: 8px;
+}
