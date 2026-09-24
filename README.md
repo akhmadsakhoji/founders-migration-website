@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset and scheduled backups work end to end and are resumable, both in the admin screens and from WP-CLI. Cloud storage (S3-compatible, Google Drive) comes next. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups and S3-compatible cloud storage work end to end and are resumable, both in the admin screens and from WP-CLI. Google Drive comes next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -114,6 +114,8 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw reset` | Reset Hub | now (single site) |
 | `wp fmw schedule list\|add\|update\|delete\|enable\|disable` | Schedules (Unlimited) | now |
 | `wp fmw schedule run [<id>]` | — | now (for a system cron) |
+| `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze extensions | now |
+| `wp fmw storage files\|upload\|download\|remove` | — | now |
 | `wp fmw pull <url>` | — | phase 3 |
 
 `wp fmw reset --database --media --plugins --themes` (or `--all`, and the Reset screen) brings parts of a site back to a fresh WordPress install:
@@ -130,6 +132,13 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 - Without a browser: WP-Cron checks every five minutes, and the backup continues in short background requests to the site itself. An interrupted backup is continued automatically (up to 12 times); a failed one is cleaned up, reported and tried again at the next run.
 - WP-Cron needs visitors. For reliable schedules on large sites, use a system cron: `0-59/5 * * * * wp fmw schedule run --path=/var/www/example.com --quiet`.
 - Schedules are stored in the storage folder, not the database, so restoring, migrating or resetting the site never removes or copies them.
+
+**Cloud storage** (`wp fmw storage add`, or the Cloud storage screen) keeps copies off the server on Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO or any S3-compatible service:
+
+- `wp fmw backup --storage=<id> [--delete-local]`, "Then upload to" on the Export screen, "Upload" on the Backups screen, or a schedule's "Upload to" with its own retention (`--remote-keep`, `--no-keep-local`).
+- Pure PHP (curl), no SDK. Multipart uploads with part sizes adapted to the connection (up to 5 TiB, 10,000 parts), resumable after an interruption, every part signed with its SHA-256 so the storage refuses damaged bytes. A cancelled upload is aborted in the storage.
+- Download a backup back to the server (resumable, ranged) and restore it from there.
+- The secret key is stored encrypted with the site's keys in `fmw-storage/storages.json`, never in the database or in job files. The connection is tested (write, read, list, delete) before a storage is saved.
 
 Every backup, restore and reset runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
 

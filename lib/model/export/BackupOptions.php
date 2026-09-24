@@ -12,6 +12,7 @@ namespace Founders\Migration\Model\Export;
 
 use Founders\Migration\Archive\FmwCrypto;
 use Founders\Migration\Job\Secrets;
+use Founders\Migration\Remote\Storages;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
@@ -93,6 +94,17 @@ final class BackupOptions {
 			'generator'        => 'fmw/' . FMWP_VERSION,
 			'site'             => $site,
 		);
+		if ( ! empty( $flags['storage'] ) && is_string( $flags['storage'] ) ) {
+			if ( null === Storages::get( $flags['storage'] ) ) {
+				throw new \InvalidArgumentException( sprintf( 'Unknown cloud storage "%s"; see `wp fmw storage list`.', $flags['storage'] ) );
+			}
+			$options['remote'] = array(
+				'storage'      => $flags['storage'],
+				'delete_local' => ! empty( $flags['delete-local'] ),
+			);
+		} elseif ( ! empty( $flags['delete-local'] ) ) {
+			throw new \InvalidArgumentException( '--delete-local needs --storage: the backup would be deleted right after it was made.' );
+		}
 		if ( '' !== $password ) {
 			// Format v1, section 7: the manifest is encrypted and the file name names no site.
 			$options['encrypt']         = true;

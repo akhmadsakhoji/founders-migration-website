@@ -22,8 +22,11 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * Sunday), monthday (1-28), flags (backup exclusions), secret_password
  * (sealed, optional), keep (newest backups of this schedule to keep, 0 =
  * all), notify (failure, always, never), email ('' = the site's admin
- * e-mail), created_at, and state (next_run, last_run, last_job,
- * last_status, last_error, backups: names this schedule created, oldest first).
+ * e-mail), storage (cloud storage ID to upload to, '' for none),
+ * remote_keep (newest uploads to keep there, 0 = all), keep_local (keep the
+ * copy on this server after the upload), created_at, and state (next_run,
+ * last_run, last_job, last_status, last_error, backups and remote_backups:
+ * file names and object keys this schedule created, oldest first).
  */
 final class ScheduleOptions {
 
@@ -51,7 +54,7 @@ final class ScheduleOptions {
 	 * @throws \InvalidArgumentException On an invalid value.
 	 */
 	public static function build( array $input, ?array $existing, int $now, \DateTimeZone $zone ): array {
-		$schedule = $existing ?? array(
+		$schedule  = $existing ?? array(
 			'id'              => bin2hex( random_bytes( 4 ) ),
 			'name'            => '',
 			'enabled'         => true,
@@ -64,6 +67,9 @@ final class ScheduleOptions {
 			'keep'            => 7,
 			'notify'          => 'failure',
 			'email'           => '',
+			'storage'         => '',
+			'remote_keep'     => 30,
+			'keep_local'      => true,
 			'created_at'      => $now,
 			'state'           => array(
 				'next_run'    => 0,
@@ -74,6 +80,11 @@ final class ScheduleOptions {
 				'backups'     => array(),
 			),
 		);
+		$schedule += array(
+			'storage'     => '',
+			'remote_keep' => 30,
+			'keep_local'  => true,
+		); // Schedules saved before cloud storage existed.
 
 		if ( array_key_exists( 'name', $input ) ) {
 			$schedule['name'] = self::clean( (string) $input['name'], 100 );
@@ -149,6 +160,27 @@ final class ScheduleOptions {
 				throw new \InvalidArgumentException( sprintf( '"%s" is not a valid e-mail address.', $email ) );
 			}
 			$schedule['email'] = $email;
+		}
+
+		if ( array_key_exists( 'storage', $input ) ) {
+			$storage = strtolower( trim( (string) $input['storage'], " \t\n\r\0\x0B" ) );
+			if ( '' !== $storage && 1 !== preg_match( '/^[a-f0-9]{8}$/', $storage ) ) {
+				throw new \InvalidArgumentException( 'Unknown cloud storage; see `wp fmw storage list`.' );
+			}
+			$schedule['storage'] = $storage;
+		}
+		if ( array_key_exists( 'remote_keep', $input ) ) {
+			$keep = self::integer( $input['remote_keep'], 'Keep in the cloud' );
+			if ( $keep < 0 || $keep > self::MAX_KEEP ) {
+				throw new \InvalidArgumentException( sprintf( 'Keep in the cloud must be 0 (all) to %d backups.', self::MAX_KEEP ) );
+			}
+			$schedule['remote_keep'] = $keep;
+		}
+		if ( array_key_exists( 'keep_local', $input ) ) {
+			$schedule['keep_local'] = self::bool( $input['keep_local'] );
+		}
+		if ( '' === $schedule['storage'] ) {
+			$schedule['keep_local'] = true; // Without an upload, the copy here is the only one.
 		}
 
 		if ( '' === $schedule['name'] ) {

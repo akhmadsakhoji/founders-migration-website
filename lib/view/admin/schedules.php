@@ -111,6 +111,25 @@ $fmwp_cron   = '0-59/5 * * * * wp fmw schedule run --path=' . untrailingslashit(
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="fmw-schedule-storage"><?php esc_html_e( 'Upload to', 'founders-migration-website' ); ?></label></th>
+				<td>
+					<select id="fmw-schedule-storage" name="storage">
+						<option value=""><?php esc_html_e( 'Nowhere (keep on this server only)', 'founders-migration-website' ); ?></option>
+						<?php foreach ( Founders\Migration\Controller\AdminController::storage_choices() as $fmwp_storage ) : ?>
+							<option value="<?php echo esc_attr( $fmwp_storage['id'] ); ?>"><?php echo esc_html( $fmwp_storage['name'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<div data-fmw-schedule-remote hidden>
+						<p>
+							<?php esc_html_e( 'Keep', 'founders-migration-website' ); ?>
+							<input type="number" name="remote_keep" min="0" max="1000" value="30" class="small-text" />
+							<?php esc_html_e( 'newest uploads of this schedule in the storage (0 = keep all).', 'founders-migration-website' ); ?>
+						</p>
+						<label class="fmw-option"><input type="checkbox" name="keep_local" checked /> <?php esc_html_e( 'Also keep the copies on this server (with the limit above)', 'founders-migration-website' ); ?></label>
+					</div>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="fmw-schedule-notify"><?php esc_html_e( 'E-mail', 'founders-migration-website' ); ?></label></th>
 				<td class="fmw-inline">
 					<select id="fmw-schedule-notify" name="notify">

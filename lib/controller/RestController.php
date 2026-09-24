@@ -627,7 +627,7 @@ final class RestController {
 			'log'         => $store->log_lines( $job->id, 6 ),
 			'updated'     => $job->updated_at,
 		);
-		if ( Job::STATUS_COMPLETED === $job->status && isset( $job->data['archive']['name'] ) ) {
+		if ( Job::STATUS_COMPLETED === $job->status && isset( $job->data['archive']['name'] ) && empty( $job->data['archive']['deleted_local'] ) ) {
 			$summary['backup'] = array(
 				'name' => (string) $job->data['archive']['name'],
 				'size' => (int) ( $job->data['archive']['bytes'] ?? 0 ),
@@ -638,6 +638,15 @@ final class RestController {
 		}
 		if ( '' !== (string) ( $job->options['schedule_name'] ?? '' ) ) {
 			$summary['schedule'] = (string) $job->options['schedule_name'];
+		}
+		if ( isset( $job->data['remote']['key'] ) ) {
+			$summary['remote'] = array(
+				'name' => (string) $job->data['remote']['name'],
+				'key'  => (string) $job->data['remote']['key'],
+			);
+		}
+		if ( Job::STATUS_COMPLETED === $job->status && ! empty( $job->data['archive']['deleted_local'] ) ) {
+			$summary['deleted_local'] = true;
 		}
 		return $summary;
 	}

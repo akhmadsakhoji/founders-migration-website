@@ -14,6 +14,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Model\Reset\ResetOptions;
+use Founders\Migration\Remote\Storages;
 use Founders\Migration\Schedule\Scheduler;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
@@ -29,6 +30,7 @@ final class AdminController {
 	const SLUG_BACKUPS   = 'fmw-backups';
 	const SLUG_RESET     = 'fmw-reset';
 	const SLUG_SCHEDULES = 'fmw-schedules';
+	const SLUG_REMOTE    = 'fmw-cloud';
 
 	/**
 	 * Registers admin hooks.
@@ -47,7 +49,7 @@ final class AdminController {
 	 */
 	public function assets(): void {
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only selects which assets to load.
-		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_SCHEDULES, self::SLUG_RESET ), true ) ) {
+		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_SCHEDULES, self::SLUG_REMOTE, self::SLUG_RESET ), true ) ) {
 			return;
 		}
 		wp_enqueue_style( 'fmw-admin', plugins_url( 'assets/admin.css', FMWP_PLUGIN_FILE ), array( 'dashicons' ), FMWP_VERSION );
@@ -75,6 +77,7 @@ final class AdminController {
 				admin_url( 'admin-post.php' )
 			),
 			'chunk'         => RestController::chunk_bytes(),
+			'storages'      => self::storage_choices(),
 			'loginUrl'      => wp_login_url( add_query_arg( 'page', self::SLUG_BACKUPS, $base ) ),
 			'backupsUrl'    => add_query_arg( 'page', self::SLUG_BACKUPS, $base ),
 			'i18n'          => array(
@@ -132,6 +135,28 @@ final class AdminController {
 				'keepAll'               => __( 'all', 'founders-migration-website' ),
 				'noSchedules'           => __( 'No schedules yet. Add one below.', 'founders-migration-website' ),
 				'confirmDeleteSchedule' => /* translators: %s: schedule name. */ __( 'Delete the schedule "%s"? The backups it made are kept.', 'founders-migration-website' ),
+				'uploadedTo'            => /* translators: 1: storage name, 2: object key. */ __( 'Uploaded to "%1$s" as %2$s.', 'founders-migration-website' ),
+				'deletedLocal'          => __( 'The copy on this server was deleted after the upload, as asked.', 'founders-migration-website' ),
+				'downloaded'            => /* translators: %s: file name. */ __( '%s is now in the backups folder of this server.', 'founders-migration-website' ),
+				'uploadTitle'           => __( 'Upload to cloud storage', 'founders-migration-website' ),
+				'uploadButton'          => __( 'Upload', 'founders-migration-website' ),
+				'downloadTitle'         => __( 'Download from cloud storage', 'founders-migration-website' ),
+				'downloadToServer'      => __( 'Download to this server', 'founders-migration-website' ),
+				'browse'                => __( 'Backups', 'founders-migration-website' ),
+				'test'                  => __( 'Test', 'founders-migration-website' ),
+				'testing'               => __( 'Checking the connection…', 'founders-migration-website' ),
+				'testOk'                => /* translators: %s: what was checked. */ __( 'Connection works: %s.', 'founders-migration-website' ),
+				'noStorages'            => __( 'No cloud storage yet. Add one below.', 'founders-migration-website' ),
+				'noFiles'               => __( 'No backups in this storage yet.', 'founders-migration-website' ),
+				'onServer'              => __( 'also on this server', 'founders-migration-website' ),
+				'confirmDeleteStorage'  => /* translators: %s: storage name. */ __( 'Remove "%s" from this site? The backups in it are not deleted.', 'founders-migration-website' ),
+				'confirmDeleteRemote'   => /* translators: 1: file name, 2: storage name. */ __( 'Delete %1$s from "%2$s"? This cannot be undone.', 'founders-migration-website' ),
+				'secretKept'            => __( 'Saved. Leave empty to keep it.', 'founders-migration-website' ),
+				'loading'               => __( 'Loading…', 'founders-migration-website' ),
+				'jobType'               => array(
+					'upload'   => __( 'Upload', 'founders-migration-website' ),
+					'download' => __( 'Download', 'founders-migration-website' ),
+				),
 				'runStatus'             => array(
 					'running'   => __( 'Running', 'founders-migration-website' ),
 					'completed' => __( 'Completed', 'founders-migration-website' ),
@@ -170,6 +195,7 @@ final class AdminController {
 		add_submenu_page( self::SLUG_EXPORT, __( 'Import', 'founders-migration-website' ), __( 'Import', 'founders-migration-website' ), $capability, self::SLUG_IMPORT, array( $this, 'render_import' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Backups', 'founders-migration-website' ), __( 'Backups', 'founders-migration-website' ), $capability, self::SLUG_BACKUPS, array( $this, 'render_backups' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Schedules', 'founders-migration-website' ), __( 'Schedules', 'founders-migration-website' ), $capability, self::SLUG_SCHEDULES, array( $this, 'render_schedules' ) );
+		add_submenu_page( self::SLUG_EXPORT, __( 'Cloud storage', 'founders-migration-website' ), __( 'Cloud storage', 'founders-migration-website' ), $capability, self::SLUG_REMOTE, array( $this, 'render_remote' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Reset', 'founders-migration-website' ), __( 'Reset', 'founders-migration-website' ), $capability, self::SLUG_RESET, array( $this, 'render_reset' ) );
 	}
 
@@ -228,6 +254,31 @@ final class AdminController {
 	 */
 	public function render_schedules(): void {
 		$this->render( 'schedules', array( 'health' => Scheduler::health() ) );
+	}
+
+	/**
+	 * Cloud storage page.
+	 *
+	 * @return void
+	 */
+	public function render_remote(): void {
+		$this->render( 'remote' );
+	}
+
+	/**
+	 * Cloud storages for the selects on the Export, Backups and Schedules screens.
+	 *
+	 * @return array<int,array{id:string,name:string}>
+	 */
+	public static function storage_choices(): array {
+		$choices = array();
+		foreach ( Storages::store()->all() as $storage ) {
+			$choices[] = array(
+				'id'   => (string) $storage['id'],
+				'name' => (string) $storage['name'],
+			);
+		}
+		return $choices;
 	}
 
 	/**

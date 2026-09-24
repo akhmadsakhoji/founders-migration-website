@@ -71,8 +71,11 @@ final class Jobs {
 					\Founders\Migration\Model\Export\DatabaseStep::class,
 					\Founders\Migration\Model\Export\FilesStep::class,
 					\Founders\Migration\Model\Export\PackageStep::class,
+					\Founders\Migration\Model\Remote\UploadStep::class, // Only with a cloud storage.
 				)
 			);
+			self::$registry->register( 'upload', array( \Founders\Migration\Model\Remote\UploadStep::class ) );
+			self::$registry->register( 'download', array( \Founders\Migration\Model\Remote\DownloadStep::class ) );
 			self::$registry->register(
 				'restore',
 				array(
