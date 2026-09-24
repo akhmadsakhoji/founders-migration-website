@@ -114,7 +114,7 @@ final class TarWriterTest extends TestCase {
 		$out                  = $this->tmp . '/out-bsd';
 		mkdir( $out );
 
-		list( $code, $output ) = $this->run_command( 'bsdtar -xf ' . escapeshellarg( $path ) . ' -C ' . escapeshellarg( $out ) );
+		list( $code, $output ) = $this->run_command( 'LC_ALL=C.UTF-8 bsdtar -xf ' . escapeshellarg( $path ) . ' -C ' . escapeshellarg( $out ) );
 		$this->assertSame( 0, $code, $output );
 		foreach ( $files as $file => $contents ) {
 			$this->assertSame( $contents, file_get_contents( $out . '/' . $file ), $file );

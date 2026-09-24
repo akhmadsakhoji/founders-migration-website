@@ -34,7 +34,7 @@ final class GzipResumeTest extends TestCase {
 
 		$raw = file_get_contents( $path );
 		$this->assertSame( 3, substr_count( $raw, "\x1f\x8b\x08" ), 'three gzip members' );
-		$this->assertSame( 'one two three', gzdecode_all( $raw ) );
+		$this->assertSame( 'one two three', $this->gunzip_all( $raw ) );
 
 		if ( null !== $this->tool( 'gzip' ) ) {
 			list( $code, $output ) = $this->run_command( 'gzip -t ' . escapeshellarg( $path ) );
@@ -99,22 +99,4 @@ final class GzipResumeTest extends TestCase {
 		$this->expectException( ArchiveException::class );
 		new GzipFileSink( $path, 10 );
 	}
-}
-
-/**
- * Decodes a (multi-member) gzip string.
- *
- * @param string $data Gzip data.
- * @return string
- */
-function gzdecode_all( string $data ): string {
-	$ctx = inflate_init( ZLIB_ENCODING_GZIP );
-	$out = '';
-	while ( '' !== $data ) {
-		$out .= inflate_add( $ctx, $data, ZLIB_FINISH );
-		$used = inflate_get_read_len( $ctx );
-		$data = substr( $data, $used );
-		$ctx  = inflate_init( ZLIB_ENCODING_GZIP );
-	}
-	return $out;
 }

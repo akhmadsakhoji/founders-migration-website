@@ -41,6 +41,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install bsdtar for format compatibility tests
         run: sudo apt-get update -q && sudo apt-get install -y -q libarchive-tools
+      - name: Start MySQL for database tests
+        run: sudo systemctl start mysql.service && mysqladmin --user=root --password=root --wait=30 ping
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -49,6 +51,10 @@ jobs:
       - uses: ramsey/composer-install@v3
       - name: PHPUnit
         run: vendor/bin/phpunit
+        env:
+          FMWP_TEST_DB_HOST: 127.0.0.1
+          FMWP_TEST_DB_USER: root
+          FMWP_TEST_DB_PASSWORD: root
 
   static:
     name: Coding standards and static analysis

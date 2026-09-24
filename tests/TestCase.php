@@ -72,6 +72,22 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * Decodes gzip data with any number of members (PHP's gzdecode() stops after the first).
+	 *
+	 * @param string $data Gzip data.
+	 * @return string
+	 */
+	protected function gunzip_all( string $data ): string {
+		$out = '';
+		while ( '' !== $data ) {
+			$context = inflate_init( ZLIB_ENCODING_GZIP );
+			$out    .= (string) inflate_add( $context, $data, ZLIB_FINISH );
+			$data    = substr( $data, (int) inflate_get_read_len( $context ) );
+		}
+		return $out;
+	}
+
+	/**
 	 * Recursively removes a path without following symlinks.
 	 *
 	 * @param string $path Path.
