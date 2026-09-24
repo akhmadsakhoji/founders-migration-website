@@ -22,6 +22,8 @@ use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
 use Founders\Migration\Model\Export\BackupOptions;
+use Founders\Migration\Model\Import\RestoreDatabase;
+use Founders\Migration\Model\Import\RestoreOptions;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
@@ -279,22 +281,73 @@ final class Command {
 	}
 
 	/**
-	 * Restores a .fmw (or .wpress) backup. Planned for phase 1 (.wpress in phase 2).
+	 * Restores a .fmw backup onto this site, replacing its files and database.
+	 *
+	 * The database is imported into temporary tables and switched in with one
+	 * atomic rename at the end, so a restore that fails or is cancelled before
+	 * that point leaves the site's database untouched. URLs and paths are
+	 * replaced for the new location, serialized data included. This plugin's
+	 * own folder is never overwritten, and files that are not in the backup are
+	 * kept. Resumable: `wp fmw resume <job_id>`.
 	 *
 	 * ## OPTIONS
 	 *
-	 * [<file>]
-	 * : Backup file name or path.
+	 * <file>
+	 * : Backup file name (in the backups folder) or path.
 	 *
-	 * [--<field>=<value>]
-	 * : Flags follow `wp ai1wm restore`.
+	 * [--yes]
+	 * : Skip the confirmation prompt.
+	 *
+	 * [--keep-old-tables]
+	 * : Keep the replaced tables as fmwold_* (remove later with `wp fmw cleanup --tables`).
+	 *
+	 * [--exclude-email-replace]
+	 * : Do not change e-mail addresses at the old domain.
+	 *
+	 * [--skip-space-check]
+	 * : Start even if the free disk space looks too small.
+	 *
+	 * [--[no-]progress]
+	 * : Show the progress bar (default).
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp fmw restore example.com-20260924-180000-a1b2c3.fmw
+	 *     wp fmw restore /backups/site.fmw --yes --keep-old-tables
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function restore( $args, $assoc_args ) {
-		$this->planned( 'restore', 1 );
+		if ( '.wpress' === strtolower( substr( $args[0], -7 ) ) ) {
+			WP_CLI::error( sprintf( 'Importing All-in-One WP Migration (.wpress) backups is planned for phase 2 and is not available in %s yet.', FMWP_VERSION ) );
+		}
+
+		$archive = $this->open_archive( $args[0] );
+		try {
+			$manifest = $archive->manifest();
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		$site = (array) ( $manifest['site'] ?? array() );
+		WP_CLI::confirm(
+			sprintf(
+				'Restore %s (%s, created %s) onto %s? This replaces this site\'s files and database.',
+				basename( $args[0] ),
+				(string) ( $site['home_url'] ?? '?' ),
+				(string) ( $manifest['created_at'] ?? '?' ),
+				home_url()
+			),
+			$assoc_args
+		);
+
+		Paths::ensure_all();
+		$path = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
+		$job  = Jobs::store()->create( 'restore', RestoreOptions::build( $path, $assoc_args ) );
+		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
 	}
 
 	/**
@@ -481,6 +534,9 @@ final class Command {
 	 * [--dry-run]
 	 * : Only list what would be deleted.
 	 *
+	 * [--tables]
+	 * : Also drop leftover fmwtmp_* and fmwold_* tables from restores.
+	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
@@ -506,6 +562,23 @@ final class Command {
 		}
 
 		WP_CLI::success( sprintf( $dry_run ? '%d job(s) would be deleted.' : '%d job(s) deleted.', $removed ) );
+
+		if ( WP_CLI\Utils\get_flag_value( $assoc_args, 'tables', false ) ) {
+			foreach ( $store->all() as $job ) {
+				if ( 'restore' === $job->type && Lock::is_held( $store->dir( $job->id ) . '/' . JobStore::LOCK_FILE ) ) {
+					WP_CLI::error( sprintf( 'Restore job %s is running; its tables cannot be removed now.', $job->id ) );
+				}
+			}
+			$restore = new RestoreDatabase();
+			$tables  = array_merge( $restore->tables( RestoreDatabase::TMP ), $restore->tables( RestoreDatabase::OLD ) );
+			foreach ( $tables as $table ) {
+				WP_CLI::log( ( $dry_run ? 'Would drop ' : 'Dropping ' ) . $table );
+			}
+			if ( ! $dry_run ) {
+				$restore->drop( $tables );
+			}
+			WP_CLI::success( sprintf( $dry_run ? '%d table(s) would be dropped.' : '%d table(s) dropped.', count( $tables ) ) );
+		}
 	}
 
 	/**
@@ -691,6 +764,13 @@ final class Command {
 		}
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
+			if ( 'restore' === $job->type ) {
+				Jobs::store()->purge_work_files( $job->id );
+				wp_cache_flush();
+				delete_option( 'rewrite_rules' );
+				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored site; log in with its accounts.', home_url() ) );
+				return;
+			}
 			if ( isset( $job->data['archive']['path'] ) ) {
 				Jobs::store()->purge_work_files( $job->id );
 				if ( $porcelain ) {

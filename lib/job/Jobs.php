@@ -53,6 +53,16 @@ final class Jobs {
 					\Founders\Migration\Model\Export\PackageStep::class,
 				)
 			);
+			self::$registry->register(
+				'restore',
+				array(
+					\Founders\Migration\Model\Import\CheckStep::class,
+					\Founders\Migration\Model\Import\PartsStep::class,
+					\Founders\Migration\Model\Import\ReplaceStep::class,
+					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\FinalizeStep::class,
+				)
+			);
 
 			/**
 			 * Fires once to let code register job types.

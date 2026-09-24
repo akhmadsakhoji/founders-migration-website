@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `wp fmw restore <file>`: resumable restore of `.fmw` backups (check, restore parts, replace, swap, finish) with `--yes`, `--keep-old-tables`, `--exclude-email-replace`, `--skip-space-check` and `--[no-]progress`.
+- Restore safety: SHA-256 check of every part before use, free disk space check, import into `fmwtmp_*` tables and one atomic `RENAME TABLE` (previous tables kept as `fmwold_*` until the end), exactly-once SQL import and replacement through a progress table committed with the data.
+- Serialized-safe search-replace for URLs (plain, protocol-relative, JSON-escaped and URL-encoded), paths and e-mail domains; nested serialized strings are re-measured without `unserialize()`; table prefix changes applied to `user_roles` and user meta keys.
+- `SqlGuard`: allowlist for SQL from archives (session `SET`, `DROP`/`CREATE TABLE`, literal-only `INSERT`); views and triggers are recreated after the swap with the target prefix.
+- Streaming SQL reader with byte offsets for resume, `DELIMITER` support and multi-member gzip.
+- `wp fmw cleanup --tables`: drops leftover `fmwtmp_*` and kept `fmwold_*` tables.
+- The FMW plugin folder, backups and storage are protected during restore and the plugin stays active; symlinks that point outside the site are skipped.
+
 - `wp fmw backup`: complete, resumable backups into `.fmw` archives (scan, database, files, package), with the `wp ai1wm backup` exclusion flags plus `--exclude-transients`, `--exclude-tables`, `--exclude-paths`, `--part-size` and `--porcelain`.
 - Package step: writes `fmw.json`, database parts, file parts and `manifest.json` into the TAR container as `<name>.fmw.partial` and renames it when complete; parts are deleted as they are packed, so a backup needs little more than one copy of the site on disk.
 - `wp fmw inspect`: site, versions, totals and exclusions from the manifest without reading the parts (`--format=json` for the full manifest).

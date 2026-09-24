@@ -17,10 +17,14 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 /**
  * Safely extracts a TAR stream into a directory.
  *
- * - Entry names and symlink targets are validated by PathGuard.
- * - Nothing is ever written through a symlink: an entry whose parent path
- *   contains a symlink is rejected, and an existing symlink at the target
- *   path is removed before a file is written.
+ * - Entry names are validated by PathGuard (no absolute paths, no "..").
+ * - Symlinks from the archive must point inside the root, checked both
+ *   lexically and against the real path of the folder they are created in,
+ *   so a chain of archive symlinks cannot lead outside the root. Writing
+ *   through symlinked folders that already exist on the server (for example
+ *   an uploads folder on another disk) is allowed, as in any restore.
+ * - An existing symlink at the target path is removed, never followed,
+ *   before a file is written.
  * - Hard links and special files are skipped with a warning.
  */
 final class Extractor {
@@ -85,7 +89,6 @@ final class Extractor {
 			return false;
 		}
 
-		$this->assert_no_symlink_parents( $relative );
 		$target = $this->root . '/' . $relative;
 
 		switch ( $entry->type ) {
@@ -116,6 +119,7 @@ final class Extractor {
 			case TarEntry::TYPE_SYMLINK:
 				PathGuard::assert_symlink_target( $relative, $entry->linkname );
 				$this->ensure_directory( dirname( $target ), 0755 );
+				$this->assert_resolves_inside( dirname( $target ), $entry->linkname, $relative );
 				if ( is_link( $target ) || is_file( $target ) ) {
 					unlink( $target );
 				}
@@ -141,24 +145,36 @@ final class Extractor {
 	}
 
 	/**
-	 * Rejects paths whose existing parent directories include a symlink.
+	 * Rejects a symlink whose target, resolved from the real folder it lives in, leaves the root.
 	 *
-	 * @param string $relative Safe relative path.
+	 * @param string $folder   Folder the link is created in.
+	 * @param string $target   Link target (relative).
+	 * @param string $relative Link path, for the message.
 	 * @return void
-	 * @throws UnsafePathException When a parent is a symlink.
+	 * @throws UnsafePathException When the link would point outside the root.
 	 */
-	private function assert_no_symlink_parents( string $relative ): void {
-		$parts = explode( '/', $relative );
-		array_pop( $parts );
-		$path = $this->root;
-		foreach ( $parts as $part ) {
-			$path .= '/' . $part;
-			if ( is_link( $path ) ) {
-				throw new UnsafePathException( sprintf( 'Refusing to write through symlink %s.', substr( $path, strlen( $this->root ) + 1 ) ) );
+	private function assert_resolves_inside( string $folder, string $target, string $relative ): void {
+		$root   = realpath( $this->root );
+		$parent = realpath( $folder );
+		if ( false === $root || false === $parent ) {
+			throw new UnsafePathException( sprintf( 'Cannot resolve the folder of symlink %s.', $relative ) );
+		}
+
+		$stack = array();
+		foreach ( explode( '/', $parent . '/' . $target ) as $segment ) {
+			if ( '' === $segment || '.' === $segment ) {
+				continue;
 			}
-			if ( ! file_exists( $path ) ) {
-				return;
+			if ( '..' === $segment ) {
+				array_pop( $stack );
+				continue;
 			}
+			$stack[] = $segment;
+		}
+		$resolved = '/' . implode( '/', $stack );
+
+		if ( $resolved !== $root && 0 !== strpos( $resolved . '/', rtrim( $root, '/' ) . '/' ) ) {
+			throw new UnsafePathException( sprintf( 'Symlink "%s" points outside the extraction root.', $relative ) );
 		}
 	}
 
