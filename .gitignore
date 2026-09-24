@@ -1,0 +1,12 @@
+/vendor/
+/build/
+/node_modules/
+/composer.phar
+.phpunit.result.cache
+.phpcs-cache
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.fmw
+*.wpress

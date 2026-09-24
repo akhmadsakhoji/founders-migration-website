@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<ruleset name="Founders Migration Website">
+	<description>WordPress Coding Standards for Founders Migration Website.</description>
+
+	<file>founders-migration-website.php</file>
+	<file>constants.php</file>
+	<file>functions.php</file>
+	<file>loader.php</file>
+	<file>uninstall.php</file>
+	<file>lib</file>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+	<arg name="parallel" value="8"/>
+
+	<config name="testVersion" value="7.4-"/>
+	<config name="minimum_wp_version" value="6.0"/>
+
+	<rule ref="WordPress-Extra"/>
+	<rule ref="WordPress-Docs"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="founders-migration-website"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="fmwp"/>
+				<element value="Founders\Migration"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Exception messages are plain text for logs and WP-CLI; they are escaped wherever they reach HTML. -->
+	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+		<severity>0</severity>
+	</rule>
+
+	<!-- WP-CLI passes ($args, $assoc_args) to every subcommand, used or not. -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude-pattern>lib/cli/*</exclude-pattern>
+	</rule>
+
+	<!-- Classes use PSR-4 file names (lib/archive/TarWriter.php), not class-*.php. -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>lib/*</exclude-pattern>
+	</rule>
+</ruleset>

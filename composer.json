@@ -1,0 +1,56 @@
+{
+	"name": "founders/founders-migration-website",
+	"description": "Backup, restore, and migrate WordPress sites up to 100 GB and beyond, using open and standard archive formats.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"homepage": "https://founders.co.id",
+	"authors": [
+		{
+			"name": "PT Founder Media Partner",
+			"homepage": "https://founders.co.id"
+		}
+	],
+	"require": {
+		"php": ">=7.4",
+		"ext-hash": "*",
+		"ext-json": "*",
+		"ext-zlib": "*"
+	},
+	"require-dev": {
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+		"php-stubs/wp-cli-stubs": "^2.11",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"phpstan/phpstan": "^2.1",
+		"phpunit/phpunit": "^9.6",
+		"szepeviktor/phpstan-wordpress": "^2.0",
+		"wp-coding-standards/wpcs": "^3.1"
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Founders\\Migration\\Tests\\": "tests/"
+		}
+	},
+	"config": {
+		"platform": {
+			"php": "7.4.33"
+		},
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		},
+		"sort-packages": true
+	},
+	"scripts": {
+		"lint": "find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l -n > /dev/null",
+		"test": "phpunit",
+		"cs": "phpcs",
+		"cs:fix": "phpcbf",
+		"stan": "phpstan analyse --memory-limit=1G",
+		"check": [
+			"@lint",
+			"@cs",
+			"@stan",
+			"@test"
+		],
+		"package": "mkdir -p build && git archive --format=zip --prefix=founders-migration-website/ -o build/founders-migration-website.zip HEAD"
+	}
+}

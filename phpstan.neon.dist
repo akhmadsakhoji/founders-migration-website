@@ -1,0 +1,24 @@
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+	level: 6
+	phpVersion:
+		min: 70400
+		max: 80599
+	paths:
+		- founders-migration-website.php
+		- constants.php
+		- functions.php
+		- loader.php
+		- uninstall.php
+		- lib
+	scanFiles:
+		- vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+	bootstrapFiles:
+		- tests/phpstan-bootstrap.php
+	ignoreErrors:
+		-
+			# The main plugin file deliberately guards against PHP versions below the analysed range.
+			identifier: booleanOr.leftAlwaysFalse
+			path: founders-migration-website.php
