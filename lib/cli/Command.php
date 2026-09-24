@@ -128,16 +128,18 @@ final class Command {
 	 * @return void
 	 */
 	public function delete( $args, $assoc_args ) {
-		$path = Backups::find( $args[0] );
-		if ( null === $path ) {
+		$backup = Backups::get( $args[0] );
+		if ( null === $backup ) {
 			WP_CLI::error( sprintf( 'Backup "%s" not found in %s.', $args[0], fmwp_backups_path() ) );
+			return;
+		}
+		if ( 'fmw' !== $backup['source'] ) {
+			WP_CLI::error( sprintf( '%s belongs to All-in-One WP Migration (wp-content/ai1wm-backups); FMW does not delete it.', $args[0] ) );
 		}
 
 		WP_CLI::confirm( sprintf( 'Delete %s?', $args[0] ), $assoc_args );
-		wp_delete_file( $path );
-
-		if ( file_exists( $path ) ) {
-			WP_CLI::error( sprintf( 'Could not delete %s.', $path ) );
+		if ( ! Backups::delete( $args[0] ) ) {
+			WP_CLI::error( sprintf( 'Could not delete %s.', $backup['path'] ) );
 		}
 		WP_CLI::success( sprintf( 'Deleted %s.', $args[0] ) );
 	}

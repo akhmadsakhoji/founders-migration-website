@@ -78,8 +78,8 @@ final class Jobs {
 				array(
 					\Founders\Migration\Model\Import\WpressCheckStep::class,
 					\Founders\Migration\Model\Import\WpressDatabaseStep::class,
+					\Founders\Migration\Model\Import\ReplaceStep::class, // Before the files: the site's files and database disagree for as short a time as possible.
 					\Founders\Migration\Model\Import\WpressFilesStep::class,
-					\Founders\Migration\Model\Import\ReplaceStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,
 				)

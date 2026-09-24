@@ -30,9 +30,9 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 final class Filter {
 
 	/**
-	 * Folders never worth backing up: WordPress update scratch space.
+	 * Folders never worth backing up: WordPress update scratch space, and All-in-One WP Migration's backups.
 	 */
-	const ALWAYS_SKIP = array( 'upgrade', 'upgrade-temp-backup' );
+	const ALWAYS_SKIP = array( 'upgrade', 'upgrade-temp-backup', 'ai1wm-backups' );
 
 	/**
 	 * Top-level cache folders removed by --exclude-cache.
