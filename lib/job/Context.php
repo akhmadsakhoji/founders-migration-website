@@ -65,6 +65,13 @@ final class Context {
 	private $reporter;
 
 	/**
+	 * Whether should_continue() has been called in this slice yet.
+	 *
+	 * @var bool
+	 */
+	private $started = false;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param string                 $dir           Job working folder.
@@ -98,10 +105,21 @@ final class Context {
 	/**
 	 * Whether the step may keep working in this slice.
 	 *
+	 * The first call of a slice always allows one unit of work (unless the job
+	 * is being stopped or cancelled), so a job keeps moving even when every
+	 * web request arrives with its time budget nearly spent.
+	 *
 	 * @return bool
 	 */
 	public function should_continue(): bool {
-		return microtime( true ) < $this->slice_end && ! $this->deadline->expired() && ! ( $this->interrupted )();
+		if ( ( $this->interrupted )() ) {
+			return false;
+		}
+		if ( ! $this->started ) {
+			$this->started = true;
+			return true;
+		}
+		return microtime( true ) < $this->slice_end && ! $this->deadline->expired();
 	}
 
 	/**

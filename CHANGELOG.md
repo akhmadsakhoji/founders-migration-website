@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Export scan step: resumable depth-first walk of wp-content into an on-disk file list (constant memory for millions of files); symlinks recorded, never followed; non-UTF-8 names kept byte-exact.
+- Export files step: packs files into format-v1 parts (`.tar.gz` for compressible files, `.tar` for media), rotates at the part size without ever splitting a file, resumes in the middle of large files, records SHA-256 per part, skips files deleted after the scan and logs files that changed size.
+- Exclusions matching `wp ai1wm backup`: cache, media, themes, inactive themes, mu-plugins, plugins, inactive plugins, and path patterns. The FMW backups and storage folders and WordPress `upgrade` folders are never included.
+- `tools/pack-dir.php` now runs the real scan and files steps as a job: Ctrl+C and `--resume=<job id>` work outside WordPress.
+
+### Changed
+
+- A job slice always performs at least one unit of work, so jobs progress even when a web request's time budget is nearly spent.
 - Job engine: resumable jobs with atomic `state.json` checkpoints, per-step cursors, an exclusive lock with heartbeat and stale-holder takeover, time-boxed slices for web requests, graceful Ctrl+C / SIGTERM, and cancellation.
 - WP-CLI: `wp fmw jobs`, `resume`, `cancel`, `log`, `cleanup`, with exit codes 0 (done), 1 (failed) and 3 (stopped, resumable).
 - Terminal progress bar with percentage, bytes, speed (30-second moving average) and ETA; plain lines every 5% when output is not a terminal.
