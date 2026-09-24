@@ -14,6 +14,10 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\FmwArchive;
+use Founders\Migration\Archive\PathGuard;
+use Founders\Migration\Archive\WpressDecoder;
+use Founders\Migration\Archive\WpressPackage;
+use Founders\Migration\Archive\WpressReader;
 use Founders\Migration\Job\Deadline;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
@@ -281,7 +285,7 @@ final class Command {
 	}
 
 	/**
-	 * Restores a .fmw backup onto this site, replacing its files and database.
+	 * Restores a .fmw or .wpress backup onto this site, replacing its files and database.
 	 *
 	 * The database is imported into temporary tables and switched in with one
 	 * atomic rename at the end, so a restore that fails or is cancelled before
@@ -290,10 +294,18 @@ final class Command {
 	 * own folder is never overwritten, and files that are not in the backup are
 	 * kept. Resumable: `wp fmw resume <job_id>`.
 	 *
+	 * All-in-One WP Migration backups (.wpress, plain, encrypted or compressed)
+	 * are restored the same way. The archive is checked first (structure, and
+	 * its CRC-32 when it has one) and the database is imported before any file
+	 * is written, so a damaged backup stops while the site is untouched.
+	 *
 	 * ## OPTIONS
 	 *
 	 * <file>
-	 * : Backup file name (in the backups folder) or path.
+	 * : Backup file name (in the fmw-backups or ai1wm-backups folder) or path.
+	 *
+	 * [--password=<password>]
+	 * : Password of an encrypted .wpress backup. Asked for when missing.
 	 *
 	 * [--yes]
 	 * : Skip the confirmation prompt.
@@ -314,14 +326,17 @@ final class Command {
 	 *
 	 *     wp fmw restore example.com-20260924-180000-a1b2c3.fmw
 	 *     wp fmw restore /backups/site.fmw --yes --keep-old-tables
+	 *     wp fmw restore example-com-20260924-180000-abc123.wpress
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function restore( $args, $assoc_args ) {
-		if ( '.wpress' === strtolower( substr( $args[0], -7 ) ) ) {
-			WP_CLI::error( sprintf( 'Importing All-in-One WP Migration (.wpress) backups is planned for phase 2 and is not available in %s yet.', FMWP_VERSION ) );
+		$wpress = $this->find_wpress( $args[0] );
+		if ( null !== $wpress ) {
+			$this->restore_wpress( $wpress, $assoc_args );
+			return;
 		}
 
 		$archive = $this->open_archive( $args[0] );
@@ -347,6 +362,87 @@ final class Command {
 		Paths::ensure_all();
 		$path = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
 		$job  = Jobs::store()->create( 'restore', RestoreOptions::build( $path, $assoc_args ) );
+		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
+	}
+
+	/**
+	 * Path of a .wpress backup given by name or path, or null when $file is not one.
+	 *
+	 * @param string $file Name or path.
+	 * @return string|null
+	 */
+	private function find_wpress( string $file ): ?string {
+		$candidates = array( $file );
+		if ( basename( $file ) === $file ) {
+			$candidates[] = fmwp_backups_path() . '/' . $file;
+			$candidates[] = untrailingslashit( wp_normalize_path( WP_CONTENT_DIR ) ) . '/ai1wm-backups/' . $file;
+		}
+		foreach ( $candidates as $path ) {
+			if ( is_file( $path ) && ( '.wpress' === strtolower( substr( $path, -7 ) ) || WpressReader::looks_like_wpress( $path ) ) ) {
+				return (string) realpath( $path );
+			}
+		}
+		if ( '.wpress' === strtolower( substr( $file, -7 ) ) ) {
+			WP_CLI::error( sprintf( 'Backup "%s" not found (looked in the current folder, %s and wp-content/ai1wm-backups).', $file, fmwp_backups_path() ) );
+		}
+		return null;
+	}
+
+	/**
+	 * Starts a .wpress restore job.
+	 *
+	 * @param string               $path       Archive path.
+	 * @param array<string,string> $assoc_args Flags.
+	 * @return void
+	 */
+	private function restore_wpress( string $path, array $assoc_args ): void {
+		try {
+			$package = WpressPackage::read( $path );
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		try {
+			new WpressDecoder( null, $package->compression() ); // Refuses early when a PHP extension is missing.
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+		}
+
+		$key = null;
+		if ( $package->encrypted() ) {
+			$password = (string) WP_CLI\Utils\get_flag_value( $assoc_args, 'password', '' );
+			if ( '' === $password ) {
+				if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {
+					WP_CLI::error( 'This backup is encrypted: pass --password=<password>.' );
+				}
+				$password = (string) \cli\prompt( 'Password of this backup', false, ': ', true );
+			}
+			try {
+				$key = $package->key_for( $password );
+			} catch ( ArchiveException $e ) {
+				WP_CLI::error( $e->getMessage() );
+			}
+		}
+
+		$data = $package->data();
+		WP_CLI::confirm(
+			sprintf(
+				'Restore %s (All-in-One WP Migration %s backup of %s) onto %s? This replaces this site\'s files and database.',
+				basename( $path ),
+				'' !== $package->plugin_version() ? $package->plugin_version() : '?',
+				(string) ( $data['HomeURL'] ?? '?' ),
+				home_url()
+			),
+			$assoc_args
+		);
+
+		Paths::ensure_all();
+		$options = RestoreOptions::build( $path, $assoc_args );
+		if ( null !== $key ) {
+			$options['wpress_key'] = bin2hex( $key ); // Removed from the job when it finishes.
+		}
+		$job = Jobs::store()->create( 'restore-wpress', $options );
 		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
 	}
 
@@ -565,7 +661,7 @@ final class Command {
 
 		if ( WP_CLI\Utils\get_flag_value( $assoc_args, 'tables', false ) ) {
 			foreach ( $store->all() as $job ) {
-				if ( 'restore' === $job->type && Lock::is_held( $store->dir( $job->id ) . '/' . JobStore::LOCK_FILE ) ) {
+				if ( Jobs::is_restore( $job->type ) && Lock::is_held( $store->dir( $job->id ) . '/' . JobStore::LOCK_FILE ) ) {
 					WP_CLI::error( sprintf( 'Restore job %s is running; its tables cannot be removed now.', $job->id ) );
 				}
 			}
@@ -584,6 +680,9 @@ final class Command {
 	/**
 	 * Checks every part of a backup against the SHA-256 checksums in its manifest.
 	 *
+	 * For a .wpress backup: checks every header and, when the archive has one
+	 * (recent All-in-One WP Migration versions), its CRC-32. No password needed.
+	 *
 	 * ## OPTIONS
 	 *
 	 * <file>
@@ -601,6 +700,11 @@ final class Command {
 	 * @return void
 	 */
 	public function verify( $args, $assoc_args ) {
+		$wpress = $this->find_wpress( $args[0] );
+		if ( null !== $wpress ) {
+			$this->verify_wpress( $wpress, WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
+			return;
+		}
 		$archive  = $this->open_archive( $args[0] );
 		$bar      = WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) ? new ProgressBar() : null;
 		$problems = $archive->verify(
@@ -650,6 +754,11 @@ final class Command {
 	 * @return void
 	 */
 	public function inspect( $args, $assoc_args ) {
+		$wpress = $this->find_wpress( $args[0] );
+		if ( null !== $wpress ) {
+			$this->inspect_wpress( $wpress, (string) WP_CLI\Utils\get_flag_value( $assoc_args, 'format', 'table' ) );
+			return;
+		}
 		try {
 			$manifest = $this->open_archive( $args[0] )->manifest();
 		} catch ( ArchiveException $e ) {
@@ -681,6 +790,133 @@ final class Command {
 			'Excluded'        => implode( ', ', (array) ( $manifest['options']['exclude'] ?? array() ) ),
 		);
 
+		$items = array();
+		foreach ( $rows as $field => $value ) {
+			$items[] = array(
+				'field' => $field,
+				'value' => '' === $value ? '-' : $value,
+			);
+		}
+		WP_CLI\Utils\format_items( 'table', $items, array( 'field', 'value' ) );
+	}
+
+	/**
+	 * Walks a .wpress archive and checks its CRC-32 when it has one.
+	 *
+	 * @param string $path     Archive.
+	 * @param bool   $progress Show a progress bar.
+	 * @return void
+	 */
+	private function verify_wpress( string $path, bool $progress ): void {
+		$size = (int) filesize( $path );
+		$bar  = $progress ? new ProgressBar() : null;
+		try {
+			$reader = WpressReader::open( $path );
+			$count  = 0;
+			try {
+				$entry = $reader->next();
+				while ( null !== $entry ) {
+					PathGuard::relative( $entry->name );
+					++$count;
+					$entry = $reader->next();
+				}
+				$end = $reader->archive_crc();
+			} finally {
+				$reader->close();
+			}
+
+			if ( null !== $end ) {
+				$handle = fopen( $path, 'rb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Multi-GB archive.
+				if ( false === $handle ) {
+					WP_CLI::error( sprintf( 'Cannot read %s.', $path ) );
+				}
+				$hash = hash_init( 'crc32b' );
+				$done = 0;
+				while ( $done < $end['size'] ) {
+					$data = fread( $handle, (int) min( 8388608, $end['size'] - $done ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Multi-GB archive.
+					if ( false === $data || '' === $data ) {
+						break;
+					}
+					hash_update( $hash, $data );
+					$done += strlen( $data );
+					if ( null !== $bar ) {
+						$bar->update( 'Verify', $done, $size );
+					}
+				}
+				fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Multi-GB archive.
+				if ( null !== $bar ) {
+					$bar->finish();
+				}
+				if ( ! hash_equals( $end['crc'], hash_final( $hash ) ) ) {
+					WP_CLI::error( sprintf( '%s is damaged (CRC-32 mismatch).', basename( $path ) ) );
+				}
+				WP_CLI::success( sprintf( '%s is intact: %d files, CRC-32 verified.', basename( $path ), $count ) );
+				return;
+			}
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		WP_CLI::success( sprintf( '%s is structurally intact: %d files. It has no checksum (older All-in-One WP Migration versions), so contents cannot be verified.', basename( $path ), $count ) );
+	}
+
+	/**
+	 * Shows a .wpress backup's package.json.
+	 *
+	 * @param string $path   Archive.
+	 * @param string $format table or json.
+	 * @return void
+	 */
+	private function inspect_wpress( string $path, string $format ): void {
+		try {
+			$package = WpressPackage::read( $path );
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		$data = $package->data();
+		if ( 'json' === $format ) {
+			WP_CLI::line( (string) wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+			return;
+		}
+
+		$excluded = array();
+		foreach ( array(
+			'NoSpamComments'    => 'spam comments',
+			'NoPostRevisions'   => 'post revisions',
+			'NoMedia'           => 'media',
+			'NoThemes'          => 'themes',
+			'NoInactiveThemes'  => 'inactive themes',
+			'NoMustUsePlugins'  => 'mu-plugins',
+			'NoPlugins'         => 'plugins',
+			'NoInactivePlugins' => 'inactive plugins',
+			'NoCache'           => 'cache',
+			'NoDatabase'        => 'database',
+		) as $key => $label ) {
+			if ( ! empty( $data[ $key ] ) ) {
+				$excluded[] = $label;
+			}
+		}
+		try {
+			$end = WpressReader::end_block( $path );
+		} catch ( ArchiveException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		$rows  = array(
+			'Generator'    => 'All-in-One WP Migration ' . $package->plugin_version(),
+			'Site URL'     => (string) ( $data['HomeURL'] ?? '' ),
+			'WordPress'    => $package->wordpress( 'Version' ),
+			'PHP'          => (string) ( $data['PHP']['Version'] ?? '' ),
+			'Database'     => (string) ( $data['Database']['Version'] ?? '' ),
+			'Table prefix' => $package->table_prefix(),
+			'Encrypted'    => $package->encrypted() ? 'yes' : 'no',
+			'Compression'  => $package->compression(),
+			'Checksum'     => null === $end ? 'none (older format)' : 'CRC-32 ' . $end['crc'],
+			'Size'         => ProgressBar::bytes( (int) filesize( $path ) ),
+			'Excluded'     => implode( ', ', $excluded ),
+		);
 		$items = array();
 		foreach ( $rows as $field => $value ) {
 			$items[] = array(
@@ -764,7 +1000,7 @@ final class Command {
 		}
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
-			if ( 'restore' === $job->type ) {
+			if ( Jobs::is_restore( $job->type ) ) {
 				Jobs::store()->purge_work_files( $job->id );
 				wp_cache_flush();
 				delete_option( 'rewrite_rules' );

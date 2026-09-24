@@ -31,7 +31,8 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * left alone (a shared database may hold other sites' tables).
  *
  * Reads job options: target.table_prefix, keep_active_plugin.
- * Reads job data: manifest.site.table_prefix, deferred.
+ * Reads job data: manifest.site.table_prefix, sql_prefix (prefix used in the
+ * dump, if different), deferred.
  */
 final class SwapStep implements Step {
 
@@ -84,7 +85,7 @@ final class SwapStep implements Step {
 			$restore->set_progress( 'swap', 'done' );
 		}
 
-		$this->create_objects( $job, $db, new SqlGuard( $from, $to ), $context );
+		$this->create_objects( $job, $db, new SqlGuard( (string) ( $job->data['sql_prefix'] ?? $from ), $to ), $context );
 		$this->keep_plugin_active( $job, $db, $to );
 		$db->close();
 		return true;

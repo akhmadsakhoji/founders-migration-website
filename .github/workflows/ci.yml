@@ -46,7 +46,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: zlib, hash, json, mysqli
+          extensions: zlib, hash, json, mysqli, openssl, bz2
           coverage: none
       - uses: ramsey/composer-install@v3
       - name: PHPUnit

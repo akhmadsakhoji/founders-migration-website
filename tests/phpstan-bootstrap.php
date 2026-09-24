@@ -13,6 +13,8 @@
 defined( 'DAY_IN_SECONDS' ) || define( 'DAY_IN_SECONDS', 86400 );
 define( 'ABSPATH', '/tmp/wordpress/' );
 define( 'WP_CONTENT_DIR', '/tmp/wordpress/wp-content' );
+define( 'WP_PLUGIN_DIR', WP_CONTENT_DIR . '/plugins' );
+define( 'WPMU_PLUGIN_DIR', WP_CONTENT_DIR . '/mu-plugins' );
 define( 'FMWP_PLUGIN_FILE', dirname( __DIR__ ) . '/founders-migration-website.php' );
 define( 'FMWP_VERSION', '0.0.0' );
 define( 'FMWP_PATH', dirname( __DIR__ ) );

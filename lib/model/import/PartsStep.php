@@ -15,7 +15,6 @@ use Founders\Migration\Archive\PathGuard;
 use Founders\Migration\Archive\TarReader;
 use Founders\Migration\Archive\UnsafePathException;
 use Founders\Migration\Database\SqlGuard;
-use Founders\Migration\Database\SqlReader;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
@@ -230,16 +229,6 @@ final class PartsStep implements Step {
 	}
 
 	/**
-	 * JSON for a small progress array.
-	 *
-	 * @param array<string,mixed> $data Data.
-	 * @return string
-	 */
-	private static function encode( array $data ): string {
-		return (string) json_encode( $data, JSON_UNESCAPED_SLASHES );
-	}
-
-	/**
 	 * Extracts a file part into wp-content, resuming after the entries already done.
 	 *
 	 * @param Job                 $job     Job.
@@ -307,84 +296,12 @@ final class PartsStep implements Step {
 	 * @param string              $staged  Staged part.
 	 * @param Context             $context Context.
 	 * @return bool Whether the file is fully imported.
-	 * @throws \Throwable Rethrown after rolling back.
 	 */
 	private function apply_sql( Job $job, array $part, string $staged, Context $context ): bool {
 		if ( null === $this->restore ) {
 			$this->restore = new RestoreDatabase();
 		}
-		$restore = $this->restore;
-		$db      = $restore->db();
-		$key     = 'sql:' . $part['path'];
-		$state   = json_decode( (string) $restore->progress( $key ), true );
-		$state   = is_array( $state ) ? $state : array(
-			'offset'    => 0,
-			'delimiter' => ';',
-			'done'      => false,
-		);
-		if ( ! empty( $state['done'] ) ) {
-			return true;
-		}
-
-		$guard   = new SqlGuard( (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ), RestoreDatabase::TMP );
-		$reader  = new SqlReader( $staged, (int) $state['offset'], (string) $state['delimiter'] );
-		$skipped = array();
-		$done    = false;
-
-		$db->query( 'START TRANSACTION' );
-		try {
-			do {
-				$statement = $reader->next();
-				if ( null === $statement ) {
-					$done = true;
-					break;
-				}
-				$checked = $guard->table_statement( $statement['sql'] );
-
-				if ( 'drop' === $checked['kind'] || 'create' === $checked['kind'] ) {
-					// DDL commits implicitly: record the position before it, run it, record after it.
-					$restore->set_progress( $key, self::encode( $state ) );
-					$db->query( 'COMMIT' );
-					$db->query( $checked['sql'] );
-					$state = array(
-						'offset'    => $statement['offset'],
-						'delimiter' => $statement['delimiter'],
-						'done'      => false,
-					);
-					$restore->set_progress( $key, self::encode( $state ) );
-					$db->query( 'START TRANSACTION' );
-					continue;
-				}
-
-				if ( 'skip' === $checked['kind'] ) {
-					if ( '' !== $checked['table'] && ! isset( $skipped[ $checked['table'] ] ) ) {
-						$skipped[ $checked['table'] ] = true;
-						$context->log( sprintf( 'Skipped table %s: it does not use the site prefix.', $checked['table'] ) );
-					}
-				} else {
-					$db->query( $checked['sql'] );
-				}
-				$state = array(
-					'offset'    => $statement['offset'],
-					'delimiter' => $statement['delimiter'],
-					'done'      => false,
-				);
-			} while ( $context->should_continue() );
-
-			$state['done'] = $done;
-			$restore->set_progress( $key, self::encode( $state ) );
-			$db->query( 'COMMIT' );
-		} catch ( \Throwable $e ) {
-			try {
-				$db->query( 'ROLLBACK' );
-			} catch ( \Throwable $ignored ) {
-				unset( $ignored ); // The original error matters more.
-			}
-			throw $e;
-		} finally {
-			$reader->close();
-		}
-
-		return $done;
+		$guard = new SqlGuard( (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ), RestoreDatabase::TMP );
+		return ( new SqlImporter( $this->restore ) )->import( 'sql:' . $part['path'], $staged, $guard, $context );
 	}
 }

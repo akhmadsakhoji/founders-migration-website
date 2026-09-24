@@ -34,6 +34,16 @@ final class Jobs {
 	}
 
 	/**
+	 * Whether a job type restores a site.
+	 *
+	 * @param string $type Job type.
+	 * @return bool
+	 */
+	public static function is_restore( string $type ): bool {
+		return 'restore' === $type || 0 === strpos( $type, 'restore-' );
+	}
+
+	/**
 	 * Registered job types.
 	 *
 	 * Built-in types are added here as they are implemented. Other code can
@@ -58,6 +68,17 @@ final class Jobs {
 				array(
 					\Founders\Migration\Model\Import\CheckStep::class,
 					\Founders\Migration\Model\Import\PartsStep::class,
+					\Founders\Migration\Model\Import\ReplaceStep::class,
+					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\FinalizeStep::class,
+				)
+			);
+			self::$registry->register(
+				'restore-wpress',
+				array(
+					\Founders\Migration\Model\Import\WpressCheckStep::class,
+					\Founders\Migration\Model\Import\WpressDatabaseStep::class,
+					\Founders\Migration\Model\Import\WpressFilesStep::class,
 					\Founders\Migration\Model\Import\ReplaceStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,

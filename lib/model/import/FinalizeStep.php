@@ -51,6 +51,7 @@ final class FinalizeStep implements Step {
 			$restore->drop( array( RestoreDatabase::PROGRESS ) );
 			$restore->db()->close();
 		}
+		unset( $job->options['wpress_key'] ); // Not needed any more; do not keep it on disk.
 		$context->log( 'Restore finished.' );
 		return true;
 	}

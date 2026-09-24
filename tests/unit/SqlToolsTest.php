@@ -116,6 +116,14 @@ SQL;
 		$this->assertSame( 'set', $guard->table_statement( "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO'" )['kind'] );
 	}
 
+	public function test_guard_ignores_transaction_control_from_dumps(): void {
+		$guard = new SqlGuard( 'SERVMASK_PREFIX_', 'fmwtmp_' );
+		foreach ( array( 'START TRANSACTION', 'BEGIN', 'COMMIT', 'ROLLBACK', 'SET autocommit=0', 'SET SESSION autocommit = 1', 'LOCK TABLES `SERVMASK_PREFIX_posts` WRITE', 'UNLOCK TABLES' ) as $sql ) {
+			$this->assertSame( 'skip', $guard->table_statement( $sql )['kind'], $sql );
+		}
+		$this->assertSame( 'CREATE TABLE `fmwtmp_posts` (id int)', $guard->table_statement( 'CREATE TABLE `SERVMASK_PREFIX_posts` (id int)' )['sql'] );
+	}
+
 	/**
 	 * @dataProvider hostile_statements
 	 *
@@ -149,6 +157,7 @@ SQL;
 			'drop other db table' => array( 'DROP TABLE mysql.user' ),
 			'update'              => array( "UPDATE wp_users SET user_pass = 'x'" ),
 			'unterminated'        => array( "INSERT INTO wp_x VALUES ('x)" ),
+			'begin block'         => array( 'BEGIN NOT ATOMIC SELECT 1; END' ),
 		);
 	}
 
