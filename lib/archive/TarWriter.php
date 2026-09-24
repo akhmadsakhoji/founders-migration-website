@@ -113,7 +113,7 @@ final class TarWriter {
 	 * @param int      $budget Maximum data bytes to write in this call (> 0).
 	 * @return int New offset. The entry is complete when it equals $entry->size.
 	 * @throws \InvalidArgumentException On an invalid offset or budget.
-	 * @throws ArchiveException When the file cannot be read before anything was written.
+	 * @throws UnreadableFileException When the file cannot be read; nothing has been written then.
 	 */
 	public function write_file_slice( string $source, TarEntry $entry, int $offset, int $budget ): int {
 		if ( $budget < 1 ) {
@@ -126,7 +126,7 @@ final class TarWriter {
 		$handle = is_readable( $source ) ? fopen( $source, 'rb' ) : false;
 		if ( 0 === $offset ) {
 			if ( false === $handle ) {
-				throw new ArchiveException( sprintf( 'Cannot read %s.', $source ) );
+				throw new UnreadableFileException( sprintf( 'Cannot read %s.', $source ) );
 			}
 			$this->sink->write( TarHeader::build( $entry ) );
 		}

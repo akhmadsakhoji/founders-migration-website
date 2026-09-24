@@ -2,12 +2,15 @@
 /**
  * Founders Migration Website
  *
- * Packs a directory into .tar parts with the FMW archive library and reports
- * throughput. Mirrors the part rules of format v1: compressible files go to
- * .tar.gz parts, already-compressed media to .tar parts.
+ * Packs a wp-content folder into format-v1 file parts with the real Scan and
+ * Files steps, outside WordPress. Resumable: press Ctrl+C, then run again
+ * with --resume=<job id>.
  *
  * Usage:
- *     php tools/pack-dir.php --src=/tmp/site/wp-content --out=/tmp/parts [--part-size=1G] [--level=6]
+ *     php tools/pack-dir.php --src=/tmp/site/wp-content [--jobs=/tmp/fmw-jobs] [--part-size=1G] [--level=6]
+ *     php tools/pack-dir.php --resume=<job id> [--jobs=/tmp/fmw-jobs]
+ *
+ * Exit codes: 0 done, 1 failed, 3 stopped (resumable).
  *
  * @package   Founders\Migration
  * @copyright Copyright (C) 2026 PT Founder Media Partner
@@ -17,10 +20,15 @@
 
 // phpcs:disable -- Developer tool, not shipped with the plugin.
 
-use Founders\Migration\Archive\GzipFileSink;
-use Founders\Migration\Archive\PlainFileSink;
-use Founders\Migration\Archive\TarEntry;
-use Founders\Migration\Archive\TarWriter;
+use Founders\Migration\Cli\ProgressBar;
+use Founders\Migration\Job\Deadline;
+use Founders\Migration\Job\Job;
+use Founders\Migration\Job\JobException;
+use Founders\Migration\Job\JobStore;
+use Founders\Migration\Job\Runner;
+use Founders\Migration\Job\StepRegistry;
+use Founders\Migration\Model\Export\FilesStep;
+use Founders\Migration\Model\Export\ScanStep;
 
 if ( 'cli' !== PHP_SAPI ) {
 	exit( 1 );
@@ -29,115 +37,86 @@ if ( 'cli' !== PHP_SAPI ) {
 define( 'FMWP_TESTS', true );
 require dirname( __DIR__ ) . '/loader.php';
 
-const STORE_EXTENSIONS = array( 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'heic', 'mp4', 'mov', 'webm', 'mkv', 'mp3', 'm4a', 'ogg', 'zip', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar', 'zst', 'woff', 'woff2', 'pdf' );
-const COMMIT_EVERY     = 67108864; // 64 MiB.
-
-$options = getopt( '', array( 'src:', 'out:', 'part-size::', 'level::' ) );
-if ( empty( $options['src'] ) || empty( $options['out'] ) ) {
-	fwrite( STDERR, "Usage: php tools/pack-dir.php --src=<dir> --out=<dir> [--part-size=1G] [--level=6]\n" );
+$options = getopt( '', array( 'src:', 'jobs:', 'part-size:', 'level:', 'resume:' ) );
+if ( empty( $options['src'] ) && empty( $options['resume'] ) ) {
+	fwrite( STDERR, "Usage: php tools/pack-dir.php --src=<wp-content> [--jobs=<dir>] [--part-size=1G] [--level=6]\n       php tools/pack-dir.php --resume=<job id> [--jobs=<dir>]\n" );
 	exit( 1 );
 }
 
-$units     = array( 'M' => 1 << 20, 'G' => 1 << 30 );
-$part_size = isset( $options['part-size'] ) ? (int) ( (float) $options['part-size'] * ( $units[ strtoupper( substr( $options['part-size'], -1 ) ) ] ?? 1 ) ) : 1 << 30;
-$level     = isset( $options['level'] ) ? (int) $options['level'] : 6;
-$src       = rtrim( realpath( $options['src'] ), '/' );
-$out       = rtrim( $options['out'], '/' );
-@mkdir( $out, 0755, true );
+$store    = new JobStore( $options['jobs'] ?? sys_get_temp_dir() . '/fmw-jobs' );
+$registry = new StepRegistry();
+$registry->register( 'files', array( ScanStep::class, FilesStep::class ) );
 
-/**
- * Opens part writers lazily and rotates them at the part size.
- */
-final class Parts {
-	private $writers = array();
-	private $bytes   = array();
-	private $number  = 0;
-	private $out;
-	private $part_size;
-	private $level;
-	public $warnings = array();
-	public $created  = array();
-
-	public function __construct( string $out, int $part_size, int $level ) {
-		$this->out       = $out;
-		$this->part_size = $part_size;
-		$this->level     = $level;
-	}
-
-	public function writer( string $kind, int $incoming ): TarWriter {
-		if ( isset( $this->writers[ $kind ] ) && $this->bytes[ $kind ] > 0 && $this->bytes[ $kind ] + $incoming > $this->part_size ) {
-			$this->close( $kind );
+try {
+	if ( ! empty( $options['resume'] ) ) {
+		$job = $store->load( $options['resume'] );
+	} else {
+		$units = array( 'M' => 1 << 20, 'G' => 1 << 30 );
+		$size  = $options['part-size'] ?? '1G';
+		$src   = realpath( $options['src'] );
+		if ( false === $src || ! is_dir( $src ) ) {
+			fwrite( STDERR, "Source folder not found.\n" );
+			exit( 1 );
 		}
-		if ( ! isset( $this->writers[ $kind ] ) ) {
-			$path                   = sprintf( '%s/part-%04d.%s', $this->out, ++$this->number, 'gz' === $kind ? 'tar.gz' : 'tar' );
-			$sink                   = 'gz' === $kind ? new GzipFileSink( $path, 0, $this->level ) : new PlainFileSink( $path );
-			$this->writers[ $kind ] = new TarWriter( $sink );
-			$this->bytes[ $kind ]   = 0;
-			$this->created[]        = $path;
-		}
-		$this->bytes[ $kind ] += $incoming;
-		return $this->writers[ $kind ];
+		$job = $store->create(
+			'files',
+			array(
+				'content_dir'       => $src,
+				'part_size'         => (int) ( (float) $size * ( $units[ strtoupper( substr( $size, -1 ) ) ] ?? 1 ) ),
+				'compression_level' => (int) ( $options['level'] ?? 6 ),
+				'skip_paths'        => array( 'fmw-backups', 'fmw-storage' ),
+			)
+		);
 	}
-
-	public function close( string $kind ): void {
-		$this->writers[ $kind ]->finish();
-		$this->warnings = array_merge( $this->warnings, $this->writers[ $kind ]->warnings() );
-		unset( $this->writers[ $kind ] );
-	}
-
-	public function close_all(): void {
-		foreach ( array_keys( $this->writers ) as $kind ) {
-			$this->close( $kind );
-		}
-	}
+} catch ( JobException $e ) {
+	fwrite( STDERR, $e->getMessage() . "\n" );
+	exit( 1 );
 }
 
-$parts    = new Parts( $out, $part_size, $level );
-$started  = microtime( true );
-$raw      = 0;
-$files    = 0;
-$last     = 0;
-$iterator = new RecursiveIteratorIterator(
-	new RecursiveDirectoryIterator( $src, FilesystemIterator::SKIP_DOTS ),
-	RecursiveIteratorIterator::SELF_FIRST
+fwrite( STDERR, "Job {$job->id} in " . $store->dir( $job->id ) . "\n" );
+
+$bar     = new ProgressBar();
+$started = microtime( true );
+$runner  = new Runner(
+	$store,
+	$registry,
+	static function ( Job $job ) use ( $bar ) {
+		if ( '' !== $job->phase ) {
+			$bar->update( $job->phase, $job->bytes_done, $job->bytes_total );
+		}
+	}
 );
 
-foreach ( $iterator as $path => $info ) {
-	$name = substr( $path, strlen( $src ) + 1 );
-	if ( $info->isLink() ) {
-		$parts->writer( 'gz', 0 )->add_symlink( $name, (string) readlink( $path ), (int) $info->getMTime() );
-		continue;
-	}
-	if ( $info->isDir() ) {
-		$parts->writer( 'gz', 0 )->add_directory( $name, $info->getPerms() & 0777, (int) $info->getMTime() );
-		continue;
-	}
-
-	$size   = (int) $info->getSize();
-	$kind   = in_array( strtolower( $info->getExtension() ), STORE_EXTENSIONS, true ) ? 'tar' : 'gz';
-	$writer = $parts->writer( $kind, $size );
-	$entry  = TarEntry::file( $name, $size, $info->getPerms() & 0777, (int) $info->getMTime() );
-	$offset = 0;
-	do {
-		$before = $offset;
-		$offset = $writer->write_file_slice( $path, $entry, $offset, COMMIT_EVERY );
-		$writer->commit();
-		$raw += $offset - $before;
-	} while ( $offset < $size );
-	++$files;
-
-	if ( microtime( true ) - $last > 2 ) {
-		$last    = microtime( true );
-		$elapsed = $last - $started;
-		fprintf( STDERR, "\r%d files · %.2f GiB · %.0f MB/s   ", $files, $raw / ( 1 << 30 ), $raw / 1e6 / max( $elapsed, 0.001 ) );
-	}
+try {
+	$runner->run( $job, Deadline::unlimited(), true );
+} catch ( JobException $e ) {
+	$bar->finish();
+	fwrite( STDERR, $e->getMessage() . "\n" );
+	exit( 1 );
 }
-$parts->close_all();
+$bar->finish();
 
-$elapsed  = microtime( true ) - $started;
-$archived = array_sum( array_map( 'filesize', $parts->created ) );
-fprintf( STDERR, "\r%s\r", str_repeat( ' ', 60 ) );
-printf( "Packed %d files, %.2f GiB -> %.2f GiB in %d parts, %.1f s (%.0f MB/s)\n", $files, $raw / ( 1 << 30 ), $archived / ( 1 << 30 ), count( $parts->created ), $elapsed, $raw / 1e6 / max( $elapsed, 0.001 ) );
-foreach ( $parts->warnings as $warning ) {
-	echo "Warning: $warning\n";
+if ( Job::STATUS_COMPLETED === $job->status ) {
+	$raw      = array_sum( array_column( $job->data['parts'], 'bytes_raw' ) );
+	$archived = array_sum( array_column( $job->data['parts'], 'bytes' ) );
+	printf(
+		"Packed %d files, %s -> %s in %d parts, %.1f s this run.\n",
+		$job->data['scan']['files'],
+		ProgressBar::bytes( (int) $raw ),
+		ProgressBar::bytes( (int) $archived ),
+		count( $job->data['parts'] ),
+		microtime( true ) - $started
+	);
+	foreach ( $job->data['parts'] as $part ) {
+		printf( "  %-24s %6d entries  %10s  sha256 %s…\n", $part['path'], $part['entries'], ProgressBar::bytes( $part['bytes'] ), substr( $part['sha256'], 0, 12 ) );
+	}
+	exit( 0 );
 }
+
+if ( Job::STATUS_FAILED === $job->status ) {
+	fwrite( STDERR, "Failed: {$job->error}\nFix the cause, then: php tools/pack-dir.php --resume={$job->id}\n" );
+	exit( 1 );
+}
+
+fwrite( STDERR, "Stopped. Continue with: php tools/pack-dir.php --resume={$job->id}" . ( isset( $options['jobs'] ) ? " --jobs={$options['jobs']}" : '' ) . "\n" );
+exit( 3 );

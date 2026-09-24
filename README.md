@@ -100,8 +100,8 @@ Useful tools:
 # Generate a fake 10 GB wp-content with edge cases (long paths, UTF-8 names, >8 GiB file).
 php tools/synthetic-site.php --out=/tmp/site --size=10G
 
-# Pack it into format-v1 parts and report throughput.
-php tools/pack-dir.php --src=/tmp/site/wp-content --out=/tmp/parts
+# Pack it into format-v1 parts with the real backup steps (Ctrl+C, then --resume=<job id>).
+php tools/pack-dir.php --src=/tmp/site/wp-content --jobs=/tmp/fmw-jobs
 ```
 
 Code layout:
