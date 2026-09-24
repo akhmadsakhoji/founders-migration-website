@@ -167,7 +167,7 @@ The manifest is the single source of truth for verification and restore.
 
 ## 6. Database parts
 
-- One or more files per table: `NNNN-<table>.<CCCC>.sql.gz`. `NNNN` is the restore order, `CCCC` the chunk number, both zero-padded to 4 digits.
+- One or more files per table: `NNNN-<table>.<CCCC>.sql.gz`. `NNNN` is the restore order, `CCCC` the chunk number, both zero-padded to 4 digits. In encrypted backups the table name is left out of the stored name (`NNNN.<CCCC>.sql.gz.enc`); it is only in the encrypted manifest.
 - Plain SQL, gzip-compressed, so `gunzip -c file.sql.gz | mysql db` works.
 - Every file starts with `SET NAMES utf8mb4; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';`.
 - Chunk 1 of each table starts with `DROP TABLE IF EXISTS` and `CREATE TABLE` (from `SHOW CREATE TABLE`).
@@ -183,8 +183,10 @@ Optional, enabled with `--password`. Every part and the manifest are encrypted s
 
 - Cipher: AES-256-CBC in the OpenSSL `enc` file format: the ASCII string `Salted__`, an 8-byte random salt, then the ciphertext. Every part gets its own salt.
 - Key derivation: PBKDF2-HMAC-SHA256 over the password and the part's salt, with the iteration count from `fmw.json` (default 600,000), producing 80 bytes. Bytes 0–31 are the AES key, 32–47 the IV, 48–79 the HMAC key. The first 48 bytes are exactly what `openssl enc -pbkdf2` derives, which keeps the ciphertext compatible with the OpenSSL command line.
-- Authentication (encrypt-then-MAC): HMAC-SHA256 over the whole stored file, stored in the manifest (`parts[].hmac`) or, for the manifest itself, in `fmw.json` (`manifest_hmac`). Readers MUST verify the HMAC before decrypting.
-- Names: encrypted entries get an extra `.enc` suffix (`files/part-0001.tar.gz.enc`, `manifest.json.enc`).
+- Authentication (encrypt-then-MAC): HMAC-SHA256 over the whole stored file, stored in the manifest (`parts[].hmac`) or, for the manifest itself, in `fmw.json` (`manifest_hmac`). Readers MUST verify the manifest's HMAC before decrypting it. For a part, the manifest's `sha256` of the stored bytes is already authenticated by that HMAC, so readers MUST verify either the part's SHA-256 or its HMAC before using decrypted data; FMW's restore checks the SHA-256 and `wp fmw verify --password` checks both.
+- Part records of encrypted backups: `path` is the stored name, `bytes`, `sha256` and `hmac` describe the stored (encrypted) file, `bytes_plain` is the size after decryption, `bytes_raw` the size before compression.
+- Names: encrypted entries get an extra `.enc` suffix (`files/part-0001.tar.gz.enc`, `manifest.json.enc`), and database parts drop the table name (section 6), so nothing outside the encryption describes the site. The backup's file name has no domain either (section 1).
+- `fmw.json` is written first, with `manifest_hmac` as 64 zeros; writers replace them in place once the manifest is written. A reader that finds all zeros MUST treat the archive as incomplete.
 - A wrong password is detected immediately by the manifest HMAC, before any heavy work.
 
 Manual decryption without the plugin (does not verify the HMAC):

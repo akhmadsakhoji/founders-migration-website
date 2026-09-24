@@ -10,7 +10,10 @@
 
 namespace Founders\Migration\Model\Import;
 
+use Founders\Migration\Archive\ArchiveException;
+use Founders\Migration\Archive\CbcStream;
 use Founders\Migration\Archive\Extractor;
+use Founders\Migration\Archive\FmwCrypto;
 use Founders\Migration\Archive\PathGuard;
 use Founders\Migration\Archive\TarReader;
 use Founders\Migration\Archive\UnsafePathException;
@@ -18,6 +21,7 @@ use Founders\Migration\Database\SqlGuard;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
@@ -41,8 +45,9 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  */
 final class PartsStep implements Step {
 
-	const STAGING    = 'staging';
-	const READ_BYTES = 1048576;
+	const STAGING       = 'staging';
+	const READ_BYTES    = 1048576;
+	const DECRYPT_BYTES = 8388608; // A multiple of the AES block size.
 
 	/**
 	 * Database helper, one per process.
@@ -86,8 +91,11 @@ final class PartsStep implements Step {
 		$count            = count( $parts );
 
 		while ( $cursor['p'] < $count && $context->should_continue() ) {
-			$part   = $parts[ $cursor['p'] ];
-			$staged = $context->dir() . '/' . self::STAGING . '/' . $part['path'];
+			$part      = $parts[ $cursor['p'] ];
+			$staged    = $context->dir() . '/' . self::STAGING . '/' . $part['path'];
+			$encrypted = ! empty( $job->data['encrypted'] );
+			$relative  = self::STAGING . '/' . ( $encrypted ? (string) preg_replace( '/\.enc$/', '', $part['path'] ) : $part['path'] );
+			$plain     = $context->dir() . '/' . $relative;
 
 			if ( 'copy' === $cursor['phase'] ) {
 				$cursor['copied'] = $this->copy( $job, $part, $staged, (int) $cursor['copied'], $context );
@@ -96,25 +104,38 @@ final class PartsStep implements Step {
 				if ( $cursor['copied'] < (int) $part['bytes'] ) {
 					continue;
 				}
-				$cursor['phase']   = 'apply';
-				$cursor['entries'] = 0;
+				$cursor['phase']     = $encrypted ? 'decrypt' : 'apply';
+				$cursor['entries']   = 0;
+				$cursor['decrypted'] = 0;
+			}
+
+			if ( 'decrypt' === $cursor['phase'] ) {
+				// The part's SHA-256 matched the authenticated manifest: its ciphertext is genuine.
+				$cursor['decrypted'] = $this->decrypt( $job, $part, $staged, $plain, (int) $cursor['decrypted'], $context );
+				if ( $cursor['decrypted'] < (int) $part['bytes'] - FmwCrypto::HEADER ) {
+					continue;
+				}
+				$cursor['phase'] = 'apply'; // The staged ciphertext stays until the part is applied, so a resume can always decrypt again.
 			}
 
 			if ( 'files' === $part['type'] ) {
-				$done = $this->apply_files( $job, $staged, $cursor, $context );
+				$done = $this->apply_files( $job, $plain, $cursor, $context );
 			} elseif ( in_array( $part['table'] ?? '', array( 'views', 'triggers' ), true ) ) {
 				$job->data['deferred']   = (array) ( $job->data['deferred'] ?? array() );
-				$job->data['deferred'][] = self::STAGING . '/' . $part['path'];
+				$job->data['deferred'][] = $relative;
 				$job->data['deferred']   = array_values( array_unique( $job->data['deferred'] ) );
 				$done                    = true;
 			} else {
-				$done = $this->apply_sql( $job, $part, $staged, $context );
+				$done = $this->apply_sql( $job, $part, $plain, $context );
 			}
 
 			if ( ! $done ) {
 				continue;
 			}
-			if ( ! in_array( self::STAGING . '/' . $part['path'], (array) ( $job->data['deferred'] ?? array() ), true ) && is_file( $staged ) ) {
+			if ( ! in_array( $relative, (array) ( $job->data['deferred'] ?? array() ), true ) && is_file( $plain ) ) {
+				unlink( $plain );
+			}
+			if ( $encrypted && is_file( $staged ) ) {
 				unlink( $staged );
 			}
 			++$cursor['p'];
@@ -203,6 +224,69 @@ final class PartsStep implements Step {
 			}
 		}
 		return $copied;
+	}
+
+	/**
+	 * Decrypts (part of) a staged encrypted part into its plain file. Resumable:
+	 * the CBC chaining block is the previous ciphertext block, read back from
+	 * the staged file, so the only state is the number of bytes done.
+	 *
+	 * @param Job                 $job     Job.
+	 * @param array<string,mixed> $part    Part record.
+	 * @param string              $staged  Staged encrypted part.
+	 * @param string              $plain   Plain file to write.
+	 * @param int                 $done    Ciphertext bytes (after the header) already decrypted.
+	 * @param Context             $context Context.
+	 * @return int Ciphertext bytes decrypted so far.
+	 * @throws JobException On a read / write error or bad padding.
+	 */
+	private function decrypt( Job $job, array $part, string $staged, string $plain, int $done, Context $context ): int {
+		$password = Secrets::open( $job->options['secret_password'] ?? null );
+		if ( null === $password ) {
+			throw new JobException( 'The backup password is no longer available (the site\'s salts may have changed). Start the restore again.' );
+		}
+		$total = (int) $part['bytes'] - FmwCrypto::HEADER;
+		$in    = fopen( $staged, 'rb' );
+		$out   = fopen( $plain, 'c+b' );
+		try {
+			if ( false === $in || false === $out ) {
+				throw new JobException( sprintf( 'Cannot decrypt %s.', $part['path'] ) );
+			}
+			$keys = FmwCrypto::keys( $password, FmwCrypto::salt( (string) fread( $in, FmwCrypto::HEADER ) ), (int) ( $job->data['kdf_iterations'] ?? FmwCrypto::ITERATIONS ) );
+			$iv   = $keys['iv'];
+			if ( $done > 0 ) {
+				fseek( $in, FmwCrypto::HEADER + $done - FmwCrypto::BLOCK );
+				$iv = (string) fread( $in, FmwCrypto::BLOCK );
+			}
+			if ( ! ftruncate( $out, $done ) || 0 !== fseek( $out, $done ) || 0 !== fseek( $in, FmwCrypto::HEADER + $done ) ) {
+				throw new JobException( sprintf( 'Cannot decrypt %s.', $part['path'] ) );
+			}
+			$cipher = new CbcStream( $keys['key'], $iv, false );
+
+			// At least one chunk per call: the outer loop already used this slice's guaranteed unit.
+			do {
+				$length = min( self::DECRYPT_BYTES, $total - $done );
+				$data   = (string) fread( $in, $length );
+				if ( strlen( $data ) !== $length ) {
+					throw new JobException( sprintf( 'Part %s ended early while decrypting.', $part['path'] ) );
+				}
+				$done  += $length;
+				$output = $done >= $total ? $cipher->finish( $data ) : $cipher->update( $data );
+				if ( false === fwrite( $out, $output ) ) {
+					throw new JobException( 'Write failed. The disk may be full.' );
+				}
+			} while ( $done < $total && $context->should_continue() );
+		} catch ( ArchiveException $e ) {
+			throw new JobException( sprintf( 'Part %s could not be decrypted: %s', $part['path'], $e->getMessage() ) );
+		} finally {
+			if ( false !== $in ) {
+				fclose( $in );
+			}
+			if ( false !== $out ) {
+				fclose( $out );
+			}
+		}
+		return $done;
 	}
 
 	/**

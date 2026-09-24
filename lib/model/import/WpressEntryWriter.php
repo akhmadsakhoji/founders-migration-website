@@ -18,6 +18,7 @@ use Founders\Migration\Archive\WpressReader;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
+use Founders\Migration\Job\Secrets;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
@@ -55,15 +56,15 @@ final class WpressEntryWriter {
 	/**
 	 * Constructor.
 	 *
-	 * @param Job $job Job with options archive, wpress_key and data compression, encrypted.
+	 * @param Job $job Job with options archive, secret_wpress_key and data compression, encrypted.
 	 * @throws JobException When the key is missing.
 	 */
 	public function __construct( Job $job ) {
 		$key = null;
 		if ( ! empty( $job->data['encrypted'] ) ) {
-			$key = hex2bin( (string) ( $job->options['wpress_key'] ?? '' ) );
-			if ( false === $key || 32 !== strlen( $key ) ) {
-				throw new JobException( 'This backup is encrypted and the job has no key; start the restore again with --password.' );
+			$key = (string) Secrets::open( $job->options['secret_wpress_key'] ?? null );
+			if ( 32 !== strlen( $key ) ) {
+				throw new JobException( 'This backup is encrypted and the job has no usable key (the site\'s salts may have changed); start the restore again with the password.' );
 			}
 		}
 		$this->archive = (string) ( $job->options['archive'] ?? '' );

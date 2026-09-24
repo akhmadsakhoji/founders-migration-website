@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Password encryption of `.fmw` backups (format v1, section 7): `wp fmw backup --password` and "Protect this backup with a password" on the Export screen. Parts and manifest are AES-256-CBC in the OpenSSL `enc` format with PBKDF2-SHA256 (600,000 iterations) and HMAC-SHA256. Database part names drop the table name, and the file name drops the domain. Encryption streams into the container with one read-back per part for its checksums, and resumes mid-part.
+- Encrypted restores: the password is checked against the manifest HMAC before anything happens; parts are checked (SHA-256 from the authenticated manifest) and then decrypted resumably. `wp fmw restore|verify|inspect --password`, and a password field in the restore confirmation.
+- Job secrets (backup passwords, `.wpress` keys) are stored sealed with AES-256-GCM, using a key derived from the site's AUTH salt, and removed when a job completes or is cancelled.
+
 - Admin screens: Export (the same exclusions as `wp fmw backup`, a progress dialog with step, bytes, speed and remaining time, then Download), Import (drag and drop of `.fmw` or `.wpress` files, chunked uploads of any size, then a restore confirmation with a password field for encrypted `.wpress`) and Backups (download, restore and delete, `ai1wm-backups` listed read-only, unfinished jobs to continue or cancel).
 - Resumable uploads: each chunk carries its offset and is accepted only at the end of the partial file. Choosing the same file again after a dropped connection or a closed tab continues the upload. The chunk size follows `post_max_size` and halves when a proxy answers 413.
 - Resumable downloads through `admin-post.php` with HTTP byte ranges; the backups folder stays closed to the web.

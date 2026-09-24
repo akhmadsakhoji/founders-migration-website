@@ -10,7 +10,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`) work end to end and are resumable, both in the admin screens and from WP-CLI. Encryption, `reset`, schedules and cloud storage come next. Test on staging sites before relying on it in production.
+> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`) and password encryption work end to end and are resumable, both in the admin screens and from WP-CLI. `reset`, schedules and cloud storage come next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -57,6 +57,17 @@ wp fmw verify <file>         # SHA-256 check of every part
 ```
 
 Backup flags follow `wp ai1wm backup`: `--exclude-spam-comments`, `--exclude-post-revisions`, `--exclude-media`, `--exclude-themes`, `--exclude-inactive-themes`, `--exclude-muplugins`, `--exclude-plugins`, `--exclude-inactive-plugins`, `--exclude-cache`, `--exclude-database`. FMW adds `--exclude-transients`, `--exclude-tables=a,b`, `--exclude-paths="uploads/old/*"`, `--part-size=512M` and `--porcelain`.
+
+Password-protected backups (AES-256, PBKDF2 with 600,000 iterations, HMAC):
+
+```bash
+wp fmw backup --password               # asked twice without echo; or --password=<password>
+wp fmw inspect <file> --password       # without the password only the date is readable
+wp fmw verify <file> --password        # SHA-256 and HMAC of every part
+wp fmw restore <file> --password
+```
+
+Everything that describes the site is encrypted, including the manifest, the database part names and the file name (`backup-<date>-<token>.fmw`). A wrong password is refused before anything happens. While a job runs, its password is kept sealed with a key derived from `wp-config.php`'s AUTH salt, never in plain text, and it is removed when the job ends. Without the plugin, a part decrypts with `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256` ([docs/format-v1.md](docs/format-v1.md), section 7).
 
 Restore onto the same site or a new domain, path or table prefix:
 

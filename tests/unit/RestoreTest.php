@@ -10,7 +10,9 @@
 
 namespace Founders\Migration\Tests\Unit;
 
+use Founders\Migration\Archive\FmwArchive;
 use Founders\Migration\Archive\GzipFileSink;
+use Founders\Migration\Archive\PasswordException;
 use Founders\Migration\Archive\PlainFileSink;
 use Founders\Migration\Archive\TarWriter;
 use Founders\Migration\Database\Connection;
@@ -19,6 +21,7 @@ use Founders\Migration\Job\Deadline;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\StepRegistry;
 use Founders\Migration\Model\Export\DatabaseStep;
 use Founders\Migration\Model\Export\FilesStep;
@@ -203,13 +206,20 @@ final class RestoreTest extends TestCase {
 	/**
 	 * Backs up the source site.
 	 *
+	 * @param string $password Password for an encrypted backup, '' for none.
 	 * @return string Archive path.
 	 */
-	private function backup(): string {
-		$job = $this->run_job(
+	private function backup( string $password = '' ): string {
+		$encryption = '' === $password ? array() : array(
+			'encrypt'         => true,
+			'kdf_iterations'  => 100000,
+			'secret_password' => Secrets::seal( $password ),
+			'archive_name'    => 'backup-20260924-180000-a1b2c3.fmw', // Encrypted backups name no site.
+		);
+		$job        = $this->run_job(
 			new JobStore( $this->tmp . '/backup-jobs' ),
 			'backup',
-			array(
+			$encryption + array(
 				'content_dir'     => $this->tmp . '/source/wp-content',
 				'table_prefix'    => 'wp_',
 				'part_size'       => 100000,
@@ -234,11 +244,12 @@ final class RestoreTest extends TestCase {
 	/**
 	 * Restore options for the target site.
 	 *
-	 * @param string $archive Archive path.
+	 * @param string $archive  Archive path.
+	 * @param string $password Password of an encrypted backup.
 	 * @return array<string,mixed>
 	 */
-	private function restore_options( string $archive ): array {
-		return array(
+	private function restore_options( string $archive, string $password = '' ): array {
+		return ( '' === $password ? array() : array( 'secret_password' => Secrets::seal( $password ) ) ) + array(
 			'archive'            => $archive,
 			'target'             => array(
 				'home_url'     => 'https://example.com/staging',
@@ -259,6 +270,67 @@ final class RestoreTest extends TestCase {
 		$archive = $this->backup();
 		$store   = new JobStore( $this->tmp . '/restore-jobs' );
 		$job     = $this->run_job( $store, 'restore', $this->restore_options( $archive ), self::TARGET );
+		$this->assert_restored( $store, $job );
+	}
+
+	public function test_an_encrypted_backup_hides_the_site_and_restores_only_with_its_password(): void {
+		$password = 'Kata sandi 123!';
+		$archive  = $this->backup( $password );
+		$bytes    = (string) file_get_contents( $archive );
+
+		// Nothing readable about the site: no URL, table names or file names outside the encryption.
+		$this->assertSame( 0, preg_match( '/example\.com|wp_options|astra|photo\.jpg/', $bytes ) );
+		$this->assertStringStartsWith( 'backup-', basename( $archive ) );
+		$fmw = new FmwArchive( $archive );
+		$this->assertTrue( $fmw->encrypted() );
+		$this->assertSame( 64, strlen( (string) $fmw->header()['manifest_hmac'] ) );
+		$this->assertNotSame( str_repeat( '0', 64 ), $fmw->header()['manifest_hmac'] );
+
+		// Wrong or missing password: refused before anything happens; verify checks SHA-256 and HMAC.
+		try {
+			$fmw->manifest( 'wrong password' );
+			$this->fail( 'Expected a password error.' );
+		} catch ( PasswordException $e ) {
+			$this->assertTrue( $e->given );
+		}
+		$this->assertSame( array( 'This backup is encrypted; a password is required.' ), $fmw->verify() );
+		$this->assertSame( array(), $fmw->verify( null, $password ) );
+
+		// Parts decrypt with the stock OpenSSL command line (format v1, section 7).
+		$openssl = $this->tool( 'openssl' );
+		$tar     = $this->tool( 'tar' );
+		if ( null !== $openssl && null !== $tar ) {
+			$part = null;
+			foreach ( $fmw->manifest( $password )['parts'] as $candidate ) {
+				if ( 'files' === $candidate['type'] ) {
+					$part = $candidate;
+					break;
+				}
+			}
+			$this->run_command( 'cd ' . escapeshellarg( $this->tmp ) . ' && tar -xf ' . escapeshellarg( $archive ) . ' ' . escapeshellarg( $part['path'] ) );
+			list( $code ) = $this->run_command( 'openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -md sha256 -pass ' . escapeshellarg( 'pass:' . $password ) . ' -in ' . escapeshellarg( $this->tmp . '/' . $part['path'] ) . ' -out ' . escapeshellarg( $this->tmp . '/plain.tar' ) );
+			$this->assertSame( 0, $code );
+			$this->assertSame( (int) $part['bytes_plain'], filesize( $this->tmp . '/plain.tar' ) );
+		}
+
+		$store = new JobStore( $this->tmp . '/restore-jobs' );
+		$wrong = $this->run_job( $store, 'restore', $this->restore_options( $archive, 'nope nope' ), self::TARGET );
+		$this->assertSame( Job::STATUS_FAILED, $wrong->status );
+		$this->assertStringContainsString( 'Wrong password', (string) $wrong->error );
+
+		$job = $this->run_job( $store, 'restore', $this->restore_options( $archive, $password ), self::TARGET );
+		$this->assertArrayNotHasKey( 'secret_password', $job->options );
+		$this->assert_restored( $store, $job );
+	}
+
+	/**
+	 * Checks the target site after a restore of the source site.
+	 *
+	 * @param JobStore $store Restore job store.
+	 * @param Job      $job   Finished job.
+	 * @return void
+	 */
+	private function assert_restored( JobStore $store, Job $job ): void {
 
 		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
 		$db = $this->connect( self::TARGET );
@@ -371,5 +443,34 @@ final class RestoreTest extends TestCase {
 		$this->assertSame( 'https://old-target.test', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'siteurl'" )[0] );
 		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'shop_evil'" ) );
 		$db->close();
+	}
+
+	public function test_a_part_name_that_leaves_the_staging_folder_is_refused(): void {
+		$archive  = $this->tmp . '/escape.fmw';
+		$writer   = new TarWriter( new PlainFileSink( $archive ) );
+		$part     = array(
+			'path'        => 'database/../../../escape.php',
+			'type'        => 'database',
+			'table'       => 'views',
+			'compression' => 'none',
+			'bytes_raw'   => 5,
+			'bytes'       => 5,
+			'sha256'      => hash( 'sha256', '<?php' ),
+		);
+		$manifest = array(
+			'format'  => 'fmw',
+			'version' => 1,
+			'site'    => array( 'home_url' => 'https://example.com', 'table_prefix' => 'wp_' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+			'parts'   => array( $part ),
+		);
+		$writer->add_string( 'fmw.json', '{"format":"fmw","version":1,"encrypted":false}' );
+		$writer->add_string( $part['path'], '<?php' );
+		$writer->add_string( 'manifest.json', (string) json_encode( $manifest ) );
+		$writer->finish();
+
+		$job = $this->run_job( new JobStore( $this->tmp . '/restore-jobs' ), 'restore', $this->restore_options( $archive ), self::TARGET );
+		$this->assertSame( Job::STATUS_FAILED, $job->status );
+		$this->assertStringContainsString( 'Unsafe part name', (string) $job->error );
+		$this->assertFileDoesNotExist( $this->tmp . '/escape.php' );
 	}
 }

@@ -213,6 +213,7 @@ final class Runner {
 		$job->status      = Job::STATUS_COMPLETED;
 		$job->phase       = '';
 		$job->finished_at = time();
+		Secrets::forget( $job ); // Passwords are not kept once the job is done.
 		if ( $job->bytes_total > 0 ) {
 			$job->bytes_done = $job->bytes_total;
 		}
@@ -230,7 +231,7 @@ final class Runner {
 	private function cancel( Job $job, callable $logger ): void {
 		$job->status      = Job::STATUS_CANCELLED;
 		$job->finished_at = time();
-		unset( $job->options['wpress_key'] ); // A cancelled job never needs the backup's key again.
+		Secrets::forget( $job ); // A cancelled job never needs its passwords again.
 		$logger( 'Cancelled.' );
 		$this->store->save( $job );
 		$this->store->purge_work_files( $job->id );
