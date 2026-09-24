@@ -44,6 +44,16 @@ final class Jobs {
 	}
 
 	/**
+	 * Whether a job type replaces the site's database or files (restore or reset).
+	 *
+	 * @param string $type Job type.
+	 * @return bool
+	 */
+	public static function changes_site( string $type ): bool {
+		return self::is_restore( $type ) || 'reset' === $type;
+	}
+
+	/**
 	 * Registered job types.
 	 *
 	 * Built-in types are added here as they are implemented. Other code can
@@ -81,6 +91,15 @@ final class Jobs {
 					\Founders\Migration\Model\Import\ReplaceStep::class, // Before the files: the site's files and database disagree for as short a time as possible.
 					\Founders\Migration\Model\Import\WpressFilesStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\FinalizeStep::class,
+				)
+			);
+			self::$registry->register(
+				'reset',
+				array(
+					\Founders\Migration\Model\Reset\ResetDatabaseStep::class,
+					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Reset\ResetFilesStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,
 				)
 			);

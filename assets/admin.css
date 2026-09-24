@@ -230,3 +230,34 @@
 .fmw-encrypt-fields[hidden] {
 	display: none;
 }
+
+.fmw-reset-parts {
+	display: grid;
+	gap: 12px 24px;
+	grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+	margin: 16px 0;
+}
+
+.fmw-reset-part {
+	align-items: flex-start;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	display: flex;
+	gap: 8px;
+	padding: 10px 12px;
+}
+
+.fmw-reset-part input {
+	margin-top: 2px;
+}
+
+.fmw-wrap .button-primary.fmw-danger {
+	background: #b32d2e;
+	border-color: #b32d2e;
+}
+
+.fmw-wrap .button-primary.fmw-danger:hover,
+.fmw-wrap .button-primary.fmw-danger:focus {
+	background: #8a2424;
+	border-color: #8a2424;
+}

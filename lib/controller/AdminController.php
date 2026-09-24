@@ -13,18 +13,20 @@ namespace Founders\Migration\Controller;
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Job\Jobs;
+use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
 
 /**
- * Admin menu and pages: Export, Import, Backups (same flow as All-in-One WP Migration).
+ * Admin menu and pages: Export, Import, Backups, Reset (same flow as All-in-One WP Migration).
  */
 final class AdminController {
 
 	const SLUG_EXPORT  = 'fmw-export';
 	const SLUG_IMPORT  = 'fmw-import';
 	const SLUG_BACKUPS = 'fmw-backups';
+	const SLUG_RESET   = 'fmw-reset';
 
 	/**
 	 * Registers admin hooks.
@@ -43,7 +45,7 @@ final class AdminController {
 	 */
 	public function assets(): void {
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only selects which assets to load.
-		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS ), true ) ) {
+		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_RESET ), true ) ) {
 			return;
 		}
 		wp_enqueue_style( 'fmw-admin', plugins_url( 'assets/admin.css', FMWP_PLUGIN_FILE ), array( 'dashicons' ), FMWP_VERSION );
@@ -113,6 +115,12 @@ final class AdminController {
 				'checking'         => __( 'Checking the uploaded file…', 'founders-migration-website' ),
 				'connectionLost'   => /* translators: %d: seconds. */ __( 'Connection problem. Trying again in %d s…', 'founders-migration-website' ),
 				'leaveWarning'     => __( 'A backup, upload or restore is running. Leaving pauses it; you can continue later from the Backups page.', 'founders-migration-website' ),
+				'reset'            => __( 'Reset', 'founders-migration-website' ),
+				'resetDone'        => __( 'The reset is complete.', 'founders-migration-website' ),
+				'resetNothing'     => __( 'Choose what to reset.', 'founders-migration-website' ),
+				'resetConfirm'     => __( 'The text does not match the site\'s domain.', 'founders-migration-website' ),
+				'safetyBackup'     => __( 'Safety backup before the reset', 'founders-migration-website' ),
+				'safetyBackupKept' => /* translators: %s: file name. */ __( 'Safety backup: %s. Restore it from the Backups page to undo the reset.', 'founders-migration-website' ),
 				'status'           => array(
 					'running'     => __( 'Running', 'founders-migration-website' ),
 					'interrupted' => __( 'Interrupted', 'founders-migration-website' ),
@@ -144,6 +152,7 @@ final class AdminController {
 		add_submenu_page( self::SLUG_EXPORT, __( 'Export', 'founders-migration-website' ), __( 'Export', 'founders-migration-website' ), $capability, self::SLUG_EXPORT, array( $this, 'render_export' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Import', 'founders-migration-website' ), __( 'Import', 'founders-migration-website' ), $capability, self::SLUG_IMPORT, array( $this, 'render_import' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Backups', 'founders-migration-website' ), __( 'Backups', 'founders-migration-website' ), $capability, self::SLUG_BACKUPS, array( $this, 'render_backups' ) );
+		add_submenu_page( self::SLUG_EXPORT, __( 'Reset', 'founders-migration-website' ), __( 'Reset', 'founders-migration-website' ), $capability, self::SLUG_RESET, array( $this, 'render_reset' ) );
 	}
 
 	/**
@@ -171,6 +180,21 @@ final class AdminController {
 	 */
 	public function render_backups(): void {
 		$this->render( 'backups', array( 'backups' => Backups::all() ) );
+	}
+
+	/**
+	 * Reset page.
+	 *
+	 * @return void
+	 */
+	public function render_reset(): void {
+		$this->render(
+			'reset',
+			array(
+				'confirm' => ResetOptions::confirm_word(),
+				'theme'   => wp_get_theme()->get( 'Name' ),
+			)
+		);
 	}
 
 	/**

@@ -29,6 +29,7 @@ use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\RestoreOptions;
+use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
@@ -477,6 +478,136 @@ final class Command {
 	}
 
 	/**
+	 * Resets parts of this site to a fresh WordPress: database, media, plugins and/or themes.
+	 *
+	 * Same as the Reset Hub of All-in-One WP Migration, with more safety:
+	 *
+	 * - A backup of the whole site is made first (skip with --skip-backup), so
+	 *   a reset can be undone with `wp fmw restore <backup>`.
+	 * - You confirm by typing the site's domain (or pass --yes in scripts).
+	 * - The fresh database is built next to the live one and switched in with
+	 *   one atomic rename, so a reset that fails before that changes nothing.
+	 *
+	 * Database: every table of this site (plugin tables too) is replaced by a
+	 * new WordPress install. Kept: the site address, title, tagline, admin
+	 * e-mail, language, time zone, date formats, permalinks, search engine
+	 * visibility and the kept users (as administrators, still logged in). This
+	 * plugin and the active theme stay active. Tables of other WordPress sites
+	 * in the same database (another table prefix) are not touched.
+	 *
+	 * Media: everything in the uploads folder, and the media library entries.
+	 * Plugins: all plugins except this one (must-use plugins and drop-ins stay).
+	 * Themes: all themes except the active theme (and its parent).
+	 *
+	 * Resumable: `wp fmw resume <job_id>`. Not available on multisite yet.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--database]
+	 * : Replace the database with a fresh WordPress install.
+	 *
+	 * [--media]
+	 * : Delete the uploads folder's contents and the media library.
+	 *
+	 * [--plugins]
+	 * : Delete all plugins except this one.
+	 *
+	 * [--themes]
+	 * : Delete all themes except the active one.
+	 *
+	 * [--all]
+	 * : All of the above.
+	 *
+	 * [--keep-user=<users>]
+	 * : Comma-separated user IDs, logins or e-mails kept as administrators by a database reset. Default: all administrators.
+	 *
+	 * [--skip-backup]
+	 * : Do not make a backup first. The reset cannot be undone then.
+	 *
+	 * [--keep-old-tables]
+	 * : Keep the replaced tables as fmwold_* (remove later with `wp fmw cleanup --tables`).
+	 *
+	 * [--yes]
+	 * : Do not ask to type the domain.
+	 *
+	 * [--[no-]progress]
+	 * : Show the progress bar (default).
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp fmw reset --all
+	 *     wp fmw reset --plugins --themes
+	 *     wp fmw reset --database --keep-user=admin --yes
+	 *
+	 * @param string[]             $args       Positional arguments.
+	 * @param array<string,string> $assoc_args Flags.
+	 * @return void
+	 */
+	public function reset( $args, $assoc_args ) {
+		$parts = array();
+		foreach ( ResetOptions::PARTS as $part ) {
+			if ( WP_CLI\Utils\get_flag_value( $assoc_args, 'all', false ) || WP_CLI\Utils\get_flag_value( $assoc_args, $part, false ) ) {
+				$parts[] = $part;
+			}
+		}
+		if ( ! $parts ) {
+			WP_CLI::error( 'Choose what to reset: --database, --media, --plugins, --themes or --all.' );
+		}
+
+		$users = ResetOptions::administrators();
+		if ( isset( $assoc_args['keep-user'] ) ) {
+			$users = array();
+			foreach ( array_filter( array_map( 'trim', explode( ',', (string) $assoc_args['keep-user'] ) ) ) as $name ) {
+				$user = ctype_digit( $name ) ? get_user_by( 'id', (int) $name ) : ( get_user_by( 'login', $name ) ? get_user_by( 'login', $name ) : get_user_by( 'email', $name ) );
+				if ( ! $user ) {
+					WP_CLI::error( sprintf( 'User "%s" not found.', $name ) );
+					return;
+				}
+				$users[] = (int) $user->ID;
+			}
+		}
+
+		try {
+			$options = ResetOptions::build( $parts, $users, (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'keep-old-tables', false ) );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+
+		$skip_backup = (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'skip-backup', false );
+		WP_CLI::log( sprintf( 'Reset of %s: %s.', home_url(), implode( ', ', $parts ) ) );
+		if ( in_array( 'database', $parts, true ) ) {
+			$logins = array_map(
+				static function ( int $id ): string {
+					$user = get_userdata( $id );
+					return $user ? (string) $user->user_login : (string) $id;
+				},
+				$options['keep_users']
+			);
+			WP_CLI::log( sprintf( 'Users kept as administrators: %s. All other content, settings and users are deleted.', implode( ', ', $logins ) ) );
+		}
+		WP_CLI::log( $skip_backup ? 'No backup is made first (--skip-backup): this cannot be undone.' : 'A backup of the whole site is made first.' );
+
+		if ( ! WP_CLI\Utils\get_flag_value( $assoc_args, 'yes', false ) ) {
+			if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {
+				WP_CLI::error( 'Pass --yes to reset without a terminal to confirm on.' );
+			}
+			$typed = (string) \cli\prompt( sprintf( 'Type %s to confirm', ResetOptions::confirm_word() ), false, ': ' );
+			if ( ! ResetOptions::confirmed( $typed ) ) {
+				WP_CLI::error( 'Not confirmed; nothing was changed.' );
+			}
+		}
+
+		Paths::ensure_all();
+		$no_progress = ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true );
+		if ( ! $skip_backup ) {
+			WP_CLI::log( 'Safety backup:' );
+			$this->run_job( Jobs::store()->create( 'backup', BackupOptions::from_flags( array() ) ), $no_progress ); // Stops here unless the backup completed.
+		}
+		$this->run_job( Jobs::store()->create( 'reset', $options ), $no_progress );
+	}
+
+	/**
 	 * Lists backup, restore and pull jobs, newest first.
 	 *
 	 * ## OPTIONS
@@ -691,8 +822,8 @@ final class Command {
 
 		if ( WP_CLI\Utils\get_flag_value( $assoc_args, 'tables', false ) ) {
 			foreach ( $store->all() as $job ) {
-				if ( Jobs::is_restore( $job->type ) && Lock::is_held( $store->dir( $job->id ) . '/' . JobStore::LOCK_FILE ) ) {
-					WP_CLI::error( sprintf( 'Restore job %s is running; its tables cannot be removed now.', $job->id ) );
+				if ( Jobs::changes_site( $job->type ) && Lock::is_held( $store->dir( $job->id ) . '/' . JobStore::LOCK_FILE ) ) {
+					WP_CLI::error( sprintf( 'Job %s (%s) is running; its tables cannot be removed now.', $job->id, $job->type ) );
 				}
 			}
 			$restore = new RestoreDatabase();
@@ -1063,10 +1194,14 @@ final class Command {
 		}
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
-			if ( Jobs::is_restore( $job->type ) ) {
+			if ( Jobs::changes_site( $job->type ) ) {
 				Jobs::store()->purge_work_files( $job->id );
 				wp_cache_flush();
 				delete_option( 'rewrite_rules' );
+				if ( 'reset' === $job->type ) {
+					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
+					return;
+				}
 				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored site; log in with its accounts.', home_url() ) );
 				return;
 			}
