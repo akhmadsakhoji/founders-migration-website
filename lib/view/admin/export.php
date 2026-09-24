@@ -40,6 +40,24 @@ $fmwp_options = array(
 		</fieldset>
 	</details>
 
+	<fieldset class="fmw-encrypt">
+		<label class="fmw-option">
+			<input type="checkbox" data-fmw-encrypt />
+			<?php esc_html_e( 'Protect this backup with a password', 'founders-migration-website' ); ?>
+		</label>
+		<div class="fmw-encrypt-fields" data-fmw-encrypt-fields hidden>
+			<p>
+				<label><?php esc_html_e( 'Password (at least 8 characters)', 'founders-migration-website' ); ?><br />
+					<input type="password" class="regular-text" autocomplete="new-password" data-fmw-password /></label>
+			</p>
+			<p>
+				<label><?php esc_html_e( 'Repeat the password', 'founders-migration-website' ); ?><br />
+					<input type="password" class="regular-text" autocomplete="new-password" data-fmw-password-repeat /></label>
+			</p>
+			<p class="description"><?php esc_html_e( 'Files, database and the list of what the backup contains are encrypted with AES-256. Keep the password safe: without it the backup cannot be restored, not even by us.', 'founders-migration-website' ); ?></p>
+		</div>
+	</fieldset>
+
 	<p class="fmw-actions">
 		<button type="button" class="button button-primary button-hero" data-fmw-action="export"><?php esc_html_e( 'Export to file', 'founders-migration-website' ); ?></button>
 	</p>

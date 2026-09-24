@@ -10,6 +10,9 @@
 
 namespace Founders\Migration\Model\Export;
 
+use Founders\Migration\Archive\FmwCrypto;
+use Founders\Migration\Job\Secrets;
+
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 /**
@@ -23,6 +26,8 @@ final class BackupOptions {
 	/**
 	 * Flag => exclusion name used by Filter / DatabaseStep.
 	 */
+	const MIN_PASSWORD = 8;
+
 	const EXCLUDE_FLAGS = array(
 		'exclude-spam-comments'    => 'spam-comments',
 		'exclude-post-revisions'   => 'post-revisions',
@@ -66,9 +71,13 @@ final class BackupOptions {
 			}
 		}
 
-		$site = self::site();
+		$site     = self::site();
+		$password = isset( $flags['password'] ) && is_string( $flags['password'] ) ? $flags['password'] : '';
+		if ( isset( $flags['password'] ) && strlen( $password ) < self::MIN_PASSWORD ) {
+			throw new \InvalidArgumentException( sprintf( 'The backup password must be at least %d characters long.', self::MIN_PASSWORD ) );
+		}
 
-		return array(
+		$options = array(
 			'content_dir'      => $content,
 			'skip_paths'       => $skip,
 			'exclude'          => $exclude,
@@ -84,6 +93,14 @@ final class BackupOptions {
 			'generator'        => 'fmw/' . FMWP_VERSION,
 			'site'             => $site,
 		);
+		if ( '' !== $password ) {
+			// Format v1, section 7: the manifest is encrypted and the file name names no site.
+			$options['encrypt']         = true;
+			$options['kdf_iterations']  = FmwCrypto::ITERATIONS;
+			$options['secret_password'] = Secrets::seal( $password );
+			$options['archive_name']    = sprintf( 'backup-%s-%s.%s', wp_date( 'Ymd-His' ), bin2hex( random_bytes( 3 ) ), FMWP_ARCHIVE_EXTENSION );
+		}
+		return $options;
 	}
 
 	/**

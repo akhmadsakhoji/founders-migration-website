@@ -25,6 +25,7 @@ use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\RestoreOptions;
@@ -249,8 +250,8 @@ final class Command {
 	 * [--porcelain]
 	 * : Print only the backup file name.
 	 *
-	 * [--password=<password>]
-	 * : Encrypt the backup. Planned for phase 2.
+	 * [--password[=<password>]]
+	 * : Encrypt the backup (AES-256, at least 8 characters). Without a value the password is asked for, twice, without echo. Keep it safe: without it the backup cannot be restored.
 	 *
 	 * [--sites=<ids>]
 	 * : Back up selected subsites only. Planned for phase 3.
@@ -260,6 +261,7 @@ final class Command {
 	 *     wp fmw backup
 	 *     wp fmw backup --exclude-cache --exclude-post-revisions
 	 *     wp fmw backup --exclude-media --porcelain
+	 *     wp fmw backup --password
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -267,7 +269,7 @@ final class Command {
 	 */
 	public function backup( $args, $assoc_args ) {
 		if ( isset( $assoc_args['password'] ) ) {
-			$this->planned( 'backup --password', 2 );
+			$assoc_args['password'] = $this->password( $assoc_args, true );
 		}
 		if ( isset( $assoc_args['sites'] ) ) {
 			$this->planned( 'backup --sites', 3 );
@@ -341,9 +343,15 @@ final class Command {
 			return;
 		}
 
-		$archive = $this->open_archive( $args[0] );
+		$archive  = $this->open_archive( $args[0] );
+		$password = null;
 		try {
-			$manifest = $archive->manifest();
+			if ( $archive->encrypted() ) {
+				$password = $this->password( $assoc_args, false );
+			} elseif ( isset( $assoc_args['password'] ) ) {
+				WP_CLI::error( 'This backup is NOT encrypted, although a password was given. If you encrypted it, the file may have been replaced; restore refused.' );
+			}
+			$manifest = $archive->manifest( $password );
 		} catch ( ArchiveException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
@@ -362,9 +370,35 @@ final class Command {
 		);
 
 		Paths::ensure_all();
-		$path = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
-		$job  = Jobs::store()->create( 'restore', RestoreOptions::build( $path, $assoc_args ) );
+		$path    = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
+		$options = RestoreOptions::build( $path, $assoc_args );
+		if ( null !== $password ) {
+			$options['secret_password'] = Secrets::seal( $password ); // Removed from the job when it ends.
+		}
+		$job = Jobs::store()->create( 'restore', $options );
 		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
+	}
+
+	/**
+	 * The password from --password=<value>, or asked for without echo.
+	 *
+	 * @param array<string,mixed> $assoc_args Flags.
+	 * @param bool                $is_new     A new password: asked twice.
+	 * @return string
+	 */
+	private function password( array $assoc_args, bool $is_new ): string {
+		$password = $assoc_args['password'] ?? '';
+		if ( is_string( $password ) && '' !== $password ) {
+			return $password;
+		}
+		if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {
+			WP_CLI::error( $is_new ? 'Pass the password as --password=<password> (no terminal to ask it on).' : 'This backup is encrypted: pass --password=<password>.' );
+		}
+		$password = (string) \cli\prompt( $is_new ? 'Password for this backup' : 'Password of this backup', false, ': ', true );
+		if ( $is_new && (string) \cli\prompt( 'Repeat the password', false, ': ', true ) !== $password ) {
+			WP_CLI::error( 'The passwords do not match.' );
+		}
+		return $password;
 	}
 
 	/**
@@ -413,13 +447,7 @@ final class Command {
 
 		$key = null;
 		if ( $package->encrypted() ) {
-			$password = (string) WP_CLI\Utils\get_flag_value( $assoc_args, 'password', '' );
-			if ( '' === $password ) {
-				if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {
-					WP_CLI::error( 'This backup is encrypted: pass --password=<password>.' );
-				}
-				$password = (string) \cli\prompt( 'Password of this backup', false, ': ', true );
-			}
+			$password = $this->password( $assoc_args, false );
 			try {
 				$key = $package->key_for( $password );
 			} catch ( ArchiveException $e ) {
@@ -442,7 +470,7 @@ final class Command {
 		Paths::ensure_all();
 		$options = RestoreOptions::build( $path, $assoc_args );
 		if ( null !== $key ) {
-			$options['wpress_key'] = bin2hex( $key ); // Removed from the job when it finishes.
+			$options['secret_wpress_key'] = Secrets::seal( $key ); // Removed from the job when it ends.
 		}
 		$job = Jobs::store()->create( 'restore-wpress', $options );
 		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
@@ -690,6 +718,9 @@ final class Command {
 	 * <file>
 	 * : Backup file name (in the backups folder) or path.
 	 *
+	 * [--password[=<password>]]
+	 * : Password of an encrypted .fmw backup (its parts' HMACs are checked too). Asked for when needed.
+	 *
 	 * [--[no-]progress]
 	 * : Show the progress bar (default).
 	 *
@@ -708,13 +739,15 @@ final class Command {
 			return;
 		}
 		$archive  = $this->open_archive( $args[0] );
+		$password = $archive->encrypted() ? $this->password( $assoc_args, false ) : null;
 		$bar      = WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) ? new ProgressBar() : null;
 		$problems = $archive->verify(
 			static function ( int $done, int $total ) use ( $bar ) {
 				if ( null !== $bar ) {
 					$bar->update( 'Verify', $done, $total );
 				}
-			}
+			},
+			$password
 		);
 		if ( null !== $bar ) {
 			$bar->finish();
@@ -726,7 +759,7 @@ final class Command {
 			}
 			WP_CLI::error( sprintf( '%s failed verification (%d problem(s)).', basename( $args[0] ), count( $problems ) ) );
 		}
-		WP_CLI::success( sprintf( 'All %d parts of %s are intact.', count( $archive->manifest()['parts'] ), basename( $args[0] ) ) );
+		WP_CLI::success( sprintf( 'All %d parts of %s are intact%s.', count( $archive->manifest( $password )['parts'] ), basename( $args[0] ), null === $password ? '' : ' (SHA-256 and HMAC)' ) );
 	}
 
 	/**
@@ -736,6 +769,9 @@ final class Command {
 	 *
 	 * <file>
 	 * : Backup file name (in the backups folder) or path.
+	 *
+	 * [--password[=<password>]]
+	 * : Password of an encrypted .fmw backup, to show what it contains.
 	 *
 	 * [--format=<format>]
 	 * : table for a summary, json for the full manifest.
@@ -761,8 +797,32 @@ final class Command {
 			$this->inspect_wpress( $wpress, (string) WP_CLI\Utils\get_flag_value( $assoc_args, 'format', 'table' ) );
 			return;
 		}
+		$archive = $this->open_archive( $args[0] );
 		try {
-			$manifest = $this->open_archive( $args[0] )->manifest();
+			if ( $archive->encrypted() && ! isset( $assoc_args['password'] ) ) {
+				$header = $archive->header();
+				WP_CLI\Utils\format_items(
+					'table',
+					array(
+						array(
+							'field' => 'Created',
+							'value' => (string) ( $header['created_at'] ?? '-' ),
+						),
+						array(
+							'field' => 'Generator',
+							'value' => (string) ( $header['generator'] ?? '-' ),
+						),
+						array(
+							'field' => 'Encrypted',
+							'value' => sprintf( 'yes (%s, PBKDF2 %d iterations)', (string) ( $header['cipher'] ?? '?' ), (int) ( $header['kdf']['iterations'] ?? 0 ) ),
+						),
+					),
+					array( 'field', 'value' )
+				);
+				WP_CLI::log( 'What the backup contains is encrypted too; add --password to see it.' );
+				return;
+			}
+			$manifest = $archive->manifest( $archive->encrypted() ? $this->password( $assoc_args, false ) : null );
 		} catch ( ArchiveException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
@@ -789,6 +849,7 @@ final class Command {
 			'Tables / rows'   => sprintf( '%d / %s', (int) ( $totals['tables'] ?? 0 ), number_format( (int) ( $totals['rows'] ?? 0 ) ) ),
 			'Parts'           => (string) count( (array) $manifest['parts'] ),
 			'Size'            => sprintf( '%s (%s before compression)', ProgressBar::bytes( (int) ( $totals['bytes_archived'] ?? 0 ) ), ProgressBar::bytes( (int) ( $totals['bytes_raw'] ?? 0 ) ) ),
+			'Encrypted'       => ! empty( $manifest['options']['encrypted'] ) ? 'yes' : 'no',
 			'Excluded'        => implode( ', ', (array) ( $manifest['options']['exclude'] ?? array() ) ),
 		);
 

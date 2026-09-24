@@ -299,13 +299,26 @@
 	// ----------------------------------------------------------------- export
 
 	function exportSite( panel ) {
-		var flags = {};
-		panel.querySelectorAll( 'input[type=checkbox]:checked' ).forEach( function ( box ) {
+		var flags   = {};
+		var request = { type: 'backup', flags: flags };
+		panel.querySelectorAll( '.fmw-advanced input[type=checkbox]:checked' ).forEach( function ( box ) {
 			flags[ box.name ] = true;
 		} );
+		if ( panel.querySelector( '[data-fmw-encrypt]' ).checked ) {
+			var password = panel.querySelector( '[data-fmw-password]' ).value;
+			if ( password.length < 8 ) {
+				window.alert( t.passwordShort );
+				return;
+			}
+			if ( password !== panel.querySelector( '[data-fmw-password-repeat]' ).value ) {
+				window.alert( t.passwordMismatch );
+				return;
+			}
+			request.password = password;
+		}
 		modal.open( t.export );
 		modal.progress( null, t.preparing );
-		startJob( { type: 'backup', flags: flags }, t.export ).catch( function ( error ) {
+		startJob( request, t.export ).catch( function ( error ) {
 			modal.message( error.message, 'error' );
 			modal.actions( [ closeButton( false ) ] );
 		} );
@@ -329,6 +342,7 @@
 				[ t.createdBy, info.generator ],
 				[ t.created, info.created ],
 				[ t.size, bytes( info.size ) ],
+				[ t.encrypted, info.encrypted ? t.yes : t.no ],
 			];
 			var table = el( 'table', { class: 'fmw-facts' }, rows.map( function ( row ) {
 				return el( 'tr', {}, [ el( 'th', { text: row[ 0 ] } ), el( 'td', { text: row[ 1 ] || '-' } ) ] );
@@ -558,6 +572,13 @@
 			if ( files && files[ 0 ] ) {
 				upload( files[ 0 ] );
 			}
+		} );
+	}
+
+	var encrypt = document.querySelector( '[data-fmw-encrypt]' );
+	if ( encrypt ) {
+		encrypt.addEventListener( 'change', function () {
+			document.querySelector( '[data-fmw-encrypt-fields]' ).hidden = ! encrypt.checked;
 		} );
 	}
 

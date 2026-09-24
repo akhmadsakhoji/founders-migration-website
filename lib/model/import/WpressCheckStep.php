@@ -20,6 +20,7 @@ use Founders\Migration\Archive\WpressReader;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
@@ -38,7 +39,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  *    reads it all once and compares, so a damaged download is refused before
  *    the site is touched. Resumable: the partial CRC is combined across slices.
  *
- * Reads job options: archive, target, wpress_key (hex), email_replace,
+ * Reads job options: archive, target, secret_wpress_key (sealed), email_replace,
  * skip_space_check. Writes job data: wpress, manifest, replace, sql_prefix,
  * has_db.
  */
@@ -180,9 +181,9 @@ final class WpressCheckStep implements Step {
 		$package = WpressPackage::read( (string) $job->options['archive'] );
 		$key     = null;
 		if ( $package->encrypted() ) {
-			$key = hex2bin( (string) ( $job->options['wpress_key'] ?? '' ) );
-			if ( false === $key || 32 !== strlen( $key ) || ! $package->accepts_key( $key ) ) {
-				throw new JobException( 'This backup is encrypted: pass the right --password.' );
+			$key = (string) Secrets::open( $job->options['secret_wpress_key'] ?? null );
+			if ( 32 !== strlen( $key ) || ! $package->accepts_key( $key ) ) {
+				throw new JobException( 'This backup is encrypted: start the restore again with the right password.' );
 			}
 		}
 		new WpressDecoder( $key ? $key : null, $package->compression() ); // Fails early when a PHP extension is missing.

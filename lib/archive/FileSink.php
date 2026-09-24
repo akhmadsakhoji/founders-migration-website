@@ -27,6 +27,13 @@ abstract class FileSink implements Sink {
 	protected $handle;
 
 	/**
+	 * File path.
+	 *
+	 * @var string
+	 */
+	private $path;
+
+	/**
 	 * Opens $path for writing. An existing file is truncated to $resume_at
 	 * (anything after the last commit is discarded); a new file is created.
 	 *
@@ -53,6 +60,16 @@ abstract class FileSink implements Sink {
 		}
 
 		$this->handle = $handle;
+		$this->path   = $path;
+	}
+
+	/**
+	 * File path.
+	 *
+	 * @return string
+	 */
+	public function path(): string {
+		return $this->path;
 	}
 
 	/**
@@ -84,6 +101,19 @@ abstract class FileSink implements Sink {
 		$this->commit();
 		fclose( $this->handle );
 		$this->handle = null;
+	}
+
+	/**
+	 * Current byte offset in the file (written, not necessarily committed).
+	 *
+	 * @return int
+	 * @throws ArchiveException When the sink is closed.
+	 */
+	public function position(): int {
+		if ( null === $this->handle ) {
+			throw new ArchiveException( 'Sink is closed.' );
+		}
+		return (int) ftell( $this->handle );
 	}
 
 	/**

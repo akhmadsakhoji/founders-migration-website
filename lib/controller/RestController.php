@@ -12,6 +12,7 @@ namespace Founders\Migration\Controller;
 
 use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\FmwArchive;
+use Founders\Migration\Archive\PasswordException;
 use Founders\Migration\Archive\WpressDecoder;
 use Founders\Migration\Archive\WpressPackage;
 use Founders\Migration\Archive\WpressReader;
@@ -23,6 +24,7 @@ use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\JobToken;
 use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreOptions;
 use Founders\Migration\Storage\Backups;
@@ -213,7 +215,21 @@ final class RestController {
 					)
 				);
 			}
-			$archive  = new FmwArchive( $backup['path'] );
+			$archive = new FmwArchive( $backup['path'] );
+			$header  = $archive->header();
+			if ( ! empty( $header['encrypted'] ) ) {
+				return new WP_REST_Response(
+					array(
+						'name'      => $backup['name'],
+						'format'    => 'fmw',
+						'site_url'  => '',
+						'generator' => (string) ( $header['generator'] ?? '' ),
+						'created'   => isset( $header['created_at'] ) ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) strtotime( (string) $header['created_at'] ) ) : '',
+						'encrypted' => true,
+						'size'      => $backup['size'],
+					)
+				);
+			}
 			$manifest = $archive->manifest();
 		} catch ( ArchiveException $e ) {
 			return new WP_Error( 'fmw_invalid_backup', $e->getMessage(), array( 'status' => 422 ) );
@@ -384,7 +400,11 @@ final class RestController {
 		Paths::ensure_all();
 		$type = (string) $request['type'];
 		try {
+			unset( $flags['password'] ); // Only the top-level, unsanitized password counts.
 			if ( 'backup' === $type ) {
+				if ( is_string( $request['password'] ) && '' !== $request['password'] ) {
+					$flags['password'] = $request['password']; // Raw: a password must not be "sanitized".
+				}
 				$options = BackupOptions::from_flags( $flags );
 			} elseif ( 'restore' === $type ) {
 				$backup = Backups::get( (string) $request['backup'] );
@@ -392,6 +412,14 @@ final class RestController {
 					return new WP_Error( 'fmw_not_found', __( 'Backup not found.', 'founders-migration-website' ), array( 'status' => 404 ) );
 				}
 				$options = RestoreOptions::build( $backup['path'], $flags );
+				if ( 'fmw' === $backup['type'] ) {
+					$archive = new FmwArchive( $backup['path'] );
+					if ( $archive->encrypted() ) {
+						$password = (string) $request['password'];
+						$archive->manifest( $password ); // Refuses a missing or wrong password now.
+						$options['secret_password'] = Secrets::seal( $password );
+					}
+				}
 				if ( 'wpress' === $backup['type'] ) {
 					$type    = 'restore-wpress';
 					$package = WpressPackage::read( $backup['path'] );
@@ -400,12 +428,14 @@ final class RestController {
 						if ( '' === $password ) {
 							return new WP_Error( 'fmw_password_required', __( 'This backup is protected with a password.', 'founders-migration-website' ), array( 'status' => 400 ) );
 						}
-						$options['wpress_key'] = bin2hex( $package->key_for( $password ) );
+						$options['secret_wpress_key'] = Secrets::seal( $package->key_for( $password ) );
 					}
 				}
 			} else {
 				return new WP_Error( 'fmw_invalid_type', __( 'Unknown job type.', 'founders-migration-website' ), array( 'status' => 400 ) );
 			}
+		} catch ( PasswordException $e ) {
+			return new WP_Error( $e->given ? 'fmw_wrong_password' : 'fmw_password_required', $e->given ? __( 'Wrong password for this backup.', 'founders-migration-website' ) : __( 'This backup is protected with a password.', 'founders-migration-website' ), array( 'status' => 400 ) );
 		} catch ( ArchiveException $e ) {
 			$code = false !== strpos( $e->getMessage(), 'Wrong password' ) ? 'fmw_wrong_password' : 'fmw_invalid_backup';
 			return new WP_Error( $code, $e->getMessage(), array( 'status' => 400 ) );

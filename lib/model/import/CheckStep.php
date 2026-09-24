@@ -12,9 +12,11 @@ namespace Founders\Migration\Model\Import;
 
 use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\FmwArchive;
+use Founders\Migration\Archive\PasswordException;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
@@ -45,10 +47,15 @@ final class CheckStep implements Step {
 	public function run( Job $job, Context $context ): bool {
 		$target = (array) ( $job->options['target'] ?? array() );
 		try {
-			$manifest = ( new FmwArchive( (string) ( $job->options['archive'] ?? '' ) ) )->manifest();
+			$archive  = new FmwArchive( (string) ( $job->options['archive'] ?? '' ) );
+			$header   = $archive->header();
+			$manifest = $archive->manifest( Secrets::open( $job->options['secret_password'] ?? null ) );
+		} catch ( PasswordException $e ) {
+			throw new JobException( $e->given ? $e->getMessage() : 'This backup is encrypted: start the restore again with its password.' );
 		} catch ( ArchiveException $e ) {
 			throw new JobException( $e->getMessage() );
 		}
+		$encrypted = ! empty( $header['encrypted'] );
 
 		$site = (array) ( $manifest['site'] ?? array() );
 		if ( ! empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
@@ -65,6 +72,9 @@ final class CheckStep implements Step {
 		$largest   = 0;
 		$has_db    = false;
 		foreach ( (array) $manifest['parts'] as $part ) {
+			if ( 1 !== preg_match( '#^(database|files|root-files)/[A-Za-z0-9._$-]+$#', (string) ( $part['path'] ?? '' ) ) || false !== strpos( (string) $part['path'], '..' ) ) {
+				throw new JobException( sprintf( 'Unsafe part name "%s" in the manifest; the archive is refused.', preg_replace( '/[^\x20-\x7E]/', '?', (string) ( $part['path'] ?? '' ) ) ) );
+			}
 			$largest = max( $largest, (int) $part['bytes'] );
 			if ( 'database' === $part['type'] ) {
 				$raw_db += (int) $part['bytes_raw'];
@@ -77,10 +87,14 @@ final class CheckStep implements Step {
 			if ( ! in_array( $part['compression'], array( 'gzip', 'none' ), true ) ) {
 				throw new JobException( sprintf( 'Unknown compression "%s"; update the plugin.', $part['compression'] ) );
 			}
+			$sealed = '.enc' === substr( (string) $part['path'], -4 );
+			if ( $sealed xor $encrypted ) {
+				throw new JobException( sprintf( 'Part %s does not match the archive\'s encryption setting.', $part['path'] ) );
+			}
 		}
 
-		// Staging one part + the extracted files + the database twice (live and imported), plus 10%.
-		$needed = (int) ( ( $largest + $raw_files + 2 * $raw_db ) * 1.1 );
+		// Staging one part (twice when it is decrypted) + the extracted files + the database twice (live and imported), plus 10%.
+		$needed = (int) ( ( ( $encrypted ? 2 : 1 ) * $largest + $raw_files + 2 * $raw_db ) * 1.1 );
 		$free   = @disk_free_space( (string) ( $target['content_dir'] ?? '.' ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Not available on every host; treated as unknown.
 		if ( false !== $free && $free < $needed && empty( $job->options['skip_space_check'] ) ) {
 			throw new JobException( sprintf( 'Not enough disk space: the restore needs about %d MB, %d MB are free. Free up space or pass --skip-space-check.', (int) ( $needed / 1048576 ), (int) ( $free / 1048576 ) ) );
@@ -93,13 +107,17 @@ final class CheckStep implements Step {
 			$restore->db()->close();
 		}
 
-		$job->data['manifest'] = array(
+		$job->data['manifest']  = array(
 			'site'    => $site,
 			'options' => (array) ( $manifest['options'] ?? array() ),
 			'totals'  => (array) ( $manifest['totals'] ?? array() ),
 			'parts'   => array_values( (array) $manifest['parts'] ),
 		);
-		$job->data['has_db']   = $has_db;
+		$job->data['has_db']    = $has_db;
+		$job->data['encrypted'] = $encrypted;
+		if ( $encrypted ) {
+			$job->data['kdf_iterations'] = FmwArchive::iterations( $header );
+		}
 
 		$context->log(
 			sprintf(

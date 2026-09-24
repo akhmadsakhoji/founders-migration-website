@@ -220,3 +220,13 @@
 		width: 100%;
 	}
 }
+
+.fmw-encrypt {
+	border-top: 1px solid #f0f0f1;
+	margin-top: 16px;
+	padding-top: 12px;
+}
+
+.fmw-encrypt-fields[hidden] {
+	display: none;
+}

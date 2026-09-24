@@ -89,6 +89,36 @@ final class TarWriter {
 	}
 
 	/**
+	 * Starts a file entry whose data the caller writes with write_data() (for data produced on the fly).
+	 *
+	 * @param TarEntry $entry Entry; its size must be exact.
+	 * @return void
+	 */
+	public function begin_file( TarEntry $entry ): void {
+		$this->sink->write( TarHeader::build( $entry ) );
+	}
+
+	/**
+	 * Writes data of the entry started with begin_file().
+	 *
+	 * @param string $bytes Bytes.
+	 * @return void
+	 */
+	public function write_data( string $bytes ): void {
+		$this->sink->write( $bytes );
+	}
+
+	/**
+	 * Ends an entry started with begin_file() (block padding).
+	 *
+	 * @param TarEntry $entry The same entry.
+	 * @return void
+	 */
+	public function end_file( TarEntry $entry ): void {
+		$this->write_padding( $entry->size );
+	}
+
+	/**
 	 * Adds a whole file in one call.
 	 *
 	 * @param string   $source Path on disk.

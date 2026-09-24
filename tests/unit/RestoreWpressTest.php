@@ -17,6 +17,7 @@ use Founders\Migration\Job\Deadline;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobStore;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\StepRegistry;
 use Founders\Migration\Model\Import\FinalizeStep;
 use Founders\Migration\Model\Import\ReplaceStep;
@@ -250,7 +251,7 @@ final class RestoreWpressTest extends TestCase {
 			'skip_space_check'   => true,
 		);
 		if ( $encrypted ) {
-			$options['wpress_key'] = bin2hex( WpressPackage::derive_key( self::PASSWORD ) );
+			$options['secret_wpress_key'] = Secrets::seal( WpressPackage::derive_key( self::PASSWORD ) );
 		}
 		return $options;
 	}
@@ -293,7 +294,7 @@ final class RestoreWpressTest extends TestCase {
 	public function test_restores_onto_a_new_url_path_and_prefix_resuming_after_every_slice( bool $encrypted, bool $gzip ): void {
 		$job = $this->run_job( $this->options( $this->archive( $encrypted, $gzip ), $encrypted ) );
 		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
-		$this->assertArrayNotHasKey( 'wpress_key', $job->options );
+		$this->assertArrayNotHasKey( 'secret_wpress_key', $job->options );
 
 		$db     = $this->connect( self::TARGET );
 		$option = static function ( string $name ) use ( $db ): ?string {
@@ -354,7 +355,7 @@ final class RestoreWpressTest extends TestCase {
 
 	public function test_a_wrong_key_is_refused_before_anything_changes(): void {
 		$options               = $this->options( $this->archive( true, false ), true );
-		$options['wpress_key'] = bin2hex( WpressPackage::derive_key( 'wrong' ) );
+		$options['secret_wpress_key'] = Secrets::seal( WpressPackage::derive_key( 'wrong' ) );
 
 		$job = $this->run_job( $options );
 		$this->assertSame( Job::STATUS_FAILED, $job->status );
