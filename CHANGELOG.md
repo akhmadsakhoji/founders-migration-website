@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Job engine: resumable jobs with atomic `state.json` checkpoints, per-step cursors, an exclusive lock with heartbeat and stale-holder takeover, time-boxed slices for web requests, graceful Ctrl+C / SIGTERM, and cancellation.
+- WP-CLI: `wp fmw jobs`, `resume`, `cancel`, `log`, `cleanup`, with exit codes 0 (done), 1 (failed) and 3 (stopped, resumable).
+- Terminal progress bar with percentage, bytes, speed (30-second moving average) and ETA; plain lines every 5% when output is not a terminal.
+- `fmwp_register_job_types` action for registering job types.
+
 - Phase 0 foundation.
 - Archive library: PAX TAR writer and reader, files above 8 GiB, UTF-8 and long paths, anonymous owner fields.
 - Multi-member gzip sink with commit points, so interrupted parts resume by truncating to the last commit.

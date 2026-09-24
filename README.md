@@ -46,12 +46,22 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | phase 1 |
 | `wp fmw restore <file>` | `wp ai1wm restore <file>` | phase 1 (`.wpress`: phase 2) |
-| `wp fmw resume <job_id>` | — | phase 1 |
+| `wp fmw jobs` | — | now |
+| `wp fmw resume <job_id>` | — | now |
+| `wp fmw cancel <job_id>` | — | now |
+| `wp fmw log <job_id>` | — | now |
+| `wp fmw cleanup` | — | now |
 | `wp fmw verify <file>` | — | phase 1 |
 | `wp fmw inspect <file>` | — | phase 1 |
-| `wp fmw jobs`, `cancel`, `log`, `cleanup` | — | phase 1 |
 | `wp fmw reset` | `wp ai1wm reset` | phase 2 |
 | `wp fmw pull <url>` | — | phase 3 |
+
+Every backup and restore runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
+
+```bash
+wp fmw jobs                  # find the job ID
+wp fmw resume <job_id>       # exit 0 = done, 1 = failed, 3 = stopped again (resumable)
+```
 
 ## Where data lives
 
