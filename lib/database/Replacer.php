@@ -95,9 +95,14 @@ final class Replacer {
 	 */
 	public static function site_pairs( array $urls, array $paths, bool $email_hosts ): array {
 		$pairs = array();
+		$hosts = array(); // E-mail domains: the first URL of each old host (the home URL comes first) decides, even when it stays.
 		foreach ( $urls as $old => $new ) {
-			$old = rtrim( (string) $old, '/' );
-			$new = rtrim( (string) $new, '/' );
+			$old  = rtrim( (string) $old, '/' );
+			$new  = rtrim( (string) $new, '/' );
+			$host = self::host( $old );
+			if ( '' !== $host && ! isset( $hosts[ $host ] ) ) {
+				$hosts[ $host ] = self::host( $new );
+			}
 			if ( '' === $old || $old === $new ) {
 				continue;
 			}
@@ -115,10 +120,10 @@ final class Replacer {
 			}
 			$pairs[ str_replace( '/', '\\/', $old_bare ) ] = str_replace( '/', '\\/', $new_bare );
 
-			if ( $email_hosts ) {
-				$old_host = self::host( $old );
-				$new_host = self::host( $new );
-				if ( '' !== $old_host && '' !== $new_host && $old_host !== $new_host ) {
+		}
+		if ( $email_hosts ) {
+			foreach ( $hosts as $old_host => $new_host ) {
+				if ( '' !== $new_host && $old_host !== $new_host ) {
 					$pairs[ '@' . $old_host ] = '@' . $new_host;
 				}
 			}

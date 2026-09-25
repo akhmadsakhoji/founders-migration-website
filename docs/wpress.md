@@ -27,7 +27,7 @@ End block, also 4377 bytes:
 |---|---|
 | `package.json` | Source site and backup options (below). Never encrypted or compressed. |
 | `database.sql` | SQL dump (below). |
-| `multisite.json` | Present only for network backups (FMW: phase 3). Never encrypted or compressed. |
+| `multisite.json` | Present only in backups made on a network by the Multisite Extension (below). Encrypted and compressed like site files. |
 | anything else | A file directly in `wp-content`, for example `index.php` or `object-cache.php`. |
 
 Other entries are site files, stored under `uploads/…`, `plugins/…`, `mu-plugins/…`, `themes/…` or another `wp-content` folder. FMW writes each top folder to the target site's real location for that folder.
@@ -55,12 +55,29 @@ Older versions left every file named `package.json` unencrypted, including files
 | `Database.Prefix` | The source table prefix |
 | `NoDatabase`, `NoEmailReplace` | Skip the database / keep e-mail domains |
 | `Plugin.Version`, `Encrypted`, `EncryptedSignature`, `Compression` | As described above |
+| `Plugins`, `Template`, `Stylesheet` | What was active. The export blanks `active_plugins`, `template` and `stylesheet` in the dump; FMW puts these values back before the switch, leaving out plugins that lock people out after a move (login hiders, some firewalls, and forced-HTTPS plugins when the new address is http://), as All-in-One WP Migration does |
+
+## multisite.json (networks)
+
+Written by the All-in-One WP Migration Multisite Extension (checked against 4.37).
+
+| Field | Meaning |
+|---|---|
+| `Network` | `true` for the whole network; `false` when sites were picked one by one (their tables then use other placeholders such as `SERVMASK_PREFIX_mainsite_` and get new site IDs on import) |
+| `Networks[]` | `SiteID`, `Domain`, `Path` of each network (`site` table rows) |
+| `Sites[]` | `BlogID`, `SiteID`, `Domain`, `Path`, `SiteURL`, `HomeURL`, `Plugins`, `Template`, `Stylesheet`, `Uploads`, `UploadsURL`, `WordPress.Uploads`, `WordPress.UploadsURL` per site |
+| `Plugins` | Network-activated plugins (`active_sitewide_plugins` is left out of the dumped `sitemeta`) |
+| `Admins`, `Plugin.Version` | Super admins, extension version |
+
+A whole-network dump uses the same placeholders as a single site: `SERVMASK_PREFIX_` for the main site and the network tables, `SERVMASK_PREFIX_<BlogID>_` for the other sites. Media of other sites is stored under `uploads/sites/<BlogID>/` (or `blogs.dir/<BlogID>/` for networks from before WordPress 3.5). The kind of network (subdomains or subdirectories) is not recorded; FMW works it out from the sites (a site in a folder of the network's domain means subdirectories, one on a subdomain of it means subdomains) and skips the kind check when the sites do not tell. Plugins and themes are put back per site ID (site 1 has the bare table prefix).
+
+FMW restores `Network: true` backups onto a multisite network of the same kind, keeping the site IDs and moving the sites to the network's address like its own network backups (subsites with their own domain keep it unless mapped with `--map`). Backups of picked sites, `blogs.dir` networks, and network backups onto a single site are refused for now.
 
 ## database.sql
 
 The dump is a plain SQL file. Its statements are `DROP TABLE IF EXISTS`, the `CREATE TABLE` from `SHOW CREATE TABLE`, and one `INSERT … VALUES (…)` per row, grouped by `START TRANSACTION` / `COMMIT`. Views come at the end as `DROP VIEW IF EXISTS` / `CREATE VIEW`.
 
-- **Placeholder prefix:** the table prefix is written as `SERVMASK_PREFIX_`, in table names and at the start of values in `options.option_name` and `usermeta.meta_key`. Examples: `SERVMASK_PREFIX_user_roles`, `SERVMASK_PREFIX_capabilities`.
+- **Placeholder prefix:** the table prefix is written as `SERVMASK_PREFIX_`, in table names and at the start of values in `options.option_name` and `usermeta.meta_key`. Examples: `SERVMASK_PREFIX_user_roles`, `SERVMASK_PREFIX_capabilities`, and on networks `SERVMASK_PREFIX_2_user_roles` in `SERVMASK_PREFIX_2_options`.
 - **Excluded tables:** only tables that use the site prefix are exported.
 - **Value encoding:** numbers are written unquoted, binary and blob values as `0x…` hex, and everything else as quoted strings with backslash escapes.
 

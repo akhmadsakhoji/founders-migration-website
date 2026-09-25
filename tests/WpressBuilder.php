@@ -65,13 +65,13 @@ final class WpressBuilder {
 	 *
 	 * @param string    $path      Path relative to wp-content.
 	 * @param string    $content   Content.
-	 * @param bool|null $transform Encrypt / compress it; default: all but top-level package.json and multisite.json.
+	 * @param bool|null $transform Encrypt / compress it; default: all but the top-level package.json.
 	 * @param int       $mtime     Modification time.
 	 * @return self
 	 */
 	public function add( string $path, string $content, ?bool $transform = null, int $mtime = 1700000000 ): self {
 		if ( null === $transform ) {
-			$transform = ! in_array( $path, array( 'package.json', 'multisite.json' ), true );
+			$transform = 'package.json' !== $path;
 		}
 		$stored = $transform ? $this->encode( $content ) : $content;
 		$folder = dirname( $path );

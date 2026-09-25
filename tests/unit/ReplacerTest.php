@@ -96,4 +96,13 @@ final class ReplacerTest extends TestCase {
 	public function test_same_url_produces_no_pairs(): void {
 		$this->assertSame( array(), Replacer::site_pairs( array( 'https://example.com/' => 'https://example.com' ), array( '/a' => '/a/' ), true ) );
 	}
+
+	public function test_the_home_url_decides_email_domains(): void {
+		// Home stays, uploads move to a CDN: addresses keep their domain.
+		$pairs = Replacer::site_pairs( array( 'https://example.com' => 'https://example.com', 'https://example.com/wp-content/uploads' => 'https://cdn.example.net/uploads' ), array(), true ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertArrayNotHasKey( '@example.com', $pairs );
+		// Home moves, uploads URL on another host: addresses follow the home URL.
+		$pairs = Replacer::site_pairs( array( 'https://example.com' => 'https://new.test', 'https://example.com/wp-content/uploads' => 'https://cdn.example.net/uploads' ), array(), true ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertSame( '@new.test', $pairs['@example.com'] );
+	}
 }

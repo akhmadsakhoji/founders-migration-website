@@ -158,18 +158,24 @@ final class ReplaceStep implements Step {
 	 * @return array<string,string>
 	 */
 	private static function pairs( Job $job ): array {
-		$plan = $job->data['replace'] ?? null;
-		if ( is_array( $plan ) ) {
-			return Replacer::site_pairs( (array) $plan['urls'], (array) $plan['paths'], ! empty( $plan['email'] ) )
-				+ Replacer::value_pairs( (array) ( $plan['raw'] ?? array() ) );
-		}
+		$plan   = $job->data['replace'] ?? null;
 		$site   = (array) ( $job->data['manifest']['site'] ?? array() );
 		$target = (array) ( $job->options['target'] ?? array() );
-		$urls   = array(
-			(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
-			(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
-		);
-		$keep   = array();
+		if ( is_array( $plan ) ) {
+			$urls  = (array) $plan['urls'];
+			$paths = (array) $plan['paths'];
+			$email = ! empty( $plan['email'] );
+			$raw   = Replacer::value_pairs( (array) ( $plan['raw'] ?? array() ) );
+		} else {
+			$urls  = array(
+				(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
+				(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
+			);
+			$paths = array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) );
+			$email = ! empty( $job->options['email_replace'] );
+			$raw   = array();
+		}
+		$keep = array();
 		if ( is_array( $job->data['network'] ?? null ) ) {
 			$urls = self::network_urls( $job->data['network'], $urls );
 			foreach ( (array) $job->data['network']['sites'] as $blog ) {
@@ -178,12 +184,8 @@ final class ReplaceStep implements Step {
 				}
 			}
 		}
-		$pairs = Replacer::site_pairs(
-			$urls,
-			array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) ),
-			! empty( $job->options['email_replace'] )
-		);
-		return $pairs ? $pairs + Replacer::keep_pairs( $keep, ! empty( $job->options['email_replace'] ) ) : $pairs;
+		$pairs = Replacer::site_pairs( $urls, $paths, $email );
+		return ( $pairs ? $pairs + Replacer::keep_pairs( $keep, $email ) : $pairs ) + $raw;
 	}
 
 	/**

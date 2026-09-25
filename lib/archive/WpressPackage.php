@@ -72,22 +72,41 @@ final class WpressPackage {
 	 * @throws ArchiveException When the archive is damaged or has no package.json.
 	 */
 	public static function read( string $path ): self {
+		$json = self::read_entry( $path, 'package.json' );
+		if ( null === $json ) {
+			throw new ArchiveException( 'The archive has no package.json; this is not a complete All-in-One WP Migration backup.' );
+		}
+		return self::parse( $json );
+	}
+
+	/**
+	 * Contents of a small top-level entry (package.json, multisite.json), or null when there is none.
+	 *
+	 * Returned as stored: package.json is always plain; multisite.json is
+	 * encrypted and compressed with the archive (see WpressNetwork::read()).
+	 *
+	 * @param string $path Archive path.
+	 * @param string $name Entry name.
+	 * @return string|null
+	 * @throws ArchiveException When the archive is damaged or the entry is larger than 16 MB.
+	 */
+	public static function read_entry( string $path, string $name ): ?string {
 		$reader = WpressReader::open( $path );
 		try {
 			$entry = $reader->next();
 			while ( null !== $entry ) {
-				if ( 'package.json' === $entry->name ) {
+				if ( $name === $entry->name ) {
 					if ( $entry->size > 16777216 ) {
-						break;
+						throw new ArchiveException( sprintf( 'The archive\'s %s is larger than 16 MB; it is refused.', $name ) );
 					}
-					return self::parse( $reader->read( $entry->size ) );
+					return $reader->read( $entry->size );
 				}
 				$entry = $reader->next();
 			}
 		} finally {
 			$reader->close();
 		}
-		throw new ArchiveException( 'The archive has no package.json; this is not a complete All-in-One WP Migration backup.' );
+		return null;
 	}
 
 	/**

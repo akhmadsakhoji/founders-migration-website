@@ -147,7 +147,7 @@ final class CheckStep implements Step {
 	 * @param Context             $context Context.
 	 * @return void
 	 */
-	private static function log_network( array $network, Context $context ): void {
+	public static function log_network( array $network, Context $context ): void {
 		if ( empty( $network['moved'] ) ) {
 			$context->log( sprintf( 'Network with %d sites, same address.', count( (array) $network['sites'] ) ) );
 			return;
