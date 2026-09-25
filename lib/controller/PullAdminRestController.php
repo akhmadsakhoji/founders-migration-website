@@ -146,7 +146,7 @@ final class PullAdminRestController {
 	}
 
 	/**
-	 * POST /pull-check {url, key, allow_http, backup}: what the source says, before anything starts.
+	 * POST /pull-check {url, key, allow_http, backup}: what the source says, before anything starts (network: sites and kind, for networks).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -154,7 +154,7 @@ final class PullAdminRestController {
 	public function check_source( WP_REST_Request $request ) {
 		try {
 			$client = ( new PullClient( (string) $request['url'], (string) $request['key'], ! empty( $request['allow_http'] ) ) )->quick();
-			$info   = PullOptions::check( $client, sanitize_file_name( (string) $request['backup'] ) );
+			$info   = PullOptions::check( $client, sanitize_file_name( (string) $request['backup'] ), ! empty( $request['download_only'] ) );
 		} catch ( PullException $e ) {
 			return new WP_Error( $e->error_code, $e->getMessage(), array( 'status' => 400 ) );
 		}
@@ -169,6 +169,10 @@ final class PullAdminRestController {
 			}
 		}
 		$expires = (int) ( $info['key']['expires_at'] ?? 0 );
+		$network = is_array( $site['network'] ?? null ) ? array(
+			'sites'     => (int) ( $site['network']['sites'] ?? 0 ),
+			'subdomain' => ! empty( $site['network']['subdomain'] ),
+		) : null;
 		return new WP_REST_Response(
 			array(
 				'url'            => $client->url(),
@@ -181,6 +185,7 @@ final class PullAdminRestController {
 				'expires'        => $expires > 0 ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $expires ) : '',
 				'allow_existing' => ! empty( $info['key']['allow_existing'] ),
 				'backups'        => $backups,
+				'network'        => $network,
 				'target'         => home_url(),
 			)
 		);
@@ -202,7 +207,7 @@ final class PullAdminRestController {
 		}
 		try {
 			$client = ( new PullClient( (string) $request['url'], (string) $request['key'], ! empty( $request['allow_http'] ) ) )->quick();
-			PullOptions::check( $client, $backup );
+			PullOptions::check( $client, $backup, ! empty( $request['download_only'] ) );
 		} catch ( PullException $e ) {
 			return new WP_Error( $e->error_code, $e->getMessage(), array( 'status' => 400 ) );
 		}

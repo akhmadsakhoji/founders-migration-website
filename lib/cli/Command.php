@@ -385,7 +385,10 @@ final class Command {
 			WP_CLI::error( $e->getMessage() );
 			return;
 		}
-		if ( ! empty( $site['multisite'] ) && is_multisite() ) {
+		if ( empty( $site['multisite'] ) === is_multisite() ) {
+			WP_CLI::error( 'Restoring between a single site and a multisite network arrives later in phase 3.' );
+		}
+		if ( ! empty( $site['multisite'] ) ) {
 			$this->network_preview( $site, $options );
 		} elseif ( ! empty( $options['domain_map'] ) ) {
 			WP_CLI::error( '--map is for restoring a multisite network onto a network.' );

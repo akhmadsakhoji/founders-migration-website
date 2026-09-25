@@ -213,6 +213,15 @@ final class NetworkMoveTest extends TestCase {
 		}
 	}
 
+	public function test_what_a_source_network_reports_is_checked_before_a_pull(): void {
+		$here = array( 'subdomain' => false, 'main_site' => 1, 'networks' => 1 ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertNull( NetworkMove::incompatible( array( 'subdomain' => false, 'main_site' => 1, 'networks' => 1 ), $here, 3 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertNull( NetworkMove::incompatible( array( 'subdomain' => true ), $here, 1 ), 'A network with only its main site has no kind yet.' ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertStringContainsString( 'SUBDOMAIN_INSTALL to true', (string) NetworkMove::incompatible( array( 'subdomain' => true ), $here, 2 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertStringContainsString( 'BLOG_ID_CURRENT_SITE to 4', (string) NetworkMove::incompatible( array( 'main_site' => 4 ), $here, 2 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertStringContainsString( 'more than one network', (string) NetworkMove::incompatible( array(), array( 'networks' => 2 ), 1 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+	}
+
 	public function test_parse_map_rejects_bad_entries(): void {
 		$this->assertSame( array( 'a.example' => 'b.test:8080' ), NetworkMove::parse_map( ' a.example=b.test:8080 ' ) );
 		$this->assertSame( array(), NetworkMove::parse_map( '' ) );

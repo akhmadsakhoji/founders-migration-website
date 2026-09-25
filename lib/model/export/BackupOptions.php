@@ -86,7 +86,7 @@ final class BackupOptions {
 			'exclude_tables'   => self::csv( $flags['exclude-tables'] ?? '' ),
 			'exclude_paths'    => self::csv( $flags['exclude-paths'] ?? '' ),
 			'active_plugins'   => self::active_plugin_names(),
-			'active_themes'    => array_values( array_unique( array( get_template(), get_stylesheet() ) ) ),
+			'active_themes'    => self::active_theme_names(),
 			'table_prefix'     => (string) $wpdb->base_prefix,
 			'part_size'        => $part_size,
 			'archive_dir'      => fmwp_backups_path(),
@@ -234,6 +234,9 @@ final class BackupOptions {
 		$plugins = (array) get_option( 'active_plugins', array() );
 		if ( is_multisite() ) {
 			$plugins = array_merge( $plugins, array_keys( (array) get_site_option( 'active_sitewide_plugins', array() ) ) );
+			foreach ( self::other_sites() as $blog_id ) { // A network backup must keep what any of its sites uses.
+				$plugins = array_merge( $plugins, (array) get_blog_option( $blog_id, 'active_plugins', array() ) );
+			}
 		}
 		$names = array();
 		foreach ( $plugins as $plugin ) {
@@ -242,6 +245,40 @@ final class BackupOptions {
 			$names[] = false === $slash ? $plugin : substr( $plugin, 0, $slash );
 		}
 		return array_values( array_unique( $names ) );
+	}
+
+	/**
+	 * Theme folders in use: this site's, and on a network every site's.
+	 *
+	 * @return string[]
+	 */
+	private static function active_theme_names(): array {
+		$themes = array( get_template(), get_stylesheet() );
+		if ( is_multisite() ) {
+			foreach ( self::other_sites() as $blog_id ) {
+				$themes[] = (string) get_blog_option( $blog_id, 'template' );
+				$themes[] = (string) get_blog_option( $blog_id, 'stylesheet' );
+			}
+		}
+		return array_values( array_filter( array_unique( $themes ) ) );
+	}
+
+	/**
+	 * IDs of the network's sites other than the current one.
+	 *
+	 * @return int[]
+	 */
+	private static function other_sites(): array {
+		$ids = array_map(
+			'intval',
+			get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => 0,
+				)
+			)
+		);
+		return array_values( array_diff( $ids, array( get_current_blog_id() ) ) );
 	}
 
 	/**

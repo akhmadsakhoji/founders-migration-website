@@ -32,7 +32,7 @@ The source MUST compare secrets in constant time and SHOULD throttle addresses t
 
 | Route | Purpose | Answer |
 |---|---|---|
-| `GET /pull` | Check the key, learn about the source | `protocol` (1), `fmw` (version), `format` (1), `site` (`home_url`, `name`, `wp_version`, `php_version`, `multisite`), `key` (`name`, `expires_at`, `allow_existing`), and with `allow_existing` a `backups` list (`name`, `size`, `mtime`) |
+| `GET /pull` | Check the key, learn about the source | `protocol` (1), `fmw` (version), `format` (1), `site` (`home_url`, `name`, `wp_version`, `php_version`, `multisite`, and on a network `network`: `domain`, `path`, `subdomain`, `main_site`, `networks`, `sites` (count), `domains` (the sites' domains, at most 1000, to check a domain map early)), `key` (`name`, `expires_at`, `allow_existing`), and with `allow_existing` a `backups` list (`name`, `size`, `mtime`) |
 | `POST /pull/backups` | Start a backup | Body: `flags` (the exclusion flags of `wp fmw backup`: `exclude-media`, `exclude-tables`, `part-size`, ...; others are ignored) and optionally `password` (the backup is then encrypted while it waits on the source). Answer `201` with a job summary. A key has at most one unfinished job: while one exists (failed ones included), the same summary comes back with `200`, so a repeated start never makes a second backup. A key that left 3 backups on the source gets `409` (`fmw_pull_limit`) until it deletes them |
 | `POST /pull/jobs/<id>/run` | Work one time slice (up to about 20 s) | Job summary |
 | `GET /pull/jobs/<id>` | Job status | Job summary |
@@ -41,13 +41,15 @@ The source MUST compare secrets in constant time and SHOULD throttle addresses t
 | `GET /pull/backups/<name>/file` | The bytes, one range per request | `206` with `Content-Range` (or `200` without `Range`), `ETag`; `If-Match` that names neither this tag nor `*` gives `412`; `HEAD` sends the headers only |
 | `DELETE /pull/backups/<name>` | Delete a backup the key made | `{"deleted": true}` |
 
+On a network, every route answers only at the main site's address; any other site's address answers `400` (`fmw_pull_subsite`) with the network's address in the message, because a pull copies the whole network and its backup is made from the main site.
+
 A backup becomes the key's when any of its routes sees the job completed. Revoking a key, or its expiry, cancels its unfinished jobs.
 
 A job summary is `id`, `status` (`running`, `completed`, `failed`, `cancelled`), `phase`, `progress` (0 to 1), `bytes_done`, `bytes_total`, `error`, and once completed `backup` (`name`, `size`). Jobs and backups of other keys answer `404`. When another backup or restore runs on the source, starting or running answers `409` (`fmw_busy`); clients SHOULD wait and retry.
 
 ## 4. Flow on the target
 
-1. `GET /pull`: refuse a different `protocol`, a multisite source (not supported in version 1), and the target's own address.
+1. `GET /pull`: refuse a different `protocol`, the target's own address, a network onto a single site or the reverse, and a network the target cannot take (subdomains onto subdirectories or the reverse, a different main site ID, more than one network; see `NetworkMove::incompatible()`). A network's sites move to the target network's address during the restore, as with `wp fmw restore`. A network source without `network` runs an older version that cannot be pulled from: ask for an update there. Download-only pulls skip the network checks; they apply when the backup is restored.
 2. `POST /pull/backups`, sent once (a retry could start a second backup). Checkpoint the job id.
 3. `POST /pull/jobs/<id>/run` until `completed`. `failed` stops (a later resume runs the same job again); `cancelled` or `404` forgets the job, so a resume starts a new backup.
 4. `GET /pull/backups/<name>`, reserve a local file, checkpoint, then download ranges with `If-Match`, sizing them from the measured speed. A restart truncates the file to the last checkpoint, or to the file's real size when a crash lost writes (never fill a gap). `412` means the file changed: download it again.

@@ -171,16 +171,25 @@ final class AdminController {
 				'pullNeedBoth'          => __( 'Enter the source site\'s address and its pull key.', 'founders-migration-website' ),
 				'pullConfirm'           => /* translators: 1: source address, 2: this site's address. */ __( 'Copy %1$s onto %2$s?', 'founders-migration-website' ),
 				'pullDownloadConfirm'   => /* translators: %s: source address. */ __( 'Download a backup of %s into this site\'s backups folder?', 'founders-migration-website' ),
-				'pullWarning'           => __( 'This replaces the files and database of this site with those of the source. The database is switched in one step at the end, so this site stays as it is if the pull fails before that. You will need to log in again with the accounts of the source site.', 'founders-migration-website' ),
+				'pullWarning'           => is_multisite()
+					? __( 'This replaces the files and database of the whole network with those of the source network, including sites that the source does not have. The main site and its subsites move to this network\'s address; subsites with their own domain keep it (give them a new one with wp fmw pull --map). The database is switched in one step at the end, so this network stays as it is if the pull fails before that. You will need to log in again with the accounts of the source network.', 'founders-migration-website' )
+					: __( 'This replaces the files and database of this site with those of the source. The database is switched in one step at the end, so this site stays as it is if the pull fails before that. You will need to log in again with the accounts of the source site.', 'founders-migration-website' ),
 				'pullVersion'           => /* translators: 1: FMW version on the source, 2: FMW version here. */ __( 'The source runs Founders Migration Website %1$s, this site %2$s. Use the same version on both sites if the pull fails.', 'founders-migration-website' ),
 				'pullDone'              => /* translators: %s: file name. */ __( '%s was pulled into the backups folder of this site.', 'founders-migration-website' ),
 				'pullSite'              => __( 'Source site', 'founders-migration-website' ),
 				'pullName'              => __( 'Title', 'founders-migration-website' ),
 				'pullVersions'          => __( 'Versions', 'founders-migration-website' ),
 				'pullKeyValid'          => __( 'Key valid until', 'founders-migration-website' ),
+				'pullNetwork'           => __( 'Network', 'founders-migration-website' ),
+				'pullNetworkFacts'      => /* translators: 1: number of sites (2 or more), 2: "subdomains" or "subdirectories". */ __( '%1$d sites, %2$s', 'founders-migration-website' ),
+				'pullNetworkFact'       => /* translators: %s: "subdomains" or "subdirectories". */ __( '1 site, %s', 'founders-migration-website' ),
+				'subdomains'            => __( 'subdomains', 'founders-migration-website' ),
+				'subdirectories'        => __( 'subdirectories', 'founders-migration-website' ),
 				'pullNewBackup'         => __( 'A new backup (recommended)', 'founders-migration-website' ),
 				'pullKeyCreated'        => __( 'Pull key created', 'founders-migration-website' ),
-				'pullKeyOnce'           => __( 'Copy the key now: it is shown only once. On the site that should receive the copy, open Founders Migration › Pull and enter this site\'s address and the key, or run:', 'founders-migration-website' ),
+				'pullKeyOnce'           => is_multisite()
+					? __( 'Copy the key now: it is shown only once. On the network that should receive the copy, open Network Admin › Founders Migration › Pull and enter this network\'s address and the key, or run:', 'founders-migration-website' )
+					: __( 'Copy the key now: it is shown only once. On the site that should receive the copy, open Founders Migration › Pull and enter this site\'s address and the key, or run:', 'founders-migration-website' ),
 				'pullKeyShare'          => __( 'Anyone with the key can copy this site until it expires. Send it over a private channel, and revoke it when the move is done.', 'founders-migration-website' ),
 				'copy'                  => __( 'Copy', 'founders-migration-website' ),
 				'copied'                => __( 'Copied', 'founders-migration-website' ),

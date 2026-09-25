@@ -107,11 +107,12 @@ final class NetworkMove {
 		if ( ! self::valid_domain( $from['domain'] ) || count( $sites ) !== count( (array) ( $site['sites'] ?? array() ) ) ) {
 			throw new JobException( 'The backup lists a site with an invalid domain or path; the network backup is refused.' );
 		}
-		if ( $from['networks'] > 1 || $to['networks'] > 1 || count( array_unique( array_column( $sites, 'network_id' ) ) ) > 1 ) {
-			throw new JobException( 'Installs with more than one network are not supported yet.' );
+		if ( count( array_unique( array_column( $sites, 'network_id' ) ) ) > 1 ) {
+			$from['networks'] = 2;
 		}
-		if ( $from['main_site'] !== $to['main_site'] ) {
-			throw new JobException( sprintf( 'The backup\'s main site is site %1$d and this network\'s is site %2$d: set BLOG_ID_CURRENT_SITE to %1$d in wp-config.php and restore again.', $from['main_site'], $to['main_site'] ) );
+		$problem = self::incompatible( $from, $to, count( $sites ) );
+		if ( null !== $problem ) {
+			throw new JobException( $problem );
 		}
 		if ( isset( $map[ $from['domain'] ] ) ) {
 			throw new JobException( sprintf( 'The network\'s own domain %s follows this network (%s); leave it out of --map.', $from['domain'], $to['domain'] ) );
@@ -119,16 +120,6 @@ final class NetworkMove {
 		$unknown = array_diff( array_keys( $map ), array_column( $sites, 'domain' ) );
 		if ( $unknown ) {
 			throw new JobException( sprintf( 'No site of the backup has the domain %s; check --map.', implode( ', ', $unknown ) ) );
-		}
-		if ( count( $sites ) > 1 && $from['subdomain'] !== $to['subdomain'] ) {
-			throw new JobException(
-				sprintf(
-					'The backup is a network with %s and this network uses %s. Converting between them is not supported: set SUBDOMAIN_INSTALL to %s in wp-config.php (on a network with only its main site) and restore again.',
-					$from['subdomain'] ? 'subdomains' : 'subdirectories',
-					$to['subdomain'] ? 'subdomains' : 'subdirectories',
-					$from['subdomain'] ? 'true' : 'false'
-				)
-			);
 		}
 
 		$scheme  = self::scheme( (string) ( $target['home_url'] ?? '' ) );
@@ -181,6 +172,34 @@ final class NetworkMove {
 			'kept'    => array_values( array_unique( $kept ) ),
 			'moved'   => $moved,
 		);
+	}
+
+	/**
+	 * Why a network cannot be restored onto this one, or null when it can.
+	 *
+	 * Also used before a pull starts, with what the source reports about its network.
+	 *
+	 * @param array<string,mixed> $from  Source network (subdomain, main_site, networks).
+	 * @param array<string,mixed> $to    This network (subdomain, main_site, networks).
+	 * @param int                 $sites Number of sites in the source network.
+	 * @return string|null
+	 */
+	public static function incompatible( array $from, array $to, int $sites ): ?string {
+		if ( (int) ( $from['networks'] ?? 1 ) > 1 || (int) ( $to['networks'] ?? 1 ) > 1 ) {
+			return 'Installs with more than one network are not supported yet.';
+		}
+		if ( (int) ( $from['main_site'] ?? 1 ) !== (int) ( $to['main_site'] ?? 1 ) ) {
+			return sprintf( 'The source network\'s main site is site %1$d and this network\'s is site %2$d: set BLOG_ID_CURRENT_SITE to %1$d in wp-config.php and try again.', (int) ( $from['main_site'] ?? 1 ), (int) ( $to['main_site'] ?? 1 ) );
+		}
+		if ( $sites > 1 && ! empty( $from['subdomain'] ) !== ! empty( $to['subdomain'] ) ) {
+			return sprintf(
+				'The source is a network with %s and this network uses %s. Converting between them is not supported: set SUBDOMAIN_INSTALL to %s in wp-config.php (on a network with only its main site) and try again.',
+				empty( $from['subdomain'] ) ? 'subdirectories' : 'subdomains',
+				empty( $to['subdomain'] ) ? 'subdirectories' : 'subdomains',
+				empty( $from['subdomain'] ) ? 'false' : 'true'
+			);
+		}
+		return null;
 	}
 
 	/**

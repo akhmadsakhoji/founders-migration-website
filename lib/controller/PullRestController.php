@@ -150,6 +150,10 @@ final class PullRestController {
 			return new WP_Error( $e->error_code, $e->getMessage(), array( 'status' => $e->status ) );
 		}
 		PullKeys::touch( (string) $this->key['id'], self::client_ip() );
+		if ( is_multisite() && ! is_main_site() ) {
+			// A pull copies the whole network, and a backup must be made from the main site (its uploads folder, its options).
+			return new WP_Error( 'fmw_pull_subsite', sprintf( 'That address is a site of a network, and pulls copy the whole network: use the network\'s address, %s.', network_home_url() ), array( 'status' => 400 ) );
+		}
 		return true;
 	}
 
@@ -177,6 +181,18 @@ final class PullRestController {
 				'allow_existing' => ! empty( $this->key['allow_existing'] ),
 			),
 		);
+		if ( is_multisite() ) {
+			$network                 = BackupOptions::network();
+			$data['site']['network'] = array(
+				'domain'    => $network['domain'],
+				'path'      => $network['path'],
+				'subdomain' => $network['subdomain'],
+				'main_site' => $network['main_site'],
+				'networks'  => $network['networks'],
+				'sites'     => (int) get_sites( array( 'count' => true ) ),
+				'domains'   => array_slice( array_values( array_unique( array_map( 'strval', wp_list_pluck( get_sites( array( 'number' => 1000 ) ), 'domain' ) ) ) ), 0, 1000 ), // To check --map before anything starts.
+			);
+		}
 		if ( ! empty( $this->key['allow_existing'] ) ) {
 			$data['backups'] = array();
 			foreach ( Backups::all() as $backup ) {
@@ -199,9 +215,6 @@ final class PullRestController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function start_backup( WP_REST_Request $request ) {
-		if ( is_multisite() ) {
-			return new WP_Error( 'fmw_pull_multisite', 'Pulling a multisite network arrives in a later version.', array( 'status' => 501 ) );
-		}
 		// One unfinished backup per key: a repeated start (a lost answer, a resumed pull) gets the same job.
 		$store = Jobs::store();
 		foreach ( (array) $this->key['jobs'] as $id ) {
