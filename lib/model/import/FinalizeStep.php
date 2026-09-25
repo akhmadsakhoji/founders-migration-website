@@ -40,7 +40,7 @@ final class FinalizeStep implements Step {
 		if ( ! empty( $job->data['has_db'] ) ) {
 			$restore = new RestoreDatabase();
 			if ( empty( $job->options['keep_old_tables'] ) ) {
-				$old = $restore->tables( RestoreDatabase::OLD );
+				$old = self::moved_aside( $job, $restore );
 				$restore->drop( $old );
 				if ( $old ) {
 					$context->log( sprintf( 'Removed %d previous tables.', count( $old ) ) );
@@ -53,5 +53,35 @@ final class FinalizeStep implements Step {
 		}
 		$context->log( 'reset' === $job->type ? 'Reset finished.' : 'Restore finished.' );
 		return true;
+	}
+
+	/**
+	 * The fmwold_* tables this job moved aside: not those another restore or reset kept on purpose
+	 * (a site of the network reset with --keep-old-tables). Jobs that did not record them fall back
+	 * to their sites' fmwold_<id>_* tables, or to every fmwold_* table on a single site.
+	 *
+	 * @param Job             $job     Job.
+	 * @param RestoreDatabase $restore Database helper.
+	 * @return string[]
+	 */
+	private static function moved_aside( Job $job, RestoreDatabase $restore ): array {
+		$all = $restore->tables( RestoreDatabase::OLD );
+		if ( is_array( $job->data['old_tables'] ?? null ) ) {
+			return array_values( array_intersect( $all, array_map( 'strval', $job->data['old_tables'] ) ) );
+		}
+		$sites = array();
+		if ( (int) ( $job->options['reset_site'] ?? 0 ) > 0 ) {
+			$sites[] = (int) $job->options['reset_site'];
+		} elseif ( is_array( $job->data['import'] ?? null ) ) {
+			$sites = array_map( 'intval', array_column( SubsiteImport::sites( $job->data['import'] ), 'blog_id' ) );
+		}
+		if ( ! $sites ) {
+			return $all;
+		}
+		$old = array();
+		foreach ( $sites as $site ) {
+			$old = array_merge( $old, $restore->tables( RestoreDatabase::OLD . $site . '_' ) );
+		}
+		return $old;
 	}
 }

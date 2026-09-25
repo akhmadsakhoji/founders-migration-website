@@ -7,7 +7,7 @@
  * @license   GPL-2.0-or-later
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * @var array<string,mixed> $fmwp_data confirm (text to type), theme (active theme name).
+ * @var array<string,mixed> $fmwp_data confirm (text to type), theme (active theme name), sites (on a network: id, address, confirm).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -21,11 +21,18 @@ $fmwp_parts = array(
 		__( 'Media', 'founders-migration-website' ),
 		__( 'Everything in the uploads folder, and the media library.', 'founders-migration-website' ),
 	),
-	'plugins'  => array(
+);
+if ( is_multisite() ) {
+	// One site of the network: its own tables and uploads/sites/<id>; plugins and themes are shared.
+	$fmwp_parts['database'][1] = __( 'All its posts, pages, comments, settings and plugin data. It keeps its address, title, language and time zone; you become its administrator and other users lose their role on it (their accounts stay on the network).', 'founders-migration-website' );
+	$fmwp_parts['media'][1]    = __( 'Everything in its uploads folder (uploads/sites/<id>), and its media library.', 'founders-migration-website' );
+}
+$fmwp_parts += array(
+	'plugins' => array(
 		__( 'Plugins', 'founders-migration-website' ),
 		__( 'All plugins except Founders Migration Website. Must-use plugins stay.', 'founders-migration-website' ),
 	),
-	'themes'   => array(
+	'themes'  => array(
 		__( 'Themes', 'founders-migration-website' ),
 		/* translators: %s: active theme name. */
 		sprintf( __( 'All themes except the active one (%s).', 'founders-migration-website' ), (string) $fmwp_data['theme'] ),
@@ -36,11 +43,28 @@ $fmwp_parts = array(
 	<h2><?php esc_html_e( 'Reset site', 'founders-migration-website' ); ?></h2>
 	<p><?php esc_html_e( 'Brings parts of this site back to a fresh WordPress install, for example before importing another site or to start over.', 'founders-migration-website' ); ?></p>
 
-	<?php if ( is_multisite() ) : ?>
-		<div class="notice inline notice-info"><p><?php esc_html_e( 'Reset is not available on multisite networks yet.', 'founders-migration-website' ); ?></p></div>
+	<?php if ( is_multisite() && empty( $fmwp_data['sites'] ) ) : ?>
+		<div class="notice inline notice-info"><p><?php esc_html_e( 'This network has no site besides the main site. The main site is reset with the whole network, which arrives in the next update.', 'founders-migration-website' ); ?></p></div>
 	<?php else : ?>
+		<?php if ( is_multisite() ) : ?>
+			<p>
+				<label>
+					<?php esc_html_e( 'Site to reset (the main site is reset with the whole network, which arrives in the next update):', 'founders-migration-website' ); ?><br />
+					<select data-fmw-reset-site>
+						<?php foreach ( (array) $fmwp_data['sites'] as $fmwp_site ) : ?>
+							<option value="<?php echo esc_attr( (string) $fmwp_site['id'] ); ?>" data-confirm="<?php echo esc_attr( (string) $fmwp_site['confirm'] ); ?>"><?php echo esc_html( $fmwp_site['id'] . ' · ' . $fmwp_site['address'] ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+			</p>
+		<?php endif; ?>
 		<fieldset class="fmw-reset-parts">
 			<?php foreach ( $fmwp_parts as $fmwp_part => $fmwp_text ) : ?>
+				<?php
+				if ( is_multisite() && ! in_array( $fmwp_part, array( 'database', 'media' ), true ) ) {
+					continue; // Shared by every site of the network.
+				}
+				?>
 				<label class="fmw-reset-part">
 					<input type="checkbox" value="<?php echo esc_attr( $fmwp_part ); ?>" data-fmw-reset-part />
 					<span>
@@ -54,7 +78,7 @@ $fmwp_parts = array(
 		<p>
 			<label class="fmw-option">
 				<input type="checkbox" checked data-fmw-reset-backup />
-				<?php esc_html_e( 'Make a backup of the whole site first (recommended: the reset can then be undone from the Backups page)', 'founders-migration-website' ); ?>
+				<?php is_multisite() ? esc_html_e( 'Make a backup of the whole network first (recommended: the reset can then be undone from the Backups page)', 'founders-migration-website' ) : esc_html_e( 'Make a backup of the whole site first (recommended: the reset can then be undone from the Backups page)', 'founders-migration-website' ); ?>
 			</label>
 		</p>
 
@@ -68,7 +92,7 @@ $fmwp_parts = array(
 				printf(
 					/* translators: %s: site domain. */
 					esc_html__( 'Type %s to confirm:', 'founders-migration-website' ),
-					'<code>' . esc_html( (string) $fmwp_data['confirm'] ) . '</code>'
+					'<code data-fmw-reset-word>' . esc_html( (string) $fmwp_data['confirm'] ) . '</code>'
 				);
 				?>
 				<br />
@@ -79,6 +103,6 @@ $fmwp_parts = array(
 		<p class="fmw-actions">
 			<button type="button" class="button button-primary button-hero fmw-danger" data-fmw-action="reset" disabled><?php esc_html_e( 'Reset', 'founders-migration-website' ); ?></button>
 		</p>
-		<p class="description"><?php esc_html_e( 'Same as: wp fmw reset --database --media --plugins --themes', 'founders-migration-website' ); ?></p>
+		<p class="description"><?php is_multisite() ? esc_html_e( 'Same as: wp fmw reset --site=<id> --database --media', 'founders-migration-website' ) : esc_html_e( 'Same as: wp fmw reset --database --media --plugins --themes', 'founders-migration-website' ); ?></p>
 	<?php endif; ?>
 </div>

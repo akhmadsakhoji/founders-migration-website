@@ -529,6 +529,10 @@
 			return;
 		}
 		var request = { type: 'reset', parts: parts, confirm: panel.querySelector( '[data-fmw-reset-confirm]' ).value.trim() };
+		var site    = panel.querySelector( '[data-fmw-reset-site]' );
+		if ( site ) {
+			request.site = site.value; // One site of a network.
+		}
 		var backup  = panel.querySelector( '[data-fmw-reset-backup]' ).checked;
 		modal.open( t.reset );
 		modal.progress( null, t.preparing );
@@ -1459,6 +1463,17 @@
 		};
 		resetPanel.addEventListener( 'input', update );
 		resetPanel.addEventListener( 'change', update );
+		var resetSiteChoice = resetPanel.querySelector( '[data-fmw-reset-site]' );
+		if ( resetSiteChoice ) {
+			// The text to type is the chosen site's address.
+			resetSiteChoice.addEventListener( 'change', function () {
+				var word = resetSiteChoice.options[ resetSiteChoice.selectedIndex ].getAttribute( 'data-confirm' ) || '';
+				resetPanel.querySelector( '[data-fmw-reset-confirm]' ).setAttribute( 'data-fmw-reset-confirm', word );
+				resetPanel.querySelector( '[data-fmw-reset-confirm]' ).value = '';
+				resetPanel.querySelector( '[data-fmw-reset-word]' ).textContent = word;
+				update();
+			} );
+		}
 	}
 
 	var form = scheduleForm();

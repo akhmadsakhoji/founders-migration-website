@@ -364,10 +364,39 @@ final class AdminController {
 		$this->render(
 			'reset',
 			array(
-				'confirm' => ResetOptions::confirm_word(),
+				'confirm' => ResetOptions::confirm_word( (int) ( self::reset_sites()[0]['id'] ?? 0 ) ),
 				'theme'   => wp_get_theme()->get( 'Name' ),
+				'sites'   => self::reset_sites(),
 			)
 		);
+	}
+
+	/**
+	 * On a network: the sites that can be reset one by one (not the main site), with the text that confirms each.
+	 *
+	 * @return array<int,array{id:int,address:string,confirm:string}>
+	 */
+	private static function reset_sites(): array {
+		if ( ! is_multisite() ) {
+			return array();
+		}
+		$sites = array();
+		foreach ( get_sites(
+			array(
+				'number'  => 2000,
+				'network' => get_current_network_id(),
+			)
+		) as $blog ) {
+			$id = (int) $blog->blog_id;
+			if ( ! is_main_site( $id ) && 1 !== $id ) {
+				$sites[] = array(
+					'id'      => $id,
+					'address' => (string) $blog->domain . (string) $blog->path,
+					'confirm' => ResetOptions::confirm_word( $id ),
+				);
+			}
+		}
+		return $sites;
 	}
 
 	/**

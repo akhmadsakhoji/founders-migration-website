@@ -97,7 +97,12 @@ final class SwapStep implements Step {
 					foreach ( $imported as $table ) {
 						$fresh[ $to . substr( $table, strlen( RestoreDatabase::TMP ) ) ] = true;
 					}
-					foreach ( $restore->site_tables( $to ) as $table ) {
+					$site = (int) ( $job->options['reset_site'] ?? 0 );
+					if ( $site > 0 && ( 1 === $site || (int) ( $job->options['target']['network']['main_site'] ?? 1 ) === $site || ! $db->column( 'SELECT `blog_id` FROM ' . Connection::identifier( $to . 'blogs' ) . " WHERE `blog_id` = {$site}" ) ) ) {
+						throw new JobException( sprintf( 'Site %d is gone from the network (or became its main site) since the reset started; nothing was switched. Cancel the job.', $site ) );
+					}
+					// A site of a network: its own tables (wp_<id>_*) only; else every table of the site.
+					foreach ( $site > 0 ? SubsiteImport::leftovers( array_keys( $live ), array_keys( $fresh ), $to, $site ) : $restore->site_tables( $to ) as $table ) {
 						$base = substr( $table, strlen( $to ) );
 						if ( isset( $fresh[ $table ] ) || '' === $base ) {
 							continue;
@@ -150,6 +155,7 @@ final class SwapStep implements Step {
 				}
 				$restore->drop( $old ); // Leftovers from an earlier restore that kept its old tables.
 				$db->query( 'RENAME TABLE ' . implode( ', ', $renames ) );
+				$job->data['old_tables'] = $old; // FinalizeStep removes these, not other jobs' kept fmwold_* tables.
 				if ( ! empty( $job->data['import_left'] ) ) {
 					$context->log( sprintf( 'Left out %d files outside uploads, plugins, themes and languages (mu-plugins, drop-ins and other wp-content folders would change every site of the network).', (int) $job->data['import_left'] ) );
 				}
@@ -170,8 +176,14 @@ final class SwapStep implements Step {
 					wp_update_network_site_counts();
 				}
 			}
+			if ( (int) ( $job->options['reset_site'] ?? 0 ) > 0 ) {
+				self::site_roles( $db, $to, (int) $job->options['reset_site'], array_map( 'intval', (array) ( $job->options['keep_users'] ?? array() ) ), $context );
+				if ( function_exists( 'wp_cache_flush' ) ) {
+					wp_cache_flush(); // Its roles changed by SQL; on a resume after the switch nothing above flushed.
+				}
+			}
 			if ( ! empty( $job->options['replace_all_tables'] ) ) {
-				$views = $restore->site_tables( $to, 'VIEW' ); // They would point at tables that are gone.
+				$views = $restore->site_tables( $to . ( (int) ( $job->options['reset_site'] ?? 0 ) > 0 ? (int) $job->options['reset_site'] . '_' : '' ), 'VIEW' ); // They would point at tables that are gone.
 				foreach ( $views as $view ) {
 					$db->query( 'DROP VIEW IF EXISTS ' . Connection::identifier( $view ) );
 				}
@@ -184,7 +196,9 @@ final class SwapStep implements Step {
 
 		if ( empty( $job->data['import'] ) && empty( $job->data['subsite'] ) ) {
 			$this->create_objects( $job, $db, new SqlGuard( (string) ( $job->data['sql_prefix'] ?? $from ), $to ), $context );
-			$this->keep_plugin_active( $job, $db, $to );
+			if ( 0 === (int) ( $job->options['reset_site'] ?? 0 ) ) {
+				$this->keep_plugin_active( $job, $db, $to ); // A reset site's own list was set when it was built: {$to}options is the main site's.
+			}
 		} else {
 			// Their table names follow another layout: a single site's, or the network's (several sites' tables).
 			foreach ( (array) ( $job->data['deferred'] ?? array() ) as $relative ) {
@@ -213,6 +227,37 @@ final class SwapStep implements Step {
 	}
 
 	/**
+	 * After a site of a network is reset: the kept users are its administrators, nobody else has a role on it. Idempotent.
+	 *
+	 * @param Connection $db      Connection.
+	 * @param string     $prefix  Network prefix.
+	 * @param int        $site    Site ID.
+	 * @param int[]      $keep    Users kept as administrators.
+	 * @param Context    $context Context.
+	 * @return void
+	 * @throws \Throwable After rolling back, when a query fails.
+	 */
+	private static function site_roles( Connection $db, string $prefix, int $site, array $keep, Context $context ): void {
+		$meta = Connection::identifier( $prefix . 'usermeta' );
+		$caps = $db->quote( $prefix . $site . '_capabilities' );
+		$lvl  = $db->quote( $prefix . $site . '_user_level' );
+		$keep = array_values( array_filter( $keep ) );
+		$db->query( 'START TRANSACTION' );
+		try {
+			$gone = $db->column( "SELECT COUNT(DISTINCT `user_id`) FROM {$meta} WHERE `meta_key` = {$caps}" . ( $keep ? ' AND `user_id` NOT IN (' . implode( ', ', $keep ) . ')' : '' ) );
+			$db->query( "DELETE FROM {$meta} WHERE `meta_key` IN ({$caps}, {$lvl})" );
+			foreach ( $keep as $id ) {
+				$db->query( "INSERT INTO {$meta} (`user_id`, `meta_key`, `meta_value`) VALUES ({$id}, {$caps}, 'a:1:{s:13:\"administrator\";b:1;}'), ({$id}, {$lvl}, '10')" );
+			}
+			$db->query( 'COMMIT' );
+		} catch ( \Throwable $e ) {
+			$db->query( 'ROLLBACK' );
+			throw $e;
+		}
+		$context->log( sprintf( 'Site %d: %d user(s) are its administrators; %d other user(s) no longer have a role on it (their accounts stay on the network).', $site, count( $keep ), (int) ( $gone[0] ?? 0 ) ) );
+	}
+
+	/**
 	 * Keeps this plugin network-active in a restored network, when it was network-active before.
 	 *
 	 * @param Job        $job    Job.
@@ -225,8 +270,13 @@ final class SwapStep implements Step {
 		if ( '' === $plugin || ! $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $prefix . 'sitemeta', '\\%_' ) ) ) ) {
 			return;
 		}
-		$table = Connection::identifier( $prefix . 'sitemeta' );
-		$rows  = $db->rows( "SELECT `meta_id`, `meta_value` FROM {$table} WHERE `meta_key` = 'active_sitewide_plugins'" );
+		$table   = Connection::identifier( $prefix . 'sitemeta' );
+		$network = (int) ( $job->options['target']['network']['id'] ?? 0 ); // Only this network's plugins, on installs with several networks.
+		$known   = $network > 0 && $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $prefix . 'site', '\\%_' ) ) );
+		if ( $network > 0 && ( ! $known || ! $db->column( 'SELECT `id` FROM ' . Connection::identifier( $prefix . 'site' ) . " WHERE `id` = {$network}" ) ) ) {
+			$network = 0; // A restored network with another ID: its own row, as before.
+		}
+		$rows = $db->rows( "SELECT `meta_id`, `meta_value` FROM {$table} WHERE `meta_key` = 'active_sitewide_plugins'" . ( $network > 0 ? " AND `site_id` = {$network}" : '' ) );
 		foreach ( $rows as $row ) {
 			$plugins = unserialize( (string) $row['meta_value'], array( 'allowed_classes' => false ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- allowed_classes=false: no objects are created.
 			$plugins = is_array( $plugins ) ? $plugins : array();
@@ -237,7 +287,7 @@ final class SwapStep implements Step {
 			$db->query( "UPDATE {$table} SET `meta_value` = " . $db->quote( serialize( $plugins ) ) . ' WHERE `meta_id` = ' . (int) $row['meta_id'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- WordPress stores the option serialized.
 		}
 		if ( ! $rows ) {
-			$site = $db->column( 'SELECT MIN(`id`) FROM ' . Connection::identifier( $prefix . 'site' ) );
+			$site = $network > 0 ? array( $network ) : $db->column( 'SELECT MIN(`id`) FROM ' . Connection::identifier( $prefix . 'site' ) );
 			$db->query( "INSERT INTO {$table} (`site_id`, `meta_key`, `meta_value`) VALUES (" . (int) ( $site[0] ?? 1 ) . ", 'active_sitewide_plugins', " . $db->quote( serialize( array( $plugin => time() ) ) ) . ')' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- WordPress stores the option serialized.
 		}
 	}

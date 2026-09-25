@@ -20,6 +20,7 @@ use Founders\Migration\Model\Import\FinalizeStep;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\SwapStep;
 use Founders\Migration\Model\Reset\ResetFilesStep;
+use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Model\Reset\TreeEraser;
 use Founders\Migration\Tests\TestCase;
 
@@ -198,6 +199,119 @@ final class ResetTest extends TestCase {
 		$this->assertDirectoryExists( $content . '/uploads' );
 		$this->assertFileExists( $content . '/fmw-backups/site.fmw' );
 		$this->assertStringContainsString( 'Removed 2 media library entries.', implode( "\n", $log ) );
+		$db->close();
+	}
+
+	public function test_one_site_of_a_network_is_reset_with_its_own_tables_and_roles(): void {
+		$db = $this->database();
+		$db->query( 'CREATE TABLE wp_options (option_name varchar(191) PRIMARY KEY, option_value longtext NOT NULL)' ); // The main site's.
+		$db->query( "INSERT INTO wp_options VALUES ('active_plugins', 'a:0:{}')" );
+		$db->query( 'CREATE TABLE wp_usermeta (umeta_id bigint AUTO_INCREMENT PRIMARY KEY, user_id bigint, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (5, 'wp_capabilities', 'main'), (6, 'wp_3_capabilities', 'editor'), (6, 'wp_3_user_level', '7'), (6, 'wp_4_capabilities', 'author'), (7, 'wp_3_capabilities', 'subscriber')" );
+		foreach ( array( 3, 4 ) as $id ) {
+			$db->query( "CREATE TABLE wp_{$id}_options (option_name varchar(191) PRIMARY KEY, option_value longtext NOT NULL)" );
+			$db->query( "INSERT INTO wp_{$id}_options VALUES ('blogname', 'Site {$id}')" );
+			$db->query( "CREATE TABLE wp_{$id}_posts (ID int PRIMARY KEY, post_title text)" );
+			$db->query( "INSERT INTO wp_{$id}_posts VALUES (1, 'Post of {$id}')" );
+		}
+		$db->query( 'CREATE TABLE wp_3_shop_orders (id int PRIMARY KEY)' ); // Site 3's plugin table.
+		$db->query( 'CREATE TABLE fmwold_4_posts (id int PRIMARY KEY)' ); // Kept by an earlier reset of site 4 (--keep-old-tables).
+		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint PRIMARY KEY, domain varchar(200), path varchar(100))' );
+		$db->query( "INSERT INTO wp_blogs VALUES (1, 'net.test', '/'), (3, 'net.test', '/three/'), (4, 'net.test', '/four/')" );
+		$db->query( 'CREATE TABLE wp_site (id bigint PRIMARY KEY, domain varchar(200), path varchar(100))' );
+		$db->query( "INSERT INTO wp_site VALUES (1, 'net.test', '/'), (2, 'other.test', '/')" ); // Two networks.
+		$db->query( 'CREATE TABLE wp_sitemeta (meta_id bigint AUTO_INCREMENT PRIMARY KEY, site_id bigint, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO wp_sitemeta (site_id, meta_key, meta_value) VALUES (1, 'active_sitewide_plugins', 'a:0:{}'), (2, 'active_sitewide_plugins', 'a:0:{}')" );
+		$db->query( 'CREATE TABLE wp_30_posts (id int PRIMARY KEY)' ); // Site 30, not 3.
+		$db->query( 'CREATE VIEW wp_3_recent AS SELECT ID FROM wp_3_posts' );
+		$db->query( 'CREATE VIEW wp_recent AS SELECT option_name FROM wp_options' );
+		$db->query( 'CREATE TABLE fmwtmp_3_options (option_name varchar(191) PRIMARY KEY, option_value longtext NOT NULL)' );
+		$db->query( "INSERT INTO fmwtmp_3_options VALUES ('blogname', 'Site 3'), ('fresh_site', '1')" );
+		$db->query( 'CREATE TABLE fmwtmp_3_posts (ID int PRIMARY KEY, post_title text)' );
+		( new RestoreDatabase() )->create_progress();
+
+		$job                         = $this->job( array( 'database' ), array( 'network' => array( 'id' => 1, 'main_site' => 1 ) ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$job->options['reset_site']  = 9; // Gone meanwhile.
+		$job->options['keep_users']  = array( 5 );
+		$job->data['has_db']         = true;
+		$job->data['manifest']['site']['table_prefix'] = 'wp_';
+		$log                                           = array();
+		try {
+			( new SwapStep() )->run( $job, $this->context( $log ) );
+			$this->fail( 'A site that is gone was switched in.' );
+		} catch ( JobException $e ) {
+			$this->assertStringContainsString( 'Site 9 is gone', $e->getMessage() );
+		}
+		$this->assertSame( array( 'fmwtmp_3_options', 'fmwtmp_3_posts' ), ( new RestoreDatabase() )->tables( 'fmwtmp_3' ) );
+		$job->options['reset_site']          = 3;
+		$job->options['keep_active_network'] = true; // Only this network's list, never another network's.
+		$job->data['has_db']         = true;
+		$job->data['manifest']['site']['table_prefix'] = 'wp_';
+		$log     = array();
+		$context = $this->context( $log );
+		$this->assertTrue( ( new SwapStep() )->run( $job, $context ) );
+		$this->assertTrue( ( new SwapStep() )->run( $job, $context ), 'A second run (after a crash) switches nothing more.' );
+
+		$this->assertSame( array( '1' ), array_map( 'strval', $db->column( "SELECT option_value FROM wp_3_options WHERE option_name = 'fresh_site'" ) ) );
+		$this->assertSame( array( '0' ), array_map( 'strval', $db->column( 'SELECT COUNT(*) FROM wp_3_posts' ) ) );
+		$this->assertSame( array( 'fmwold_3_options', 'fmwold_3_posts', 'fmwold_3_shop_orders' ), ( new RestoreDatabase() )->tables( 'fmwold_3' ) );
+		$this->assertSame( array( 'Post of 4' ), $db->column( 'SELECT post_title FROM wp_4_posts' ) );
+		$this->assertSame( array( 'wp_30_posts' ), ( new RestoreDatabase() )->tables( 'wp_30' ) );
+		$this->assertSame( array( 'a:0:{}' ), $db->column( "SELECT option_value FROM wp_options WHERE option_name = 'active_plugins'" ), 'The main site\'s plugins are not touched.' );
+		$this->assertSame( array( 'wp_recent' ), ( new RestoreDatabase() )->tables( 'wp_', 'VIEW' ) );
+		$this->assertSame(
+			array( '5 wp_3_capabilities a:1:{s:13:"administrator";b:1;}', '5 wp_3_user_level 10', '5 wp_capabilities main', '6 wp_4_capabilities author' ),
+			$db->column( "SELECT CONCAT(user_id, ' ', meta_key, ' ', meta_value) FROM wp_usermeta ORDER BY user_id, meta_key" )
+		);
+		$this->assertStringContainsString( 'Site 3: 1 user(s) are its administrators', implode( "\n", $log ) );
+		$this->assertSame( array( '1 1', '2 0' ), $db->column( "SELECT CONCAT(site_id, ' ', meta_value LIKE '%founders%') FROM wp_sitemeta ORDER BY site_id" ) );
+
+		// Only what this reset moved aside is removed; site 4's kept tables stay.
+		$this->assertTrue( ( new FinalizeStep() )->run( $job, $context ) );
+		$this->assertSame( array( 'fmwold_4_posts' ), ( new RestoreDatabase() )->tables( 'fmwold_' ) );
+		$db->close();
+	}
+
+	public function test_media_of_one_site_of_a_network_only(): void {
+		$db = $this->database();
+		foreach ( array( 'wp_', 'wp_3_' ) as $prefix ) {
+			$db->query( "CREATE TABLE {$prefix}posts (ID bigint PRIMARY KEY, post_type varchar(20))" );
+			$db->query( "INSERT INTO {$prefix}posts VALUES (1, 'attachment'), (2, 'post')" );
+			$db->query( "CREATE TABLE {$prefix}postmeta (meta_id bigint AUTO_INCREMENT PRIMARY KEY, post_id bigint, meta_key varchar(255), meta_value longtext)" );
+			$db->query( "CREATE TABLE {$prefix}term_relationships (object_id bigint, term_taxonomy_id bigint, PRIMARY KEY (object_id, term_taxonomy_id))" );
+		}
+		$content = $this->tmp . '/wp-content';
+		foreach ( array( 'uploads/2026/main.jpg', 'uploads/sites/3/2026/three.jpg', 'uploads/sites/4/2026/four.jpg' ) as $path ) {
+			$this->make_file( 'wp-content/' . $path, 'x' );
+		}
+		$target                     = array(
+			'abspath'     => $this->tmp . '/',
+			'content_dir' => $content,
+			'uploads_dir' => $content . '/uploads/sites/3',
+		);
+		$job                        = $this->job( array( 'media' ), $target );
+		$job->options['reset_site'] = 3;
+		$log                        = array();
+		$this->assertTrue( ( new ResetFilesStep() )->run( $job, $this->context( $log ) ) );
+		$this->assertFileDoesNotExist( $content . '/uploads/sites/3/2026' );
+		$this->assertFileExists( $content . '/uploads/sites/4/2026/four.jpg' );
+		$this->assertFileExists( $content . '/uploads/2026/main.jpg' );
+		$this->assertSame( array( '2' ), array_map( 'strval', $db->column( 'SELECT ID FROM wp_3_posts' ) ) );
+		$this->assertSame( array( '1', '2' ), array_map( 'strval', $db->column( 'SELECT ID FROM wp_posts ORDER BY ID' ) ) );
+
+		// Never the network's own uploads folder, whatever the target says.
+		$job                        = $this->job( array( 'media' ), array( 'uploads_dir' => $content . '/uploads' ) + $target );
+		$job->options['reset_site'] = 3;
+		try {
+			( new ResetFilesStep() )->run( $job, $this->context( $log ) );
+			$this->fail( 'The network\'s uploads folder was emptied.' );
+		} catch ( JobException $e ) {
+			$this->assertStringContainsString( 'Only the media folder of site 3', $e->getMessage() );
+		}
+		$this->assertFileExists( $content . '/uploads/2026/main.jpg' );
+		$this->assertTrue( ResetOptions::own_uploads( '/srv/wp-content/blogs.dir/3/files', 3 ) );
+		$this->assertFalse( ResetOptions::own_uploads( '/srv/wp-content/uploads/sites/33', 3 ) );
+		$this->assertFalse( ResetOptions::own_uploads( '/sites/3', 3 ) );
 		$db->close();
 	}
 

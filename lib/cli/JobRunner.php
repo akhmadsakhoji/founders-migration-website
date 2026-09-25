@@ -64,7 +64,7 @@ final class JobRunner {
 				wp_cache_flush();
 				delete_option( 'rewrite_rules' );
 				if ( 'reset' === $job->type ) {
-					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
+					WP_CLI::success( sprintf( 'Reset complete%s: %s.', (int) ( $job->options['reset_site'] ?? 0 ) > 0 ? ' (site ' . (int) $job->options['reset_site'] . ')' : '', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
 					return;
 				}
 				if ( ! empty( $job->data['import']['picked'] ) ) {
