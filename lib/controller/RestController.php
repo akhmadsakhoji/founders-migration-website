@@ -207,7 +207,9 @@ final class RestController {
 			if ( 'wpress' === $backup['type'] ) {
 				$package = WpressPackage::read( $backup['path'] );
 				new WpressDecoder( null, $package->compression() );
-				$data = $package->data();
+				$data    = $package->data();
+				$present = WpressNetwork::present( $backup['path'] );
+				$network = $present && ! $package->encrypted() && ! is_multisite() ? WpressNetwork::read( $backup['path'], null, $package->compression() ) : null;
 				return new WP_REST_Response(
 					array(
 						'name'      => $backup['name'],
@@ -217,7 +219,8 @@ final class RestController {
 						'created'   => wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $backup['mtime'] ),
 						'encrypted' => $package->encrypted(),
 						'size'      => $backup['size'],
-						'network'   => WpressNetwork::present( $backup['path'] ),
+						'network'   => $present,
+						'sites'     => null !== $network ? self::network_sites( $network->site( $package ) ) : array(),
 						'targets'   => self::target_sites(),
 					)
 				);
@@ -256,6 +259,41 @@ final class RestController {
 				'targets'   => self::target_sites(),
 			)
 		);
+	}
+
+	/**
+	 * Refuses a .wpress network backup that cannot go here, before a job exists: picked sites onto
+	 * a network, or an unknown or missing site on a single site. Null when it can go (or cannot be read yet).
+	 *
+	 * @param string $path     Archive.
+	 * @param string $password Password of an encrypted archive.
+	 * @param string $choice   The --site choice.
+	 * @return WP_Error|null
+	 */
+	private static function check_wpress_network( string $path, string $password, string $choice ): ?WP_Error {
+		try {
+			$package = WpressPackage::read( $path );
+			$key     = $package->encrypted() && '' !== $password ? $package->key_for( $password ) : null;
+			if ( $package->encrypted() && ( null === $key || ! $package->accepts_key( $key ) ) ) {
+				return null; // The password is checked below; the check step reads the list of sites.
+			}
+			$network = WpressNetwork::read( $path, $key, $package->compression() );
+			if ( null === $network ) {
+				return null;
+			}
+			if ( is_multisite() && ! $network->is_network() ) {
+				/* translators: %d: number of sites. */
+				return new WP_Error( 'fmw_invalid_backup', sprintf( __( 'This backup holds %d site(s) picked one by one from a network; restoring them onto a network arrives in the next update. On a single site, one of them can be restored.', 'founders-migration-website' ), $network->count() ), array( 'status' => 400 ) );
+			}
+			if ( ! is_multisite() ) {
+				$network->extract( $package, $choice );
+			}
+		} catch ( JobException $e ) {
+			return new WP_Error( 'fmw_invalid_site', $e->getMessage(), array( 'status' => 400 ) );
+		} catch ( ArchiveException $e ) {
+			return null; // Reported by the password check or the check step.
+		}
+		return null;
 	}
 
 	/**
@@ -474,6 +512,12 @@ final class RestController {
 					$single = empty( $manifest['site']['multisite'] );
 				} else {
 					$single = ! WpressNetwork::present( $backup['path'] );
+				}
+				if ( 'wpress' === $backup['type'] && ! $single ) {
+					$refused = self::check_wpress_network( $backup['path'], (string) $request['password'], $options['subsite'] );
+					if ( null !== $refused ) {
+						return $refused;
+					}
 				}
 				if ( $single && is_multisite() && '' !== $options['subsite'] ) {
 					try {

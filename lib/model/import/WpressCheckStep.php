@@ -186,7 +186,8 @@ final class WpressCheckStep implements Step {
 		new WpressDecoder( $key ? $key : null, $package->compression() ); // Fails early when a PHP extension is missing.
 		$network = isset( $info['multisite.json'] ) ? WpressNetwork::read( (string) $job->options['archive'], $key ? $key : null, $package->compression(), (int) $info['multisite.json']['offset'] ) : null;
 		self::check_kind( $network, $target, $info, $job );
-		$import = null;
+		$import  = null;
+		$subsite = null !== $network && empty( $target['multisite'] ) ? $network->extract( $package, (string) ( $job->options['subsite'] ?? '' ) ) : null;
 		if ( null === $network && ! empty( $target['multisite'] ) ) {
 			$import            = SubsiteImport::plan_for( $job, $context );
 			$import['uploads'] = 'uploads';
@@ -237,9 +238,14 @@ final class WpressCheckStep implements Step {
 		$job->data['compression'] = $package->compression();
 		$job->data['encrypted']   = $package->encrypted();
 		$job->data['replace']     = self::replace_plan( $package, $target, ! empty( $job->options['email_replace'] ) );
-		$job->data['activate']    = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package, null !== $import ? (int) $import['blog_id'] : 1 );
-		$job->data['import']      = $import;
-		$job->data['network']     = null !== $network ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
+		if ( null !== $subsite ) {
+			$job->data['activate'] = $network->extract_activation( (int) $subsite['blog_id'] );
+		} else {
+			$job->data['activate'] = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package, null !== $import ? (int) $import['blog_id'] : 1 );
+		}
+		$job->data['import']  = $import;
+		$job->data['subsite'] = $subsite;
+		$job->data['network'] = null !== $network && null === $subsite ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
 
 		$context->log(
 			sprintf(
@@ -256,11 +262,14 @@ final class WpressCheckStep implements Step {
 		if ( null !== $job->data['network'] ) {
 			CheckStep::log_network( $job->data['network'], $context );
 		}
+		if ( null !== $subsite ) {
+			$context->log( sprintf( 'Restoring site %d (%s) of the network as this site.', $subsite['blog_id'], SubsiteExtract::printable( $subsite['domain'] . $subsite['path'] ) ) );
+		}
 	}
 
 	/**
-	 * Refuses what cannot be restored here: a network onto a single site
-	 * or the reverse, sites picked one by one, old blogs.dir networks.
+	 * Refuses what cannot be restored here: sites picked one by one onto a
+	 * network, --site where it chooses nothing, old blogs.dir networks onto a network.
 	 *
 	 * @param WpressNetwork|null  $network multisite.json, when there is one.
 	 * @param array<string,mixed> $target  Target site.
@@ -270,24 +279,28 @@ final class WpressCheckStep implements Step {
 	 * @throws JobException When the archive does not fit here.
 	 */
 	private static function check_kind( ?WpressNetwork $network, array $target, array $info, Job $job ): void {
-		$here = ! empty( $target['multisite'] );
-		if ( '' !== (string) ( $job->options['subsite'] ?? '' ) && ( null !== $network || ! $here ) ) {
-			throw new JobException( 'With a .wpress backup, --site chooses the site a single-site backup becomes on a network; restoring one site of a .wpress network backup arrives later.' );
-		}
+		$here   = ! empty( $target['multisite'] );
+		$choice = '' !== (string) ( $job->options['subsite'] ?? '' );
 		if ( null === $network ) {
-			if ( $here ) {
-				return; // Becomes a site of the network (see SubsiteImport).
+			if ( $choice && ! $here ) {
+				throw new JobException( '--site chooses one site of a network backup (on a single site), or the site a single-site backup becomes (on a network).' );
 			}
+			if ( ! $here && ! empty( $job->options['domain_map'] ) ) {
+				throw new JobException( '--map is for restoring a multisite network onto a network.' );
+			}
+			return; // On a network it becomes a site of the network (see SubsiteImport).
+		}
+		if ( ! $here ) {
 			if ( ! empty( $job->options['domain_map'] ) ) {
 				throw new JobException( '--map is for restoring a multisite network onto a network.' );
 			}
-			return;
+			return; // One of its sites becomes this site (see WpressNetwork::extract()).
 		}
 		if ( ! $network->is_network() ) {
-			throw new JobException( sprintf( 'This backup holds %d site(s) picked one by one from a network (not the whole network); restoring those arrives later in phase 3.', $network->count() ) );
+			throw new JobException( sprintf( 'This backup holds %d site(s) picked one by one from a network; restoring them onto a network arrives in the next update. On a single site, one of them can be restored.', $network->count() ) );
 		}
-		if ( ! $here ) {
-			throw new JobException( 'This is a backup of a whole multisite network; restore it onto a multisite network of the same kind (subdomains or subdirectories).' );
+		if ( $choice ) {
+			throw new JobException( 'This is a backup of a whole network: on a network it restores as a whole, without --site.' );
 		}
 		if ( ! empty( $info['blogs_dir'] ) ) {
 			throw new JobException( 'This network stores its media in wp-content/blogs.dir (created before WordPress 3.5); restoring those arrives later.' );

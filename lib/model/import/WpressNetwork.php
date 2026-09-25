@@ -14,6 +14,7 @@ use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\WpressDecoder;
 use Founders\Migration\Archive\WpressPackage;
 use Founders\Migration\Archive\WpressReader;
+use Founders\Migration\Job\JobException;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
@@ -21,8 +22,10 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * The multisite.json of a .wpress network backup (All-in-One WP Migration Multisite Extension).
  *
  * "Network": true marks a whole network; false marks sites picked one by
- * one (their tables use other placeholders and need new site IDs, so they
- * are refused for now). Sites[] lists every site with its BlogID, Domain,
+ * one, whose tables use other placeholders (SERVMASK_PREFIX_mainsite_ for
+ * users and the network's tables, SERVMASK_PREFIX_basesite_ for the main
+ * site's, SERVMASK_PREFIX_<id>_ for the others; see SubsiteExtract). One
+ * site of either kind restores onto a single site (extract()). Sites[] lists every site with its BlogID, Domain,
  * Path and the plugins and theme it had active: the export blanks those in
  * the database, so the restore puts them back from here (see
  * WpressActivation). The top-level Plugins are the network-activated ones.
@@ -224,6 +227,61 @@ final class WpressNetwork {
 	}
 
 	/**
+	 * The site restored onto a single site: the one chosen with --site, or the only site of a backup of picked sites.
+	 *
+	 * @param WpressPackage $package The archive's package.json.
+	 * @param string        $choice  Site ID, address or URL ('' for the only one).
+	 * @return array<string,mixed> SubsiteExtract::resolve() plan, plus picked (placeholders of picked sites) and uploads.
+	 * @throws JobException When no site or an unknown site is chosen.
+	 */
+	public function extract( WpressPackage $package, string $choice ): array {
+		$site = $this->site( $package );
+		if ( '' === trim( $choice, " \t\n\r\0\x0B" ) ) {
+			if ( $this->is_network() || 1 !== $this->count() ) {
+				throw new JobException( sprintf( 'This backup holds %s and this is a single site: choose the site to restore with --site=<id or address>. Its sites: %s.', $this->is_network() ? 'a whole network' : $this->count() . ' sites picked from a network', SubsiteExtract::listing( $site ) ) );
+			}
+			$choice = (string) (int) $this->data['Sites'][0]['BlogID'];
+		}
+		$plan            = SubsiteExtract::resolve( $site, $choice );
+		$plan['picked']  = ! $this->is_network();
+		$plan['uploads'] = 'uploads';
+		// Server paths as recorded (7.85 has no Absolute): the site's own uploads folder first, then the rest.
+		$paths = array();
+		foreach ( (array) $this->data['Sites'] as $entry ) {
+			if ( (int) $entry['BlogID'] === (int) $plan['blog_id'] && is_string( $entry['WordPress']['Uploads'] ?? null ) ) {
+				$paths[ $entry['WordPress']['Uploads'] ] = 'uploads_dir';
+			}
+		}
+		$paths += array(
+			$package->wordpress( 'Content' )  => 'content_dir',
+			$package->wordpress( 'Absolute' ) => 'abspath',
+		);
+		unset( $paths[''] );
+		$plan['source_paths'] = $paths;
+		return $plan;
+	}
+
+	/**
+	 * What the chosen site had active, as a single site: its plugins and the network-activated ones, its theme.
+	 *
+	 * @param int $blog Chosen site.
+	 * @return array{sites:array<int,array{plugins:string[],template:string,stylesheet:string}>,sitewide:null}
+	 */
+	public function extract_activation( int $blog ): array {
+		$all             = $this->activation();
+		$site            = $all['sites'][ $blog ] ?? array(
+			'plugins'    => array(),
+			'template'   => '',
+			'stylesheet' => '',
+		);
+		$site['plugins'] = array_values( array_unique( array_merge( $site['plugins'], $all['sitewide'] ) ) );
+		return array(
+			'sites'    => array( 1 => $site ), // The single site's options table has the bare prefix.
+			'sitewide' => null,
+		);
+	}
+
+	/**
 	 * What each site had active, and the network-activated plugins, for WpressActivation.
 	 *
 	 * @return array{sites:array<int,array{plugins:string[],template:string,stylesheet:string}>,sitewide:string[]}
@@ -265,7 +323,8 @@ final class WpressNetwork {
 	}
 
 	/**
-	 * ID of the main site: the one at the network's own address, else site 1, else the first.
+	 * ID of the main site: the one at the network's own address, else site 1
+	 * (always for picked sites: the main site may not be among them), else the first.
 	 *
 	 * @return int
 	 */
@@ -278,7 +337,7 @@ final class WpressNetwork {
 				return (int) $site['BlogID'];
 			}
 		}
-		return in_array( 1, $ids, true ) ? 1 : $ids[0];
+		return in_array( 1, $ids, true ) || ! $this->is_network() ? 1 : $ids[0];
 	}
 
 	/**

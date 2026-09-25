@@ -89,14 +89,7 @@ final class WpressDatabaseStep implements Step {
 		$restore = new RestoreDatabase();
 		if ( 'import' === $cursor['phase'] ) {
 			$job->bytes_total = (int) filesize( $sql );
-			$import           = is_array( $job->data['import'] ?? null ) ? (int) $job->data['import']['blog_id'] : 0;
-			$guard            = new SqlGuard(
-				WpressPackage::SQL_PREFIX,
-				RestoreDatabase::TMP,
-				$import > 0 ? static function ( string $table ) use ( $import ): ?string {
-					return SubsiteImport::table( $table, WpressPackage::SQL_PREFIX, $import );
-				} : null
-			);
+			$guard            = new SqlGuard( WpressPackage::SQL_PREFIX, RestoreDatabase::TMP, self::rename( $job ) );
 			$done             = ( new SqlImporter( $restore ) )->import( 'wpress:database.sql', $sql, $guard, $context, $context->dir() . '/' . self::OBJECTS_FILE );
 			if ( ! $done ) {
 				$job->cursor = $cursor;
@@ -108,6 +101,10 @@ final class WpressDatabaseStep implements Step {
 			$cursor = array( 'phase' => 'unmask' );
 		}
 
+		if ( ! empty( $job->data['subsite']['picked'] ) ) {
+			SubsiteExtract::unpick( $restore );
+			$job->data['subsite']['network_sites'] = SubsiteExtract::note_sites( $restore );
+		}
 		$this->unmask( $restore, (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ) );
 		if ( is_array( $job->data['activate'] ?? null ) ) {
 			$https = 'https' === strtolower( (string) parse_url( (string) ( $job->options['target']['home_url'] ?? '' ), PHP_URL_SCHEME ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Runs outside WordPress in tests.
@@ -116,6 +113,35 @@ final class WpressDatabaseStep implements Step {
 		$context->log( sprintf( 'Imported the database into %d temporary tables.', count( $restore->imported_tables() ) ) );
 		$restore->db()->close();
 		return true;
+	}
+
+	/**
+	 * The name each table of the dump gets (after the prefix), or null for all of them as they are.
+	 *
+	 * @param Job $job Job.
+	 * @return callable|null
+	 */
+	private static function rename( Job $job ): ?callable {
+		$import = is_array( $job->data['import'] ?? null ) ? (int) $job->data['import']['blog_id'] : 0;
+		if ( $import > 0 ) {
+			return static function ( string $table ) use ( $import ): ?string {
+				return SubsiteImport::table( $table, WpressPackage::SQL_PREFIX, $import );
+			};
+		}
+		$subsite = $job->data['subsite'] ?? null;
+		if ( ! is_array( $subsite ) ) {
+			return null;
+		}
+		$blog = (int) $subsite['blog_id'];
+		if ( ! empty( $subsite['picked'] ) ) {
+			return static function ( string $table ) use ( $blog ): ?string {
+				return SubsiteExtract::picked_table( $table, $blog );
+			};
+		}
+		$ids = array_map( 'intval', (array) $subsite['site_ids'] );
+		return static function ( string $table ) use ( $blog, $ids ): ?string {
+			return SubsiteExtract::table( $table, WpressPackage::SQL_PREFIX, $blog, $ids );
+		};
 	}
 
 	/**

@@ -73,6 +73,18 @@ final class SubsiteExtractTest extends TestCase {
 		);
 	}
 
+	public function test_tables_of_picked_wpress_sites(): void {
+		$map = static function ( int $blog ): array {
+			$out = array();
+			foreach ( array( 'SERVMASK_PREFIX_mainsite_users', 'SERVMASK_PREFIX_mainsite_usermeta', 'SERVMASK_PREFIX_mainsite_sitemeta', 'SERVMASK_PREFIX_mainsite_blogs', 'SERVMASK_PREFIX_basesite_posts', 'SERVMASK_PREFIX_basesite_404_to_301', 'SERVMASK_PREFIX_2_posts', 'SERVMASK_PREFIX_2_wc_orders', 'SERVMASK_PREFIX_12_posts', 'SERVMASK_PREFIX_basesite_', 'wp_posts' ) as $table ) {
+				$out[ substr( $table, 16 ) ] = SubsiteExtract::picked_table( $table, $blog );
+			}
+			return array_filter( $out );
+		};
+		$this->assertSame( array( 'mainsite_users' => 'users', 'mainsite_usermeta' => 'usermeta', 'mainsite_sitemeta' => 'sitemeta', 'mainsite_blogs' => 'blogs', '2_posts' => 'posts', '2_wc_orders' => 'wc_orders' ), $map( 2 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$this->assertSame( array( 'mainsite_users' => 'users', 'mainsite_usermeta' => 'usermeta', 'mainsite_sitemeta' => 'sitemeta', 'mainsite_blogs' => 'blogs', 'basesite_posts' => 'posts', 'basesite_404_to_301' => '404_to_301' ), $map( 1 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+	}
+
 	public function test_media_of_the_chosen_site_moves_to_the_uploads_folder(): void {
 		$this->assertSame( 'uploads/2026/09/a.jpg', SubsiteExtract::file( 'uploads/sites/2/2026/09/a.jpg', 'uploads', 2, 1 ) );
 		$this->assertSame( 'uploads', SubsiteExtract::file( 'uploads/sites/2', 'uploads', 2, 1 ) );

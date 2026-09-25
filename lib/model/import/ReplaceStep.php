@@ -89,7 +89,7 @@ final class ReplaceStep implements Step {
 			if ( 'done' !== $this->restore->progress( 'subsite' ) ) {
 				SubsiteExtract::apply( $this->restore, $job->data['subsite'], (string) ( $site['table_prefix'] ?? 'wp_' ), $context );
 			}
-			$this->restore->drop( array( RestoreDatabase::TMP . 'sitemeta' ) ); // Network settings: read, not restored.
+			$this->restore->drop( array( RestoreDatabase::TMP . 'sitemeta', RestoreDatabase::TMP . 'blogs' ) ); // Network settings and sites: read, not restored.
 		}
 
 		$tables = $this->restore->imported_tables();
