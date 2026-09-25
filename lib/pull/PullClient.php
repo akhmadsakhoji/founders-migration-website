@@ -121,13 +121,30 @@ final class PullClient {
 	}
 
 	/**
+	 * Attempts and time limit of API calls (quick() for an interactive check).
+	 *
+	 * @var array{0:int,1:int}
+	 */
+	private $limits = array( self::RETRIES, self::TIMEOUT );
+
+	/**
+	 * Fails fast: one attempt of at most 30 seconds (for a check in the browser).
+	 *
+	 * @return self
+	 */
+	public function quick(): self {
+		$this->limits = array( 1, 30 );
+		return $this;
+	}
+
+	/**
 	 * GET /pull: checks the key and the other site's version.
 	 *
 	 * @return array<string,mixed>
 	 * @throws PullException When the site does not answer as expected.
 	 */
 	public function info(): array {
-		$info = $this->json( 'GET', '' );
+		$info = $this->json( 'GET', '', array(), $this->limits[0] );
 		if ( (int) ( $info['protocol'] ?? 0 ) !== self::PROTOCOL ) {
 			throw new PullException( sprintf( 'The source site speaks pull protocol %s; this site speaks %d. Update Founders Migration Website on both sites to the same version.', (string) ( $info['protocol'] ?? '?' ), self::PROTOCOL ), 0, 'fmw_pull_protocol' );
 		}
@@ -259,7 +276,7 @@ final class PullClient {
 		}
 		for ( $attempt = 1; ; $attempt++ ) {
 			try {
-				$response = Http::request( $this->endpoint( $path ), $method, $headers, $payload, null, 0, self::TIMEOUT );
+				$response = Http::request( $this->endpoint( $path ), $method, $headers, $payload, null, 0, $this->limits[1] );
 				$data     = json_decode( $response['body'], true );
 				if ( $response['status'] >= 200 && $response['status'] < 300 && is_array( $data ) ) {
 					return $data;

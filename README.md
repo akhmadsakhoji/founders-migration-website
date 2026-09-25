@@ -12,7 +12,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive) and server-to-server pulls work end to end and are resumable. Pulls are WP-CLI only for now; their admin screen comes next. Test on staging sites before relying on it in production.
+> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive) and server-to-server pulls work end to end and are resumable. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -39,13 +39,14 @@ wp fmw status
 
 ## Admin screens
 
-**Founders Migration** in the admin menu has the same three screens as All-in-One WP Migration:
+**Founders Migration** in the admin menu has the same three screens as All-in-One WP Migration, plus Pull:
 
 | Screen | What it does |
 |---|---|
 | **Export** | The same exclusions as `wp fmw backup`. Progress shows the step, bytes, speed and remaining time. When it finishes you get a Download button. |
 | **Import** | Drag and drop a `.fmw` or `.wpress` file of any size. It is uploaded in chunks; if the connection drops or the page is closed, choose the same file again and the upload continues where it stopped. Then you confirm the restore, with a password field for encrypted `.wpress` files. |
 | **Backups** | Download (resumable, byte ranges), restore or delete backups. Backups in `wp-content/ai1wm-backups` are listed too; FMW never deletes them. Jobs that stopped part-way (closed tab, timeout, Ctrl+C in WP-CLI) can be continued or cancelled here. |
+| **Pull** | Copy another site onto this one: enter its address and a pull key, check it, then pull and restore (or only download) with the same progress dialog. Below, create pull keys for other sites to copy this one (validity, allowed addresses, existing backups), see when they were last used, and revoke them. |
 
 The browser drives each job in short requests of about 20 seconds, so PHP and proxy timeouts do not matter. Hosts with stricter limits can lower this with the `fmwp_web_slice_seconds` filter. A restore replaces the users table part-way through, so each job has its own random token, stored hashed outside the database. The token lets the browser that started the restore finish it after its login stops being valid. Only one job runs at a time.
 
@@ -254,7 +255,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI done), its admin screen, network and subsite scenarios |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), network and subsite scenarios |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security
