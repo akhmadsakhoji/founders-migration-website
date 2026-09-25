@@ -21,6 +21,7 @@ use Founders\Migration\Controller\AdminController;
 use Founders\Migration\Controller\DownloadController;
 use Founders\Migration\Controller\RestController;
 use Founders\Migration\Controller\GoogleController;
+use Founders\Migration\Controller\PullAdminRestController;
 use Founders\Migration\Controller\PullRestController;
 use Founders\Migration\Controller\RemoteRestController;
 use Founders\Migration\Controller\ScheduleRestController;
@@ -64,6 +65,7 @@ final class Plugin {
 		( new RemoteRestController() )->register();
 		( new GoogleController() )->register();
 		( new PullRestController() )->register();
+		( new PullAdminRestController() )->register();
 		Scheduler::register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {

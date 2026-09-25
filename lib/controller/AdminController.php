@@ -31,6 +31,7 @@ final class AdminController {
 	const SLUG_RESET     = 'fmw-reset';
 	const SLUG_SCHEDULES = 'fmw-schedules';
 	const SLUG_REMOTE    = 'fmw-cloud';
+	const SLUG_PULL      = 'fmw-pull';
 
 	/**
 	 * Registers admin hooks.
@@ -49,7 +50,7 @@ final class AdminController {
 	 */
 	public function assets(): void {
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only selects which assets to load.
-		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_SCHEDULES, self::SLUG_REMOTE, self::SLUG_RESET ), true ) ) {
+		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_SCHEDULES, self::SLUG_REMOTE, self::SLUG_PULL, self::SLUG_RESET ), true ) ) {
 			return;
 		}
 		wp_enqueue_style( 'fmw-admin', plugins_url( 'assets/admin.css', FMWP_PLUGIN_FILE ), array( 'dashicons' ), FMWP_VERSION );
@@ -77,6 +78,7 @@ final class AdminController {
 				admin_url( 'admin-post.php' )
 			),
 			'chunk'         => RestController::chunk_bytes(),
+			'version'       => FMWP_VERSION,
 			'storages'      => self::storage_choices(),
 			'loginUrl'      => wp_login_url( add_query_arg( 'page', self::SLUG_BACKUPS, $base ) ),
 			'backupsUrl'    => add_query_arg( 'page', self::SLUG_BACKUPS, $base ),
@@ -158,9 +160,38 @@ final class AdminController {
 				'disconnect'            => __( 'Disconnect', 'founders-migration-website' ),
 				'notConnected'          => __( 'not connected', 'founders-migration-website' ),
 				'confirmDisconnect'     => /* translators: %s: storage name. */ __( 'Sign "%s" out of Google? The backups in Drive stay; uploads stop until you connect again.', 'founders-migration-website' ),
+				'pull'                  => __( 'Pull', 'founders-migration-website' ),
+				'pullRestore'           => __( 'Pull and restore', 'founders-migration-website' ),
+				'pullChecking'          => __( 'Contacting the source site…', 'founders-migration-website' ),
+				'pullCheck'             => __( 'Check', 'founders-migration-website' ),
+				'pullNeedBoth'          => __( 'Enter the source site\'s address and its pull key.', 'founders-migration-website' ),
+				'pullConfirm'           => /* translators: 1: source address, 2: this site's address. */ __( 'Copy %1$s onto %2$s?', 'founders-migration-website' ),
+				'pullDownloadConfirm'   => /* translators: %s: source address. */ __( 'Download a backup of %s into this site\'s backups folder?', 'founders-migration-website' ),
+				'pullWarning'           => __( 'This replaces the files and database of this site with those of the source. The database is switched in one step at the end, so this site stays as it is if the pull fails before that. You will need to log in again with the accounts of the source site.', 'founders-migration-website' ),
+				'pullVersion'           => /* translators: 1: FMW version on the source, 2: FMW version here. */ __( 'The source runs Founders Migration Website %1$s, this site %2$s. Use the same version on both sites if the pull fails.', 'founders-migration-website' ),
+				'pullDone'              => /* translators: %s: file name. */ __( '%s was pulled into the backups folder of this site.', 'founders-migration-website' ),
+				'pullSite'              => __( 'Source site', 'founders-migration-website' ),
+				'pullName'              => __( 'Title', 'founders-migration-website' ),
+				'pullVersions'          => __( 'Versions', 'founders-migration-website' ),
+				'pullKeyValid'          => __( 'Key valid until', 'founders-migration-website' ),
+				'pullNewBackup'         => __( 'A new backup (recommended)', 'founders-migration-website' ),
+				'pullKeyCreated'        => __( 'Pull key created', 'founders-migration-website' ),
+				'pullKeyOnce'           => __( 'Copy the key now: it is shown only once. On the site that should receive the copy, open Founders Migration › Pull and enter this site\'s address and the key, or run:', 'founders-migration-website' ),
+				'pullKeyShare'          => __( 'Anyone with the key can copy this site until it expires. Send it over a private channel, and revoke it when the move is done.', 'founders-migration-website' ),
+				'copy'                  => __( 'Copy', 'founders-migration-website' ),
+				'copied'                => __( 'Copied', 'founders-migration-website' ),
+				'revoke'                => __( 'Revoke', 'founders-migration-website' ),
+				'confirmRevoke'         => /* translators: %s: key name. */ __( 'Revoke the pull key "%s"? Pulls with it stop working.', 'founders-migration-website' ),
+				'noPullKeys'            => __( 'No pull keys. Create one below when another site should copy this one.', 'founders-migration-website' ),
+				'expired'               => __( 'expired', 'founders-migration-website' ),
+				'anyAddress'            => __( 'any', 'founders-migration-website' ),
+				'never'                 => __( 'never', 'founders-migration-website' ),
+				'thisSite'              => __( 'Address of this site', 'founders-migration-website' ),
+				'allowExisting'         => __( 'existing backups allowed', 'founders-migration-website' ),
 				'jobType'               => array(
 					'upload'   => __( 'Upload', 'founders-migration-website' ),
 					'download' => __( 'Download', 'founders-migration-website' ),
+					'pull'     => __( 'Pull', 'founders-migration-website' ),
 				),
 				'runStatus'             => array(
 					'running'   => __( 'Running', 'founders-migration-website' ),
@@ -201,6 +232,7 @@ final class AdminController {
 		add_submenu_page( self::SLUG_EXPORT, __( 'Backups', 'founders-migration-website' ), __( 'Backups', 'founders-migration-website' ), $capability, self::SLUG_BACKUPS, array( $this, 'render_backups' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Schedules', 'founders-migration-website' ), __( 'Schedules', 'founders-migration-website' ), $capability, self::SLUG_SCHEDULES, array( $this, 'render_schedules' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Cloud storage', 'founders-migration-website' ), __( 'Cloud storage', 'founders-migration-website' ), $capability, self::SLUG_REMOTE, array( $this, 'render_remote' ) );
+		add_submenu_page( self::SLUG_EXPORT, __( 'Pull', 'founders-migration-website' ), __( 'Pull', 'founders-migration-website' ), $capability, self::SLUG_PULL, array( $this, 'render_pull' ) );
 		add_submenu_page( self::SLUG_EXPORT, __( 'Reset', 'founders-migration-website' ), __( 'Reset', 'founders-migration-website' ), $capability, self::SLUG_RESET, array( $this, 'render_reset' ) );
 	}
 
@@ -268,6 +300,15 @@ final class AdminController {
 	 */
 	public function render_remote(): void {
 		$this->render( 'remote' );
+	}
+
+	/**
+	 * Pull page.
+	 *
+	 * @return void
+	 */
+	public function render_pull(): void {
+		$this->render( 'pull', array( 'disabled' => \Founders\Migration\Pull\PullKeys::disabled() ) );
 	}
 
 	/**

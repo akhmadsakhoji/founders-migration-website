@@ -24,6 +24,7 @@ $fmwp_tabs = array(
 	'backups'   => array( Founders\Migration\Controller\AdminController::SLUG_BACKUPS, __( 'Backups', 'founders-migration-website' ) ),
 	'schedules' => array( Founders\Migration\Controller\AdminController::SLUG_SCHEDULES, __( 'Schedules', 'founders-migration-website' ) ),
 	'remote'    => array( Founders\Migration\Controller\AdminController::SLUG_REMOTE, __( 'Cloud storage', 'founders-migration-website' ) ),
+	'pull'      => array( Founders\Migration\Controller\AdminController::SLUG_PULL, __( 'Pull', 'founders-migration-website' ) ),
 	'reset'     => array( Founders\Migration\Controller\AdminController::SLUG_RESET, __( 'Reset', 'founders-migration-website' ) ),
 );
 $fmwp_base = is_multisite() ? network_admin_url( 'admin.php' ) : admin_url( 'admin.php' );

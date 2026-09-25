@@ -384,7 +384,8 @@ final class RestController {
 	}
 
 	/**
-	 * POST /jobs: {type: backup, flags}, {type: restore, backup, password, flags} or {type: reset, parts, confirm, flags}.
+	 * POST /jobs: {type: backup, flags}, {type: restore, backup, password, flags}, {type: reset, parts, confirm, flags}
+	 * or {type: pull, url, key, ...} (see PullAdminRestController::job()).
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -434,6 +435,12 @@ final class RestController {
 						$options['secret_wpress_key'] = Secrets::seal( $package->key_for( $password ) );
 					}
 				}
+			} elseif ( 'pull' === $type ) {
+				$made = PullAdminRestController::job( $request, $flags );
+				if ( $made instanceof WP_Error ) {
+					return $made;
+				}
+				list( $type, $options ) = $made;
 			} elseif ( 'reset' === $type ) {
 				if ( ! ResetOptions::confirmed( (string) $request['confirm'] ) ) {
 					/* translators: %s: site host name. */
@@ -635,6 +642,9 @@ final class RestController {
 		}
 		if ( Jobs::is_restore( $job->type ) ) {
 			$summary['archive'] = basename( (string) ( $job->options['archive'] ?? '' ) );
+		}
+		if ( isset( $job->options['pull']['url'] ) ) {
+			$summary['pull'] = (string) $job->options['pull']['url'];
 		}
 		if ( '' !== (string) ( $job->options['schedule_name'] ?? '' ) ) {
 			$summary['schedule'] = (string) $job->options['schedule_name'];

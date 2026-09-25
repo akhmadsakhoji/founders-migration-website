@@ -26,6 +26,45 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 final class PullOptions {
 
 	/**
+	 * Connects to the source and checks that it can be pulled here: the
+	 * same protocol, not this site itself, not a multisite network, and for
+	 * an existing backup a key that may download it.
+	 *
+	 * @param PullClient $client Client.
+	 * @param string     $backup Existing backup to pull ('' for a new one).
+	 * @return array<string,mixed> What the source said (GET /pull).
+	 * @throws PullException When it cannot be pulled.
+	 */
+	public static function check( PullClient $client, string $backup = '' ): array {
+		if ( function_exists( 'is_multisite' ) && is_multisite() ) {
+			throw new PullException( 'Pulling into a multisite network is not available yet.', 0, 'fmw_pull_multisite' );
+		}
+		$info = $client->info();
+		$site = (array) ( $info['site'] ?? array() );
+		if ( function_exists( 'home_url' ) && in_array( self::place( home_url() ), array( self::place( $client->url() ), self::place( (string) ( $site['home_url'] ?? '' ) ) ), true ) ) {
+			throw new PullException( 'That is this site. Pull from the site you want to copy, on the site that should receive the copy.', 0, 'fmw_pull_self' );
+		}
+		if ( ! empty( $site['multisite'] ) ) {
+			throw new PullException( 'The source is a multisite network; pulling networks arrives in a later version.', 0, 'fmw_pull_multisite' );
+		}
+		if ( '' !== $backup && empty( $info['key']['allow_existing'] ) ) {
+			throw new PullException( 'This key may not download existing backups; create one that allows it on the source, or make a new backup.', 0, 'fmw_pull_existing' );
+		}
+		return $info;
+	}
+
+	/**
+	 * A site address without scheme, "www." and trailing slash, to recognize the same site.
+	 *
+	 * @param string $url Address.
+	 * @return string
+	 */
+	private static function place( string $url ): string {
+		$url = strtolower( (string) preg_replace( '#^[a-z][a-z0-9+.-]*://#i', '', trim( $url, " \t\n\r\0\x0B" ) ) );
+		return rtrim( (string) preg_replace( '/^www\./', '', $url ), '/' );
+	}
+
+	/**
 	 * Job type for these settings.
 	 *
 	 * @param bool $download_only Only download.

@@ -157,21 +157,12 @@ final class PullCommand {
 
 		try {
 			$client = new PullClient( $args[0], $key, (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'allow-http', false ) );
-			$info   = $client->info();
+			$info   = PullOptions::check( $client, (string) ( $assoc_args['backup'] ?? '' ) );
 		} catch ( PullException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
 		}
 		$site = (array) ( $info['site'] ?? array() );
-		if ( untrailingslashit( (string) ( $site['home_url'] ?? '' ) ) === untrailingslashit( home_url() ) ) {
-			WP_CLI::error( 'That is this site. Run `wp fmw pull` on the site that should receive the copy.' );
-		}
-		if ( ! empty( $site['multisite'] ) ) {
-			WP_CLI::error( 'The source is a multisite network; pulling networks arrives in a later version.' );
-		}
-		if ( isset( $assoc_args['backup'] ) && empty( $info['key']['allow_existing'] ) ) {
-			WP_CLI::error( 'This key may not download existing backups; create one with --allow-existing on the source, or leave out --backup.' );
-		}
 		WP_CLI::log(
 			sprintf(
 				'Source: %s ("%s", WordPress %s, FMW %s). Key valid until %s.',

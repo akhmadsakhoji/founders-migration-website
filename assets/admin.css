@@ -316,3 +316,12 @@
 .fmw-steps li {
 	margin-bottom: 8px;
 }
+
+/* Pull */
+#fmw-pull-keys .fmw-keys { margin: 1em 0 1.5em; }
+#fmw-pull-keys .fmw-keys td { vertical-align: top; }
+.fmw-muted,
+.fmw-stale { opacity: 0.5; }
+[data-fmw-pull-source] { margin: 1em 0; }
+.fmw-copy { display: flex; gap: 6px; align-items: center; }
+.fmw-copy input { flex: 1; min-width: 0; }

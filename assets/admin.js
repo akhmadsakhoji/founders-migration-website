@@ -137,6 +137,7 @@
 		},
 		close: function () {
 			this.root.hidden = true;
+			this.part( 'modal-body' ).textContent = ''; // Nothing (a pull key, say) lingers in the page.
 		},
 		body: function ( nodes ) {
 			var body         = this.part( 'modal-body' );
@@ -296,8 +297,8 @@
 		} else if ( 'completed' === summary.status && 'upload' === summary.type ) {
 			modal.message( sprintf( t.uploadedTo, summary.remote.name, summary.remote.key ), 'success' );
 			modal.actions( [ closeButton( false ) ] );
-		} else if ( 'completed' === summary.status && 'download' === summary.type && summary.backup ) {
-			modal.message( sprintf( t.downloaded, summary.backup.name ), 'success' );
+		} else if ( 'completed' === summary.status && ( 'download' === summary.type || 'pull' === summary.type ) && summary.backup ) {
+			modal.message( sprintf( 'pull' === summary.type ? t.pullDone : t.downloaded, summary.backup.name ), 'success' );
 			modal.actions( [
 				button( t.restore, function () {
 					confirmRestore( summary.backup.name );
@@ -1017,7 +1018,7 @@
 			body.textContent = '';
 			panel.hidden     = ! jobs.length;
 			jobs.forEach( function ( job ) {
-				var label = ( 'backup' === job.type ? t.backup + ( job.schedule ? ' (' + job.schedule + ')' : '' ) : ( 'reset' === job.type ? t.reset : ( t.jobType[ job.type ] || ( t.restore + ' ' + ( job.archive || '' ) ) ) ) ) + ' · ' + job.id;
+				var label = ( 'backup' === job.type ? t.backup + ( job.schedule ? ' (' + job.schedule + ')' : '' ) : ( 'reset' === job.type ? t.reset : ( t.jobType[ job.type ] || ( job.pull ? t.pullRestore + ' ' + job.pull : t.restore + ' ' + ( job.archive || '' ) ) ) ) ) + ' · ' + job.id;
 				var state = ( t.status && t.status[ job.status ] ) || job.status;
 				body.appendChild( el( 'tr', {}, [
 					el( 'td', { text: label } ),
@@ -1026,7 +1027,7 @@
 					el( 'td', {}, [
 						button( t.continue, function () {
 							api( '/jobs/' + job.id + '/token', { method: 'POST' } ).then( function ( renewed ) {
-								runJob( renewed, renewed.token, { backup: t.export, reset: t.reset, upload: t.uploadTitle, download: t.downloadTitle }[ job.type ] || t.restore ).catch( function () {} );
+								runJob( renewed, renewed.token, { backup: t.export, reset: t.reset, upload: t.uploadTitle, download: t.downloadTitle, pull: t.pull }[ job.type ] || ( job.pull ? t.pullRestore : t.restore ) ).catch( function () {} );
 							}, function ( error ) {
 								window.alert( error.message );
 							} );
@@ -1043,6 +1044,247 @@
 				] ) );
 			} );
 		} ).catch( function () {} );
+	}
+
+	// ------------------------------------------------------------------- pull
+
+	function copyText( text, trigger ) {
+		var done = function () {
+			var label           = trigger.textContent;
+			trigger.textContent = t.copied;
+			setTimeout( function () {
+				trigger.textContent = label;
+			}, 1500 );
+		};
+		if ( navigator.clipboard && window.isSecureContext ) {
+			navigator.clipboard.writeText( text ).then( done, function () {} );
+			return;
+		}
+		var area   = el( 'textarea', { class: 'screen-reader-text' } );
+		area.value = text;
+		document.body.appendChild( area );
+		area.select();
+		try {
+			document.execCommand( 'copy' );
+			done();
+		} catch ( e ) {} // The text stays selectable in the dialog.
+		area.remove();
+	}
+
+	function copyField( text ) {
+		var field = el( 'input', { type: 'text', class: 'large-text code', readonly: 'readonly' } );
+		var copy  = button( t.copy, function () {
+			copyText( text, copy );
+		} );
+		copy.setAttribute( 'aria-live', 'polite' );
+		field.value = text;
+		field.addEventListener( 'focus', function () {
+			field.select();
+		} );
+		return el( 'p', { class: 'fmw-copy' }, [ field, ' ', copy ] );
+	}
+
+	function pullForm() {
+		return document.querySelector( '[data-fmw-pull-form]' );
+	}
+
+	/**
+	 * What the form asks for, as the body of POST /pull-check and POST /jobs.
+	 */
+	function pullRequest( form ) {
+		var flags = {};
+		form.querySelectorAll( '[data-fmw-pull-flag]:checked' ).forEach( function ( box ) {
+			flags[ box.name ] = true;
+		} );
+		var backup = form.querySelector( '[data-fmw-pull-backup]' ); // Only there after a check with the current address and key.
+		return {
+			type: 'pull',
+			url: form.elements.url.value.trim(),
+			key: form.elements.key.value.trim(),
+			allow_http: form.elements.allow_http.checked,
+			download_only: form.elements.download_only.checked,
+			keep_source: form.elements.keep_source.checked,
+			password: form.elements.password.value,
+			backup: backup ? backup.value : '',
+			flags: flags,
+		};
+	}
+
+	function pullError( form, text ) {
+		form.querySelector( '[data-fmw-pull-error]' ).textContent = text || '';
+	}
+
+	function sourceFacts( info ) {
+		var rows = [
+			[ t.pullSite, info.url + ( info.home_url && info.home_url.replace( /\/+$/, '' ) !== info.url ? ' (' + info.home_url + ')' : '' ) ],
+			[ t.pullName, info.name ],
+			[ t.pullVersions, 'WordPress ' + info.wp_version + ' · PHP ' + info.php_version + ' · FMW ' + info.fmw ],
+			[ t.pullKeyValid, info.expires ],
+		];
+		return el( 'table', { class: 'fmw-facts' }, rows.map( function ( row ) {
+			return el( 'tr', {}, [ el( 'th', { text: row[ 0 ] } ), el( 'td', { text: row[ 1 ] || '-' } ) ] );
+		} ) );
+	}
+
+	/**
+	 * Asks the source through this site (POST /pull-check) and shows what it said.
+	 */
+	function checkSource( form ) {
+		var request = pullRequest( form );
+		var box     = form.querySelector( '[data-fmw-pull-source]' );
+		var buttons = form.querySelectorAll( '[data-fmw-pull-check], [data-fmw-pull-submit]' );
+		var busyUi  = function ( on ) {
+			buttons.forEach( function ( node ) {
+				node.disabled = on;
+			} );
+		};
+		pullError( form, '' );
+		if ( ! request.url || ! request.key ) {
+			pullError( form, t.pullNeedBoth );
+			return Promise.reject( new Error( t.pullNeedBoth ) );
+		}
+		if ( box.hidden ) {
+			box.classList.remove( 'fmw-stale' );
+			box.hidden      = false;
+			box.textContent = t.pullChecking;
+		} else {
+			box.classList.add( 'fmw-stale' ); // Keep the height while checking again.
+		}
+		busyUi( true );
+		return api( '/pull-check', { method: 'POST', body: request } ).then( function ( info ) {
+			busyUi( false );
+			var previous = form.querySelector( '[data-fmw-pull-backup]' );
+			var chosen   = previous ? previous.value : '';
+			box.classList.remove( 'fmw-stale' );
+			box.textContent = '';
+			box.appendChild( sourceFacts( info ) );
+			if ( ! info.same_version ) {
+				box.appendChild( el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: sprintf( t.pullVersion, info.fmw, config.version ) } ) ] ) );
+			}
+			if ( info.allow_existing && info.backups.length ) {
+				var select = el( 'select', { 'data-fmw-pull-backup': '' }, [ el( 'option', { value: '', text: t.pullNewBackup } ) ].concat( info.backups.map( function ( backup ) {
+					return el( 'option', { value: backup.name, text: backup.name + ' (' + bytes( backup.size ) + ')' } );
+				} ) ) );
+				select.value = chosen;
+				select.addEventListener( 'change', function () {
+					form.querySelector( '[data-fmw-pull-exclusions]' ).disabled = '' !== select.value; // An existing backup has its own contents.
+				} );
+				select.dispatchEvent( new Event( 'change' ) );
+				box.appendChild( el( 'p', {}, [ el( 'label', {}, [ t.backup + ': ', select ] ) ] ) );
+			} else {
+				form.querySelector( '[data-fmw-pull-exclusions]' ).disabled = false;
+			}
+			return info;
+		}, function ( error ) {
+			busyUi( false );
+			box.hidden      = true;
+			box.textContent = '';
+			form.querySelector( '[data-fmw-pull-exclusions]' ).disabled = false;
+			pullError( form, error.message );
+			throw error;
+		} );
+	}
+
+	function startPull( form ) {
+		var request = pullRequest( form );
+		if ( request.password && ! request.backup && request.password.length < 8 ) {
+			pullError( form, t.passwordShort );
+			return;
+		}
+		checkSource( form ).then( function ( info ) {
+			request = pullRequest( form ); // The backup choice may have appeared with the check.
+			var title = request.download_only ? t.pull : t.pullRestore;
+			modal.open( title );
+			var body = [
+				el( 'p', {}, [ el( 'strong', { text: request.download_only ? sprintf( t.pullDownloadConfirm, info.url ) : sprintf( t.pullConfirm, info.url, info.target ) } ) ] ),
+				sourceFacts( info ),
+			];
+			if ( ! request.download_only ) {
+				body.push( el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: t.pullWarning } ) ] ) );
+			}
+			var error = el( 'p', { class: 'fmw-error', role: 'alert' } );
+			body.push( error );
+			modal.body( body );
+			var go = button( title, function () {
+				go.disabled = true;
+				api( '/jobs', { method: 'POST', body: request } ).then( function ( created ) {
+					form.elements.key.value      = ''; // The job keeps it, sealed.
+					form.elements.password.value = '';
+					return runJob( created, created.token, title );
+				} ).catch( function ( e ) {
+					if ( e.shown ) {
+						return;
+					}
+					go.disabled       = false;
+					error.textContent = e.message;
+				} );
+			}, true );
+			modal.actions( [ button( t.cancel, function () {
+				modal.close();
+			} ), go ] );
+		} ).catch( function () {} );
+	}
+
+	function loadKeys() {
+		var body = document.querySelector( '[data-fmw-key-rows]' );
+		if ( ! body ) {
+			return;
+		}
+		api( '/pull-keys' ).then( function ( data ) {
+			body.textContent = '';
+			if ( ! data.keys.length ) {
+				body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '6', text: t.noPullKeys } ) ] ) );
+				return;
+			}
+			data.keys.forEach( function ( key ) {
+				body.appendChild( el( 'tr', { class: key.expired ? 'fmw-muted' : '' }, [
+					el( 'td', {}, [ el( 'strong', { text: key.name } ), el( 'br' ), el( 'code', { text: key.id } ) ].concat( key.allow_existing ? [ el( 'span', { class: 'description', text: ' · ' + t.allowExisting } ) ] : [] ) ),
+					el( 'td', { text: key.expired ? t.expired : key.expires } ),
+					el( 'td', { text: key.ips.length ? key.ips.join( ', ' ) : t.anyAddress } ),
+					el( 'td', { text: key.last_used ? key.last_used + ' · ' + key.last_ip : t.never } ),
+					el( 'td', { text: bytes( key.bytes_sent ) } ),
+					el( 'td', {}, [ el( 'button', { type: 'button', class: 'button', text: t.revoke, 'aria-label': t.revoke + ': ' + key.name, onclick: function () {
+						if ( window.confirm( sprintf( t.confirmRevoke, key.name ) ) ) {
+							api( '/pull-keys/' + key.id, { method: 'DELETE' } ).then( loadKeys, function ( error ) {
+								window.alert( error.message );
+							} );
+						}
+					} } ) ] ),
+				] ) );
+			} );
+		} ).catch( function ( error ) {
+			body.textContent = '';
+			body.appendChild( el( 'tr', {}, [ el( 'td', { colspan: '6', text: error.message } ) ] ) );
+		} );
+	}
+
+	function createKey( form ) {
+		var error = form.querySelector( '[data-fmw-key-error]' );
+		error.textContent = '';
+		api( '/pull-keys', {
+			method: 'POST',
+			body: {
+				name: form.elements.name.value,
+				expires: parseInt( form.elements.expires.value, 10 ),
+				ips: form.elements.ips.value,
+				allow_existing: form.elements.allow_existing.checked,
+			},
+		} ).then( function ( made ) {
+			form.reset();
+			loadKeys();
+			modal.open( t.pullKeyCreated );
+			modal.body( [
+				copyField( made.key ),
+				el( 'p', { text: t.pullKeyOnce } ),
+				copyField( made.command ),
+				el( 'p', {}, [ t.thisSite + ': ', el( 'code', { text: made.site } ), ' · ' + t.pullKeyValid + ': ' + made.expires ] ),
+				el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: t.pullKeyShare } ) ] ),
+			] );
+			modal.actions( [ closeButton( false ) ] );
+			modal.root.querySelector( '.fmw-copy input' ).focus();
+		}, function ( e ) {
+			error.textContent = e.message;
+		} );
 	}
 
 	// ------------------------------------------------------------------ wiring
@@ -1161,6 +1403,41 @@
 		form.querySelector( '[data-fmw-schedule-cancel]' ).addEventListener( 'click', resetScheduleForm );
 		resetScheduleForm();
 		loadSchedules();
+	}
+
+	var pullFormNode = pullForm();
+	if ( pullFormNode ) {
+		pullFormNode.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			startPull( pullFormNode );
+		} );
+		pullFormNode.querySelector( '[data-fmw-pull-check]' ).addEventListener( 'click', function () {
+			checkSource( pullFormNode ).catch( function () {} );
+		} );
+		pullFormNode.elements.download_only.addEventListener( 'change', function () {
+			pullFormNode.querySelector( '[data-fmw-pull-submit]' ).textContent = pullFormNode.elements.download_only.checked ? t.pull : t.pullRestore;
+		} );
+		[ 'url', 'key', 'allow_http' ].forEach( function ( name ) {
+			pullFormNode.elements[ name ].addEventListener( 'input', function () {
+				// Dimmed, not hidden: the layout must not move under a click (Pull checks again anyway).
+				pullFormNode.querySelector( '[data-fmw-pull-source]' ).classList.add( 'fmw-stale' );
+				var chosen = pullFormNode.querySelector( '[data-fmw-pull-backup]' );
+				if ( chosen ) {
+					chosen.disabled = true; // A backup of another source or key must not be sent.
+					chosen.removeAttribute( 'data-fmw-pull-backup' );
+					pullFormNode.querySelector( '[data-fmw-pull-exclusions]' ).disabled = false;
+				}
+			} );
+		} );
+	}
+
+	var keyForm = document.querySelector( '[data-fmw-key-form]' );
+	if ( keyForm ) {
+		keyForm.addEventListener( 'submit', function ( event ) {
+			event.preventDefault();
+			createKey( keyForm );
+		} );
+		loadKeys();
 	}
 
 	var jobs = document.querySelector( '[data-fmw-jobs]' );
