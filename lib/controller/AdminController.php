@@ -97,14 +97,18 @@ final class AdminController {
 				'logIn'                 => __( 'Log in', 'founders-migration-website' ),
 				'continue'              => __( 'Continue', 'founders-migration-website' ),
 				'backupDone'            => /* translators: 1: file name, 2: size. */ __( 'Backup %1$s (%2$s) is ready.', 'founders-migration-website' ),
-				'restoreDone'           => __( 'The site has been restored. Log in again with the accounts of the restored site.', 'founders-migration-website' ),
+				'restoreDone'           => is_multisite()
+					? __( 'The network has been restored. Log in again with the accounts of the restored network.', 'founders-migration-website' )
+					: __( 'The site has been restored. Log in again with the accounts of the restored site.', 'founders-migration-website' ),
 				'cancelled'             => __( 'The job was cancelled. Nothing more will be changed.', 'founders-migration-website' ),
 				'failed'                => __( 'The job stopped with an error:', 'founders-migration-website' ),
 				'failedHint'            => __( 'Fix the cause, then continue the job from the Backups page (or wp fmw resume).', 'founders-migration-website' ),
 				'confirmCancel'         => __( 'Cancel this job?', 'founders-migration-website' ),
 				'confirmDelete'         => /* translators: %s: file name. */ __( 'Delete %s? This cannot be undone.', 'founders-migration-website' ),
 				'confirmRestore'        => __( 'Restore this backup?', 'founders-migration-website' ),
-				'restoreWarning'        => __( 'This replaces the files and database of this site. The database is switched in one step at the end, so the site stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored site.', 'founders-migration-website' ),
+				'restoreWarning'        => is_multisite()
+					? __( 'This replaces the files and database of the whole network, including sites that are not in the backup. The main site and its subsites move to this network\'s address; subsites with their own domain keep it (give them a new one with wp fmw restore --map). The database is switched in one step at the end, so the network stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored network.', 'founders-migration-website' )
+					: __( 'This replaces the files and database of this site. The database is switched in one step at the end, so the site stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored site.', 'founders-migration-website' ),
 				'source'                => __( 'Site', 'founders-migration-website' ),
 				'createdBy'             => __( 'Created by', 'founders-migration-website' ),
 				'created'               => __( 'Date', 'founders-migration-website' ),

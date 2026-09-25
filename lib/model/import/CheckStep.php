@@ -25,8 +25,9 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * Reads the archive's manifest and refuses restores that cannot succeed, before anything changes.
  *
  * Reads job options: archive, target { home_url, site_url, abspath,
- * content_dir, table_prefix, multisite }, skip_space_check.
- * Writes job data: manifest (site, options, totals, parts).
+ * content_dir, table_prefix, multisite, network }, domain_map, skip_space_check.
+ * Writes job data: manifest (site, options, totals, parts), network (where
+ * each site of a multisite network goes, see NetworkMove).
  */
 final class CheckStep implements Step {
 
@@ -57,14 +58,15 @@ final class CheckStep implements Step {
 		}
 		$encrypted = ! empty( $header['encrypted'] );
 
-		$site = (array) ( $manifest['site'] ?? array() );
+		$site    = (array) ( $manifest['site'] ?? array() );
+		$network = null;
 		if ( ! empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
 			if ( empty( $site['multisite'] ) !== empty( $target['multisite'] ) ) {
-				throw new JobException( 'Restoring between a single site and a multisite network arrives in phase 3.' );
+				throw new JobException( 'Restoring between a single site and a multisite network arrives later in phase 3.' );
 			}
-			if ( rtrim( (string) ( $site['home_url'] ?? '' ), '/' ) !== rtrim( (string) ( $target['home_url'] ?? '' ), '/' ) ) {
-				throw new JobException( 'Moving a multisite network to another domain arrives in phase 3; restoring it on the same domain works now.' );
-			}
+			$network = NetworkMove::plan( $site, $target, (array) ( $job->options['domain_map'] ?? array() ) );
+		} elseif ( ! empty( $job->options['domain_map'] ) ) {
+			throw new JobException( '--map is for restoring a multisite network onto a network.' );
 		}
 
 		$raw_files = 0;
@@ -113,6 +115,7 @@ final class CheckStep implements Step {
 			'totals'  => (array) ( $manifest['totals'] ?? array() ),
 			'parts'   => array_values( (array) $manifest['parts'] ),
 		);
+		$job->data['network']   = $network;
 		$job->data['has_db']    = $has_db;
 		$job->data['encrypted'] = $encrypted;
 		if ( $encrypted ) {
@@ -131,6 +134,28 @@ final class CheckStep implements Step {
 				(int) ( $manifest['totals']['tables'] ?? 0 )
 			)
 		);
+		if ( null !== $network ) {
+			self::log_network( $network, $context );
+		}
 		return true;
+	}
+
+	/**
+	 * Logs where the network's sites go.
+	 *
+	 * @param array<string,mixed> $network Plan from NetworkMove::plan().
+	 * @param Context             $context Context.
+	 * @return void
+	 */
+	private static function log_network( array $network, Context $context ): void {
+		if ( empty( $network['moved'] ) ) {
+			$context->log( sprintf( 'Network with %d sites, same address.', count( (array) $network['sites'] ) ) );
+			return;
+		}
+		foreach ( (array) $network['sites'] as $blog ) {
+			$from = $blog['from']['domain'] . $blog['from']['path'];
+			$to   = $blog['to']['domain'] . $blog['to']['path'];
+			$context->log( sprintf( 'Site %d: %s', $blog['blog_id'], $from === $to ? $from . ' (own domain, kept; change it with --map)' : $from . ' -> ' . $to ) );
+		}
 	}
 }

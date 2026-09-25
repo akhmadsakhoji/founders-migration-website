@@ -66,7 +66,7 @@ final class JobRunner {
 					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
 					return;
 				}
-				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored site; log in with its accounts.', home_url() ) );
+				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored %s; log in with its accounts.', home_url(), is_multisite() ? 'network' : 'site' ) );
 				return;
 			}
 			if ( 'pull' === $job->type ) {

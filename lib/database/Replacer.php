@@ -135,6 +135,39 @@ final class Replacer {
 	}
 
 	/**
+	 * Pairs that keep URLs as they are, for sites that stay where they were.
+	 *
+	 * Replacement takes the longest match first, so these protect a kept
+	 * address that starts with a moving one: brand.com.au stays when
+	 * brand.com moves. Same forms as site_pairs().
+	 *
+	 * @param string[] $urls        URLs that must not change.
+	 * @param bool     $email_hosts Also keep "@host".
+	 * @return array<string,string>
+	 */
+	public static function keep_pairs( array $urls, bool $email_hosts ): array {
+		$pairs = array();
+		foreach ( $urls as $url ) {
+			$bare = (string) preg_replace( '#^https?:#i', '', rtrim( (string) $url, '/' ) );
+			if ( '' === $bare ) {
+				continue;
+			}
+			$forms = array( 'http:' . $bare, 'https:' . $bare, $bare );
+			foreach ( $forms as $form ) {
+				$pairs[ $form ]                            = $form;
+				$pairs[ str_replace( '/', '\\/', $form ) ] = str_replace( '/', '\\/', $form );
+			}
+			$pairs[ rawurlencode( 'http:' . $bare ) ]  = rawurlencode( 'http:' . $bare );
+			$pairs[ rawurlencode( 'https:' . $bare ) ] = rawurlencode( 'https:' . $bare );
+			$host                                      = self::host( $bare );
+			if ( $email_hosts && '' !== $host ) {
+				$pairs[ '@' . $host ] = '@' . $host;
+			}
+		}
+		return $pairs;
+	}
+
+	/**
 	 * Pairs for arbitrary find / replace values: plain, URL-encoded (both styles) and JSON-escaped.
 	 *
 	 * @param array<string,string> $values Old => new.

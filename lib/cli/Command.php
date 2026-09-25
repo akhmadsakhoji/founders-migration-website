@@ -27,6 +27,7 @@ use Founders\Migration\Job\Lock;
 use Founders\Migration\Job\Runner;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
+use Founders\Migration\Model\Import\NetworkMove;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\RestoreOptions;
 use Founders\Migration\Model\Reset\ResetOptions;
@@ -311,6 +312,13 @@ final class Command {
 	 * its CRC-32 when it has one) and the database is imported before any file
 	 * is written, so a damaged backup stops while the site is untouched.
 	 *
+	 * A multisite network backup restores onto a multisite network of the same
+	 * kind (subdomains or subdirectories), at any address: the main site and
+	 * every subsite under the network's address move with it
+	 * (shop.old.example -> shop.new.example, old.example/shop/ ->
+	 * new.example/shop/). The whole network is replaced, including sites that
+	 * are not in the backup.
+	 *
 	 * ## OPTIONS
 	 *
 	 * <file>
@@ -328,6 +336,9 @@ final class Command {
 	 * [--exclude-email-replace]
 	 * : Do not change e-mail addresses at the old domain.
 	 *
+	 * [--map=<domains>]
+	 * : Multisite: new domains for subsites with their own domain, as old=new pairs separated by commas. Other subsites follow the network.
+	 *
 	 * [--skip-space-check]
 	 * : Start even if the free disk space looks too small.
 	 *
@@ -339,6 +350,7 @@ final class Command {
 	 *     wp fmw restore example.com-20260924-180000-a1b2c3.fmw
 	 *     wp fmw restore /backups/site.fmw --yes --keep-old-tables
 	 *     wp fmw restore example-com-20260924-180000-abc123.wpress
+	 *     wp fmw restore network.fmw --map=brand.example=brand.staging.example
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -366,25 +378,88 @@ final class Command {
 		}
 
 		$site = (array) ( $manifest['site'] ?? array() );
+		$path = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
+		try {
+			$options = RestoreOptions::build( $path, $assoc_args );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		if ( ! empty( $site['multisite'] ) && is_multisite() ) {
+			$this->network_preview( $site, $options );
+		} elseif ( ! empty( $options['domain_map'] ) ) {
+			WP_CLI::error( '--map is for restoring a multisite network onto a network.' );
+		}
 		WP_CLI::confirm(
 			sprintf(
-				'Restore %s (%s, created %s) onto %s? This replaces this site\'s files and database.',
+				'Restore %s (%s, created %s) onto %s? This replaces this %s\'s files and database.',
 				basename( $args[0] ),
 				(string) ( $site['home_url'] ?? '?' ),
 				(string) ( $manifest['created_at'] ?? '?' ),
-				home_url()
+				home_url(),
+				is_multisite() ? 'network' : 'site'
 			),
 			$assoc_args
 		);
 
 		Paths::ensure_all();
-		$path    = Backups::find( $args[0] ) ?? (string) realpath( $args[0] );
-		$options = RestoreOptions::build( $path, $assoc_args );
 		if ( null !== $password ) {
 			$options['secret_password'] = Secrets::seal( $password ); // Removed from the job when it ends.
 		}
 		$job = Jobs::store()->create( 'restore', $options );
 		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
+	}
+
+	/**
+	 * Shows where each site of a network backup goes; stops when the network cannot be restored here.
+	 *
+	 * @param array<string,mixed> $site    Manifest site.
+	 * @param array<string,mixed> $options Restore job options.
+	 * @return void
+	 */
+	private function network_preview( array $site, array $options ): void {
+		try {
+			$plan = NetworkMove::plan( $site, (array) $options['target'], (array) $options['domain_map'] );
+		} catch ( JobException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		$rows = array();
+		foreach ( $plan['sites'] as $blog ) {
+			$from   = $blog['from']['domain'] . $blog['from']['path'];
+			$to     = $blog['to']['domain'] . $blog['to']['path'];
+			$rows[] = array(
+				'Site'   => $blog['blog_id'],
+				'Backup' => $from,
+				'Here'   => $from === $to && $plan['moved'] ? $to . ' (own domain, kept)' : $to,
+			);
+		}
+		WP_CLI\Utils\format_items( 'table', $rows, array( 'Site', 'Backup', 'Here' ) );
+		if ( $plan['kept'] && $plan['moved'] ) {
+			WP_CLI::warning( sprintf( 'Sites with their own domain keep it: %s. Give them a new one with --map=<old>=<new>.', implode( ', ', $plan['kept'] ) ) );
+		}
+		$missing = array_diff(
+			array_map(
+				'intval',
+				get_sites(
+					array(
+						'fields' => 'ids',
+						'number' => 0,
+					)
+				)
+			),
+			array_column( $plan['sites'], 'blog_id' )
+		);
+		if ( $missing ) {
+			WP_CLI::warning(
+				sprintf(
+					1 === count( $missing )
+						? 'Site %s of this network is not in the backup: it is removed (its tables are kept as fmwold_* with --keep-old-tables).'
+						: 'Sites %s of this network are not in the backup: they are removed (their tables are kept as fmwold_* with --keep-old-tables).',
+					implode( ', ', $missing )
+				)
+			);
+		}
 	}
 
 	/**
@@ -476,6 +551,7 @@ final class Command {
 		);
 
 		Paths::ensure_all();
+		unset( $assoc_args['map'] ); // Networks from .wpress backups arrive later.
 		$options = RestoreOptions::build( $path, $assoc_args );
 		if ( null !== $key ) {
 			$options['secret_wpress_key'] = Secrets::seal( $key ); // Removed from the job when it ends.
@@ -979,7 +1055,7 @@ final class Command {
 			'PHP'             => (string) ( $site['php_version'] ?? '' ),
 			'Database server' => trim( ( $db['engine'] ?? '' ) . ' ' . ( $db['version'] ?? '' ), ' ' ),
 			'Table prefix'    => (string) ( $site['table_prefix'] ?? '' ),
-			'Multisite'       => ! empty( $site['multisite'] ) ? sprintf( 'yes (%d sites)', count( (array) ( $site['sites'] ?? array() ) ) ) : 'no',
+			'Multisite'       => ! empty( $site['multisite'] ) ? sprintf( 'yes (%d sites, %s)', count( (array) ( $site['sites'] ?? array() ) ), NetworkMove::source( $site )['subdomain'] ? 'subdomains' : 'subdirectories' ) : 'no',
 			'Files'           => number_format( (int) ( $totals['files'] ?? 0 ) ),
 			'Tables / rows'   => sprintf( '%d / %s', (int) ( $totals['tables'] ?? 0 ), number_format( (int) ( $totals['rows'] ?? 0 ) ) ),
 			'Parts'           => (string) count( (array) $manifest['parts'] ),

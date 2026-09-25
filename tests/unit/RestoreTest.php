@@ -206,10 +206,11 @@ final class RestoreTest extends TestCase {
 	/**
 	 * Backs up the source site.
 	 *
-	 * @param string $password Password for an encrypted backup, '' for none.
+	 * @param string              $password Password for an encrypted backup, '' for none.
+	 * @param array<string,mixed> $site     Manifest site fields to change.
 	 * @return string Archive path.
 	 */
-	private function backup( string $password = '' ): string {
+	private function backup( string $password = '', array $site = array() ): string {
 		$encryption = '' === $password ? array() : array(
 			'encrypt'         => true,
 			'kdf_iterations'  => 100000,
@@ -227,7 +228,7 @@ final class RestoreTest extends TestCase {
 				'sql_chunk_bytes' => 40000,
 				'archive_dir'     => $this->tmp . '/archives',
 				'archive_name'    => 'example.com-20260924-180000-a1b2c3.fmw',
-				'site'            => array(
+				'site'            => $site + array(
 					'home_url'     => 'https://example.com',
 					'site_url'     => 'https://example.com',
 					'abspath'      => '/home/old/public_html/',
@@ -377,6 +378,107 @@ final class RestoreTest extends TestCase {
 		$this->assertFileDoesNotExist( $target . '/plugins/founders-migration-website/old-fmw.php' );
 		$this->assertFalse( is_link( $target . '/uploads/etc-link' ) );
 		$this->assertStringContainsString( 'Skipped symlink uploads/etc-link -> /etc', implode( "\n", $store->log_lines( $job->id, 0 ) ) );
+	}
+
+	public function test_a_subdomain_network_moves_to_a_new_domain_with_its_subsites(): void {
+		$db = $this->connect( self::SOURCE );
+		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL)' );
+		$db->query( "INSERT INTO wp_blogs VALUES (1, 1, 'example.com', '/'), (2, 1, 'shop.example.com', '/'), (3, 1, 'brand.example', '/'), (4, 1, 'example.com.au', '/')" );
+		$db->query( 'CREATE TABLE wp_site (id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, domain varchar(200) NOT NULL, path varchar(100) NOT NULL)' );
+		$db->query( "INSERT INTO wp_site VALUES (1, 'example.com', '/')" );
+		$db->query( 'CREATE TABLE wp_sitemeta (meta_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO wp_sitemeta (site_id, meta_key, meta_value) VALUES (1, 'siteurl', 'https://example.com/'), (1, 'active_sitewide_plugins', 'a:0:{}')" );
+		foreach ( array(
+			2 => 'https://shop.example.com',
+			3 => 'https://brand.example',
+			4 => 'https://example.com.au',
+		) as $id => $url ) {
+			$db->query( "CREATE TABLE wp_{$id}_options (option_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) NOT NULL UNIQUE, option_value longtext NOT NULL)" );
+			$db->query( "INSERT INTO wp_{$id}_options (option_name, option_value) VALUES ('home', '{$url}'), ('siteurl', '{$url}'), ('wp_{$id}_user_roles', 'a:0:{}'), ('promo', " . $db->quote( serialize( array( 'link' => $url . '/deal' ) ) ) . ')' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		}
+		$db->query( "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (1, 'wp_2_capabilities', 'a:1:{s:6:\"editor\";b:1;}')" );
+		$db->close();
+
+		$db = $this->connect( self::TARGET );
+		$db->query( 'CREATE TABLE shop_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL)' );
+		$db->query( "INSERT INTO shop_blogs VALUES (1, 1, 'staging.test', '/'), (2, 1, 'two.staging.test', '/'), (7, 1, 'seven.staging.test', '/')" );
+		$db->query( 'CREATE TABLE shop_2024_options (option_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) NOT NULL UNIQUE, option_value longtext NOT NULL)' ); // Another install, same database.
+		foreach ( array( 2, 7 ) as $id ) { // Site 7 of this network is not in the backup.
+			$db->query( "CREATE TABLE shop_{$id}_options (option_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) NOT NULL UNIQUE, option_value longtext NOT NULL)" );
+			$db->query( "CREATE TABLE shop_{$id}_posts (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, post_title text)" );
+			$db->query( "INSERT INTO shop_{$id}_posts (post_title) VALUES ('target site {$id}')" );
+		}
+		$db->close();
+
+		$archive                        = $this->backup(
+			'',
+			array(
+				'multisite' => true,
+				'sites'     => array(
+					array( 'blog_id' => 1, 'domain' => 'example.com', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'blog_id' => 2, 'domain' => 'shop.example.com', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'blog_id' => 3, 'domain' => 'brand.example', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'blog_id' => 4, 'domain' => 'example.com.au', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+				),
+				'network'   => array(
+					'domain'    => 'example.com',
+					'path'      => '/',
+					'subdomain' => true,
+					'main_site' => 1,
+				),
+			)
+		);
+		$options                        = $this->restore_options( $archive );
+		$options['target']['home_url']  = 'https://staging.test';
+		$options['target']['site_url']  = 'https://staging.test';
+		$options['target']['multisite'] = true;
+		$options['target']['network']   = array(
+			'domain'    => 'staging.test',
+			'path'      => '/',
+			'subdomain' => true,
+			'main_site' => 1,
+		);
+		$options['domain_map']          = array( 'brand.example' => 'brand.staging.test' );
+		$options['keep_active_network'] = true;
+		$store                          = new JobStore( $this->tmp . '/restore-jobs' );
+		$job                            = $this->run_job( $store, 'restore', $options, self::TARGET );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+
+		$db = $this->connect( self::TARGET );
+		$this->assertSame(
+			array( '1 staging.test /', '2 shop.staging.test /', '3 brand.staging.test /', '4 example.com.au /' ),
+			$db->column( "SELECT CONCAT(blog_id, ' ', domain, ' ', path) FROM shop_blogs ORDER BY blog_id" )
+		);
+		$this->assertSame( array( 'staging.test /' ), $db->column( "SELECT CONCAT(domain, ' ', path) FROM shop_site" ) );
+		$this->assertSame( array( 'https://staging.test/' ), $db->column( "SELECT meta_value FROM shop_sitemeta WHERE meta_key = 'siteurl'" ) );
+		$this->assertSame( array( 'https://shop.staging.test' ), $db->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'home'" ) );
+		$this->assertSame( array( 'https://brand.staging.test' ), $db->column( "SELECT option_value FROM shop_3_options WHERE option_name = 'home'" ) );
+		// A kept domain that starts with the network's domain stays as it is.
+		$this->assertSame( array( 'https://example.com.au' ), $db->column( "SELECT option_value FROM shop_4_options WHERE option_name = 'home'" ) );
+		$this->assertSame( array( serialize( array( 'link' => 'https://example.com.au/deal' ) ) ), $db->column( "SELECT option_value FROM shop_4_options WHERE option_name = 'promo'" ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		$this->assertSame( array( 'shop_2024_options' ), $db->column( "SHOW TABLES LIKE 'shop\\_2024%'" ) );
+		$this->assertSame( array( serialize( array( 'link' => 'https://shop.staging.test/deal' ) ) ), $db->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'promo'" ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		$this->assertSame( array( 'shop_2_user_roles' ), $db->column( "SELECT option_name FROM shop_2_options WHERE option_name LIKE '%user_roles'" ) );
+		$this->assertSame( array( 'shop_2_capabilities' ), $db->column( "SELECT meta_key FROM shop_usermeta WHERE meta_key LIKE '%2_capabilities'" ) );
+		$sitewide = unserialize( (string) $db->column( "SELECT meta_value FROM shop_sitemeta WHERE meta_key = 'active_sitewide_plugins'" )[0] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize
+		$this->assertArrayHasKey( self::PLUGIN, $sitewide );
+		// Site 7 is not in the backup: its tables went aside with the replaced ones and were removed at the end.
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'shop\\_7\\_%'" ) );
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'fmw%'" ) );
+		$this->assertSame( array( 'Post 1' ), $db->column( 'SELECT post_title FROM shop_posts WHERE ID = 1' ) );
+		$db->close();
+
+		$log = implode( "\n", $store->log_lines( $job->id, 200 ) );
+		$this->assertStringContainsString( 'Site 3: brand.example/ -> brand.staging.test/', $log );
+		$this->assertStringContainsString( 'Site 4: example.com.au/ (own domain, kept', $log );
+		$this->assertStringContainsString( 'Moved the network to staging.test/ (3 sites).', $log );
+	}
+
+	public function test_a_network_is_not_restored_onto_a_single_site(): void {
+		$archive = $this->backup( '', array( 'multisite' => true, 'sites' => array( array( 'blog_id' => 1, 'domain' => 'example.com', 'path' => '/' ) ) ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$job     = $this->run_job( new JobStore( $this->tmp . '/restore-jobs' ), 'restore', $this->restore_options( $archive ), self::TARGET );
+		$this->assertSame( Job::STATUS_FAILED, $job->status );
+		$this->assertStringContainsString( 'between a single site and a multisite network', (string) $job->error );
 	}
 
 	public function test_a_damaged_archive_fails_before_the_live_site_changes(): void {
