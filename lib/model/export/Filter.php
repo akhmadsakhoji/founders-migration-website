@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Model\Export;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Decides which paths under wp-content go into a backup.

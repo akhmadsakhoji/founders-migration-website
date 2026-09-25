@@ -13,7 +13,7 @@ namespace Founders\Migration\Pull;
 use Founders\Migration\Remote\Http;
 use Founders\Migration\Remote\RemoteException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Talks to the source site's pull API (docs/pull-v1.md).

@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Archive;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * CRC-32 (the "crc32b" of PHP's hash extension) helpers.

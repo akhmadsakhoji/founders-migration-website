@@ -12,7 +12,7 @@ namespace Founders\Migration\Remote;
 
 use Founders\Migration\Job\Secrets;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Checks and builds cloud storage settings from user input.

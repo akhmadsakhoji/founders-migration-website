@@ -15,7 +15,7 @@ use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\CollectionStore;
 use Founders\Migration\Storage\Uploads;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Cloud storages of this site (fmw-storage/storages.json) and what can be done with them.

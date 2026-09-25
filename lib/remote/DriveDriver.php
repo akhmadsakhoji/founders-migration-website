@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Remote;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Google Drive (API v3) with resumable uploads.

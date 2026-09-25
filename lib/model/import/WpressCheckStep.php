@@ -23,7 +23,7 @@ use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Streams multi-GB archives with native file calls.
 
@@ -320,7 +320,7 @@ final class WpressCheckStep implements Step {
 			throw new JobException( 'This is a backup of a whole network: on a network it restores as a whole, without --site.' );
 		}
 		if ( ! empty( $info['blogs_dir'] ) ) {
-			throw new JobException( 'This network stores its media in wp-content/blogs.dir (created before WordPress 3.5); restoring those arrives later.' );
+			throw new JobException( 'This network stores its media in wp-content/blogs.dir (created before WordPress 3.5); restoring such a network onto a network is not supported. Make an .fmw backup of it with this plugin instead.' );
 		}
 	}
 

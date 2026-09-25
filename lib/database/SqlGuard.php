@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Database;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Decides which statements from an archive may run, and points them at other table names.

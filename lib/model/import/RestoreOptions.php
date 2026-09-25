@@ -12,7 +12,7 @@ namespace Founders\Migration\Model\Import;
 
 use Founders\Migration\Model\Export\BackupOptions;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Builds restore job options for the current WordPress site. No credentials are stored.

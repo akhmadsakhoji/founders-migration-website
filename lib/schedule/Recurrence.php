@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Schedule;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * When a schedule runs next, in the site's time zone.

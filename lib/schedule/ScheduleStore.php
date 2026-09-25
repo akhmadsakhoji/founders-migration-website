@@ -12,7 +12,7 @@ namespace Founders\Migration\Schedule;
 
 use Founders\Migration\Storage\CollectionStore;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Backup schedules, in fmw-storage/schedules.json (see CollectionStore).

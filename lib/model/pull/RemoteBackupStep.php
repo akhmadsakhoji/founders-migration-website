@@ -19,7 +19,7 @@ use Founders\Migration\Job\Step;
 use Founders\Migration\Pull\PullClient;
 use Founders\Migration\Pull\PullException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Makes a backup on the source site and drives it to the end, slice by

@@ -13,7 +13,7 @@ namespace Founders\Migration\Schedule;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Checks and builds schedules from user input (CLI flags, REST body).

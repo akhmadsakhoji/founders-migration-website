@@ -6,6 +6,6 @@ In short: be respectful and constructive, welcome newcomers, assume good intent,
 
 ## Reporting
 
-Report unacceptable behaviour privately to the maintainer through the contact details on the maintainer's GitHub profile. Reports are handled confidentially.
+Report unacceptable behaviour privately to the maintainer, [@akhmadsakhoji](https://github.com/akhmadsakhoji), or to PT Founder Media Partner through [founders.co.id](https://founders.co.id). Reports are handled confidentially.
 
 The maintainer may remove comments, commits or other contributions that break this code, and may block people from the project temporarily or permanently, following the enforcement guidelines of the Contributor Covenant.

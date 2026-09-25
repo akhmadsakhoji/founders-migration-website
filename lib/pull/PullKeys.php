@@ -12,7 +12,7 @@ namespace Founders\Migration\Pull;
 
 use Founders\Migration\Storage\CollectionStore;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Pull keys of this (source) site, in fmw-storage/pull-keys.json.

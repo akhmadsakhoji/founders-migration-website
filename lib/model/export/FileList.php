@@ -12,7 +12,7 @@ namespace Founders\Migration\Model\Export;
 
 use Founders\Migration\Archive\ArchiveException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Append-only list with byte offsets needs a native handle.
 

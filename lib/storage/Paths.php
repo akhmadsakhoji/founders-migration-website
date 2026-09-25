@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Storage;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Small protective files written directly; WP_Filesystem may need credentials.
 
@@ -38,17 +38,12 @@ final class Paths {
 	}
 
 	/**
-	 * Creates $dir if needed and drops the protective files into it.
+	 * The files that keep a data folder closed to the web, by name, with their contents.
 	 *
-	 * @param string $dir Directory.
-	 * @return bool Whether the directory exists and is writable.
+	 * @return array<string,string>
 	 */
-	public static function ensure_protected( string $dir ): bool {
-		if ( ! wp_mkdir_p( $dir ) ) {
-			return false;
-		}
-
-		$files = array(
+	public static function protection_files(): array {
+		return array(
 			'index.php'  => "<?php\n// Silence is golden.\n",
 			'.htaccess'  => implode(
 				"\n",
@@ -82,6 +77,20 @@ final class Paths {
 				)
 			),
 		);
+	}
+
+	/**
+	 * Creates $dir if needed and drops the protective files into it.
+	 *
+	 * @param string $dir Directory.
+	 * @return bool Whether the directory exists and is writable.
+	 */
+	public static function ensure_protected( string $dir ): bool {
+		if ( ! wp_mkdir_p( $dir ) ) {
+			return false;
+		}
+
+		$files = self::protection_files();
 
 		foreach ( $files as $name => $contents ) {
 			$path = $dir . '/' . $name;
@@ -128,7 +137,7 @@ final class Paths {
 			array(
 				'timeout'     => 5,
 				'redirection' => 3, // Follow http -> https and www redirects.
-				'sslverify'   => false, // Loopback request to this same site.
+				'sslverify'   => apply_filters( 'https_local_ssl_verify', false ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WordPress core filter for loopback requests to this same site.
 			)
 		);
 		wp_delete_file( $canary );

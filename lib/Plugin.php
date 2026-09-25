@@ -10,7 +10,7 @@
 
 namespace Founders\Migration;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Cli\Command;
 use Founders\Migration\Cli\ScheduleCommand;

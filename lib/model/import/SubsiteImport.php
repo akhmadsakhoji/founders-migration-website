@@ -14,7 +14,7 @@ use Founders\Migration\Database\Connection;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\JobException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Identifiers are backtick-quoted and values escaped by Connection.
 // phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize, WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- WordPress stores these values serialized; unserialize() runs with allowed_classes=false.

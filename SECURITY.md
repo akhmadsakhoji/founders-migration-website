@@ -24,10 +24,17 @@ We will keep you informed, credit you in the release notes unless you prefer oth
 
 ## Supported versions
 
-Only the latest release receives security fixes. The project is in early development (0.x); do not use it on production sites yet.
+Only the latest release receives security fixes. Please update before reporting, and check whether the issue is still present on `main`.
 
 ## Scope
 
-In scope: this plugin's code and the `.fmw` format handling, for example path traversal during extraction, unauthenticated access to backups or endpoints, SQL injection, object injection, privilege escalation, and weaknesses in backup encryption.
+In scope: this plugin's code, for example:
+
+- reading `.fmw` and `.wpress` backups: path traversal during extraction, crafted SQL, object injection, resource exhaustion;
+- access to backups, jobs and the REST routes (`fmw/v1`), including the key-authenticated pull routes and job tokens;
+- pull keys, the Google OAuth callback, and cloud storage credentials and passwords stored sealed on the server;
+- SQL injection, privilege escalation, and weaknesses in backup encryption.
+
+FMW Tools has its own policy in its repository.
 
 Out of scope: vulnerabilities in WordPress core, other plugins, or server configuration, unless FMW makes them exploitable.

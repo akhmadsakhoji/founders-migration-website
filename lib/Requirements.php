@@ -10,7 +10,7 @@
 
 namespace Founders\Migration;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Server requirement checks.
@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 final class Requirements {
 
 	const REQUIRED_EXTENSIONS    = array( 'zlib', 'hash', 'mysqli', 'json' );
-	const RECOMMENDED_EXTENSIONS = array( 'openssl', 'pcntl' );
+	const RECOMMENDED_EXTENSIONS = array( 'openssl', 'curl', 'bz2', 'pcntl' );
 
 	/**
 	 * Blocking problems. The plugin does not run while any are present.
@@ -67,7 +67,15 @@ final class Requirements {
 		}
 
 		if ( ! extension_loaded( 'openssl' ) ) {
-			$notes[] = __( 'The PHP extension "openssl" is needed for password-protected backups.', 'founders-migration-website' );
+			$notes[] = __( 'The PHP extension "openssl" is needed for password-protected backups, cloud storage, schedules with a password and pulls.', 'founders-migration-website' );
+		}
+
+		if ( ! extension_loaded( 'curl' ) ) {
+			$notes[] = __( 'The PHP extension "curl" is needed for cloud storage and pulls from another site.', 'founders-migration-website' );
+		}
+
+		if ( ! extension_loaded( 'bz2' ) ) {
+			$notes[] = __( 'The PHP extension "bz2" is needed to restore bzip2-compressed .wpress backups.', 'founders-migration-website' );
 		}
 
 		if ( 'cli' === PHP_SAPI && ! extension_loaded( 'pcntl' ) ) {

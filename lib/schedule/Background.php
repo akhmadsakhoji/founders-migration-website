@@ -15,7 +15,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\JobToken;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Runs a job without a browser: a chain of non-blocking requests to this site.

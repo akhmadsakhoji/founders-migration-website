@@ -24,7 +24,7 @@ use Founders\Migration\Pull\PullException;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Uploads;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Resumable downloads need native file handles.
 

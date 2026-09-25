@@ -25,7 +25,7 @@ final class NetworkMoveTest extends TestCase {
 	 *
 	 * @param bool                                                    $subdomain Subdomain install.
 	 * @param array<int,array{blog_id:int,domain:string,path:string}> $sites   Sites.
-	 * @param bool                                                    $recorded  Whether the manifest records the network (0.1.0 and later).
+	 * @param bool                                                    $recorded  Whether the manifest records the network (1.0.0 and later).
 	 * @return array<string,mixed>
 	 */
 	private function source( bool $subdomain, array $sites, bool $recorded = true ): array {

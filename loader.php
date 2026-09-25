@@ -12,7 +12,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 spl_autoload_register(
 	static function ( $class_name ) {

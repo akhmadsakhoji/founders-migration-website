@@ -12,7 +12,7 @@ namespace Founders\Migration\Model\Import;
 
 use Founders\Migration\Job\JobException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Where every site of a multisite network goes when the network is restored at another address.
@@ -47,7 +47,7 @@ final class NetworkMove {
 	}
 
 	/**
-	 * The source network: from the manifest, or worked out from its list of sites (backups made before 0.1.0).
+	 * The source network: from the manifest, or worked out from its list of sites (backups made by development versions before 1.0.0).
 	 *
 	 * @param array<string,mixed> $site Manifest site.
 	 * @return array{domain:string,path:string,subdomain:bool|null,main_site:int,networks:int} subdomain is null when unknown.

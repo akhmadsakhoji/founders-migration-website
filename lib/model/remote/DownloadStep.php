@@ -19,7 +19,7 @@ use Founders\Migration\Remote\RemoteException;
 use Founders\Migration\Remote\Storages;
 use Founders\Migration\Storage\Backups;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Resumable downloads need native file handles.
 

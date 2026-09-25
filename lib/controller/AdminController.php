@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Controller;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Model\Reset\ResetOptions;
@@ -53,9 +53,9 @@ final class AdminController {
 		if ( ! in_array( $page, array( self::SLUG_EXPORT, self::SLUG_IMPORT, self::SLUG_BACKUPS, self::SLUG_SCHEDULES, self::SLUG_REMOTE, self::SLUG_PULL, self::SLUG_RESET ), true ) ) {
 			return;
 		}
-		wp_enqueue_style( 'fmw-admin', plugins_url( 'assets/admin.css', FMWP_PLUGIN_FILE ), array( 'dashicons' ), FMWP_VERSION );
-		wp_enqueue_script( 'fmw-admin', plugins_url( 'assets/admin.js', FMWP_PLUGIN_FILE ), array(), FMWP_VERSION, true );
-		wp_localize_script( 'fmw-admin', 'FMW', self::script_config() );
+		wp_enqueue_style( 'fmwp-admin', plugins_url( 'assets/admin.css', FMWP_PLUGIN_FILE ), array( 'dashicons' ), FMWP_VERSION );
+		wp_enqueue_script( 'fmwp-admin', plugins_url( 'assets/admin.js', FMWP_PLUGIN_FILE ), array(), FMWP_VERSION, true );
+		wp_localize_script( 'fmwp-admin', 'fmwpAdmin', self::script_config() );
 	}
 
 	/**

@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Cli;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Job\Deadline;
 use Founders\Migration\Job\Job;

@@ -12,7 +12,7 @@ namespace Founders\Migration\Model\Reset;
 
 use Founders\Migration\Model\Import\RestoreOptions;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Builds reset job options for the current WordPress site, or for one site of a network.

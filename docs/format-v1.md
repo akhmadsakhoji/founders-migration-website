@@ -1,6 +1,6 @@
 # FMW archive format, version 1
 
-Status: draft, frozen at the first 1.0.0 release of the plugin.
+Status: stable since version 1.0.0 of the plugin. Changes are backward compatible; anything that is not gets a new format version.
 License of this document: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Anyone may build readers and writers for this format, under any license.
 
 An `.fmw` file is a standard TAR archive that contains other standard files: TAR parts (optionally gzip-compressed), gzip-compressed SQL, and a JSON manifest. Every piece can be opened with `tar`, `gzip`, `mysql` and `openssl`, so a backup stays recoverable even without the plugin or a working WordPress.
@@ -16,7 +16,7 @@ The key words MUST, SHOULD and MAY are used as in RFC 2119.
 | File name | `<domain>-<YYYYMMDD>-<HHMMSS>-<token>.fmw`, `<token>` = 6 random lowercase hex characters. Encrypted backups use `backup-<YYYYMMDD>-<HHMMSS>-<token>.fmw` so the name reveals no domain |
 | First entry | `fmw.json` |
 | Last entry | `manifest.json`, or `manifest.json.enc` when encrypted |
-| Directory mode | `--output=dir` writes the same entries as plain files in a folder instead of one TAR, for uploading parts to object storage one by one |
+| Directory mode | The same entries as plain files in a folder instead of one TAR. The plugin writes TAR containers only; readers MAY also accept a folder (FMW Tools does) |
 
 Readers locate `manifest.json` by walking the TAR headers from the start and seeking over entry data. This needs one 512-byte read per entry and never reads part contents, so it stays fast for a 100 GB archive.
 
@@ -32,7 +32,7 @@ example.com-20260924-180000-a1b2c3.fmw
 │   ├── part-0001.tar.gz
 │   ├── part-0002.tar
 │   ├── ...
-│   └── root.tar.gz            (only with --include-root-files)
+│   └── root.tar.gz            (reserved, see section 5)
 └── manifest.json
 ```
 
@@ -44,7 +44,7 @@ Applies to the container and to every file part.
 - Paths are UTF-8, use `/`, and are relative. They MUST NOT start with `/`, contain a `..` segment, a backslash, a NUL byte, or a drive letter.
 - uid and gid are `0`, uname and gname are empty.
 - Mode keeps the permission bits; mtime keeps the source modification time.
-- Supported types: regular file (`0`), directory (`5`), symlink (`2`). Symlinks are stored as links, never followed, unless the user asks for `--follow-symlinks`. Hard links and special files are not written.
+- Supported types: regular file (`0`), directory (`5`), symlink (`2`). Symlinks are stored as links and never followed. Hard links and special files are not written.
 - Each archive ends with two zero blocks.
 
 ## 3. fmw.json
@@ -106,11 +106,13 @@ The manifest is the single source of truth for verification and restore.
   },
   "options": {
     "exclude": ["cache", "spam-comments"],
+    "exclude_tables": [],
+    "exclude_paths": [],
     "include_root_files": false,
     "part_size": 1073741824,
     "encrypted": false
   },
-  "totals": { "files": 184213, "bytes_raw": 98231456789, "bytes_archived": 81234567890 },
+  "totals": { "files": 184213, "tables": 42, "rows": 1250000, "bytes_raw": 98231456789, "bytes_archived": 81234567890 },
   "parts": [
     {
       "path": "database/0002-wp_posts.0001.sql.gz",
@@ -145,10 +147,10 @@ The manifest is the single source of truth for verification and restore.
 | `site.multisite`, `site.sites` | yes | `sites` lists `{ "blog_id", "domain", "path" }` for every subsite on a network |
 | `site.network` | no | Networks only: `{ "id", "domain", "path", "subdomain", "main_site", "networks" }` (`SITE_ID_CURRENT_SITE`, `DOMAIN_CURRENT_SITE`, `PATH_CURRENT_SITE`, `SUBDOMAIN_INSTALL`, `BLOG_ID_CURRENT_SITE`, number of networks in the install), `null` for single sites; `sites[]` then also carry `network_id`. Older backups leave these out; readers work them out from `sites` (blog 1 is the main site) |
 | `site.db` | yes | Used to warn about incompatible collations before restore |
-| `options` | yes | What was deliberately left out, so restore does not treat it as missing |
-| `totals` | yes | Progress bars and disk space checks |
+| `options` | yes | What was deliberately left out (`exclude` flags, `exclude_tables`, `exclude_paths` relative to `wp-content/`), so restore does not treat it as missing; `include_root_files` is always `false` for now |
+| `totals` | yes | Progress bars and disk space checks (`files`, `bytes_raw`, `bytes_archived`; `tables` and `rows` may be missing in older backups) |
 | `parts[].path` | yes | Entry name inside the container |
-| `parts[].type` | yes | `database`, `files`, or `root-files` |
+| `parts[].type` | yes | `database` or `files`. `root-files` is reserved (section 5); version 1.0.0 of the plugin neither writes nor restores it |
 | `parts[].compression` | yes | `gzip` or `none`. New values may be added later without a version bump; readers MUST refuse values they do not know |
 | `parts[].bytes_raw` | yes | Size before compression (and before encryption) |
 | `parts[].bytes` | yes | Size as stored |
@@ -160,7 +162,7 @@ The manifest is the single source of truth for verification and restore.
 ## 5. File parts
 
 - Paths inside `files/part-NNNN.*` are relative to `wp-content/`, for example `uploads/2025/01/photo.jpg`.
-- `files/root.tar.gz` (optional) holds files from the WordPress root, relative to it. Only this allowlist may appear: `.htaccess`, `robots.txt`, `ads.txt`, `google*.html`, `BingSiteAuth.xml`. `wp-config.php`, `.user.ini`, `php.ini` and WordPress core files are never included. Restore leaves existing root files alone unless the user passes `--restore-root-files`.
+- `files/root.tar.gz` (reserved, part type `root-files`) is meant for files from the WordPress root, relative to it. The plugin does not write or restore it yet; when it does, these rules apply. Only this allowlist may appear: `.htaccess`, `robots.txt`, `ads.txt`, `google*.html`, `BingSiteAuth.xml`. `wp-config.php`, `.user.ini`, `php.ini` and WordPress core files are never included. Restore leaves existing root files alone unless the user passes `--restore-root-files`.
 - Two part kinds: `.tar.gz` for compressible files and `.tar` for files that are already compressed. The default list of stored (not recompressed) extensions is: jpg, jpeg, png, gif, webp, avif, heic, mp4, mov, webm, mkv, mp3, m4a, ogg, zip, gz, tgz, bz2, xz, 7z, rar, zst, woff, woff2, pdf.
 - Target part size is 1 GiB of uncompressed data by default, configurable from 128 MiB to 4 GiB. A single file is never split across parts; a file larger than the target gets a part of its own.
 - Implementation note: PHP's `gzdecode()` stops after the first gzip member. Readers in PHP must use the `compress.zlib://` stream wrapper or `inflate_add()` in a loop; `gzip`, `tar` and zlib's `gzread()` read all members.
@@ -176,7 +178,7 @@ The manifest is the single source of truth for verification and restore.
 - Views and triggers are included with their `DEFINER` clause removed. Stored procedures are not included in v1.
 - Chunks target 256 MB of raw SQL and are paginated by primary key (keyset pagination).
 - Table names keep the source prefix (`site.table_prefix`). Restoring tools rename them.
-- Restore MAY only execute these statements: `SET`, `DROP TABLE`, `CREATE TABLE`, `INSERT`, `CREATE VIEW`, `CREATE TRIGGER`, plus the matching `DROP VIEW` / `DROP TRIGGER`. Anything else (for example `GRANT`, `CREATE USER`, `LOAD DATA`, `INTO OUTFILE`) MUST be rejected.
+- Restore MAY only execute these statements: `SET`, `DROP TABLE`, `CREATE TABLE`, `INSERT`, `CREATE VIEW`, `CREATE TRIGGER`, plus the matching `DROP VIEW` / `DROP TRIGGER` and the `DELIMITER` lines around trigger bodies. Anything else (for example `GRANT`, `CREATE USER`, `LOAD DATA`, `INTO OUTFILE`) MUST be rejected.
 
 ## 7. Encryption
 

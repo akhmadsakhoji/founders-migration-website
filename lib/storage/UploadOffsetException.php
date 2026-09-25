@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Storage;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * A chunk did not start at the end of the partial upload; carries the real offset.

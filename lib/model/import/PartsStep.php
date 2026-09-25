@@ -24,7 +24,7 @@ use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Streams multi-GB parts with native file calls, like the archive library.
 

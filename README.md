@@ -2,24 +2,24 @@
 
 Backup, restore and migrate WordPress sites up to 100 GB and beyond — with open, standard archive formats.
 
-Founders Migration Website (FMW) works like All-in-One WP Migration: the same Export / Import / Backups screens and the same WP-CLI commands (`wp fmw` instead of `wp ai1wm`). Underneath it is built for very large sites:
+Founders Migration Website (FMW) has the familiar Export / Import / Backups workflow, restores All-in-One WP Migration `.wpress` backups, and its WP-CLI commands and flags mirror `wp ai1wm` (`wp fmw` instead). Underneath it is built for very large sites:
 
 - **Resumable everywhere.** Backup, upload and restore continue from the last checkpoint after a timeout, a dropped SSH session or a server restart.
-- **Standard formats, no lock-in.** An `.fmw` file is a TAR archive of TAR/gzip parts, gzip SQL and a JSON manifest. You can restore it by hand with `tar`, `gunzip` and `mysql` if the plugin or WordPress is broken. See [docs/format-v1.md](docs/format-v1.md).
+- **Standard formats, no lock-in.** An `.fmw` file is a TAR archive of TAR/gzip parts, gzip SQL and a JSON manifest. You can restore it by hand with `tar`, `gunzip` and `mysql` if the plugin or WordPress is broken. See [docs/format-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/format-v1.md).
 - **Honest progress.** Percentage, speed and ETA in both the browser and the terminal.
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
 - **Site to site.** `wp fmw pull https://old.example.com` copies a site (or a whole multisite network onto another network) over HTTPS with a short-lived pull key: no download and upload by hand.
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
-- **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
+- **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Status: phase 3 complete.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network work end to end and are resumable. Test on staging sites before relying on it in production.
+> **Version 1.0.0.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
 | | Minimum | Recommended |
 |---|---|---|
 | PHP | 7.4, **64-bit** | 8.3 or newer |
-| PHP extensions | zlib, hash, mysqli, json | openssl (encrypted backups), bz2 (bzip2-compressed `.wpress`), pcntl (clean Ctrl+C in WP-CLI) |
+| PHP extensions | zlib, hash, mysqli, json | openssl (encrypted backups, cloud storage, pulls, schedules with a password), curl (cloud storage and pulls), bz2 (bzip2-compressed `.wpress`), pcntl (clean Ctrl+C in WP-CLI) |
 | WordPress | 6.0 | Latest |
 | MySQL / MariaDB | 5.7 / 10.3 | 8.0 / 10.11 |
 | WP-CLI | 2.5 | Latest |
@@ -28,25 +28,28 @@ The plugin is written in plain PHP and does not call `exec()` or system binaries
 
 ## Installation
 
-Until the first release on WordPress.org:
+Download `founders-migration-website.zip` from the [latest release](https://github.com/akhmadsakhoji/founders-migration-website/releases/latest) and upload it in **Plugins → Add New → Upload Plugin** (once the plugin is listed on WordPress.org, search for "Founders Migration Website" there instead), then activate it. On a multisite network, activate it network-wide (**Network Admin → Plugins**); its screens are in Network Admin. From the command line:
 
 ```bash
-cd wp-content/plugins
-git clone https://github.com/akhmadsakhoji/founders-migration-website.git
-wp plugin activate founders-migration-website
+wp plugin install https://github.com/akhmadsakhoji/founders-migration-website/releases/latest/download/founders-migration-website.zip --activate   # --activate-network on a network
 wp fmw status
 ```
 
+For development, clone the repository into `wp-content/plugins/` instead (see [Development](#development)).
+
 ## Admin screens
 
-**Founders Migration** in the admin menu has the same three screens as All-in-One WP Migration, plus Pull:
+**Founders Migration** in the admin menu (Network Admin on a multisite network) has these screens:
 
 | Screen | What it does |
 |---|---|
-| **Export** | The same exclusions as `wp fmw backup`. Progress shows the step, bytes, speed and remaining time. When it finishes you get a Download button. |
-| **Import** | Drag and drop a `.fmw` or `.wpress` file of any size. It is uploaded in chunks; if the connection drops or the page is closed, choose the same file again and the upload continues where it stopped. Then you confirm the restore, with a password field for encrypted `.wpress` files. |
+| **Export** | The exclusion checkboxes of `wp fmw backup` (excluding single tables or paths, and the part size, are CLI options), a password, and optionally a cloud storage to upload to. Progress shows the step, bytes, speed and remaining time. When it finishes you get a Download button. |
+| **Import** | Drag and drop a `.fmw` or `.wpress` file of any size. It is uploaded in chunks; if the connection drops or the page is closed, choose the same file again and the upload continues where it stopped. Then you confirm the restore, with a password field for encrypted backups and, on networks, the site choices described below. |
 | **Backups** | Download (resumable, byte ranges), restore or delete backups. Backups in `wp-content/ai1wm-backups` are listed too; FMW never deletes them. Jobs that stopped part-way (closed tab, timeout, Ctrl+C in WP-CLI) can be continued or cancelled here. |
 | **Pull** | Copy another site onto this one: enter its address and a pull key, check it, then pull and restore (or only download) with the same progress dialog. Below, create pull keys for other sites to copy this one (validity, allowed addresses, existing backups), see when they were last used, and revoke them. |
+| **Schedules** | Scheduled backups: frequency, time, exclusions, password, retention, e-mail and a cloud storage to upload to. Shows when the scheduler last ran and the system cron line to use. |
+| **Cloud storage** | Add, test and remove S3-compatible storages and Google Drive (with the redirect URI to copy and a Connect button); browse, download and delete the backups stored there. |
+| **Reset** | Bring the database, media, plugins or themes back to a fresh install after a safety backup; on a network, one site or the whole network. |
 
 The browser drives each job in short requests of about 20 seconds, so PHP and proxy timeouts do not matter. Hosts with stricter limits can lower this with the `fmwp_web_slice_seconds` filter. A restore replaces the users table part-way through, so each job has its own random token, stored hashed outside the database. The token lets the browser that started the restore finish it after its login stops being valid. Only one job runs at a time.
 
@@ -70,7 +73,7 @@ wp fmw verify <file> --password        # SHA-256 and HMAC of every part
 wp fmw restore <file> --password
 ```
 
-Everything that describes the site is encrypted, including the manifest, the database part names and the file name (`backup-<date>-<token>.fmw`). A wrong password is refused before anything happens. While a job runs, its password is kept sealed with a key derived from `wp-config.php`'s AUTH salt, never in plain text, and it is removed when the job ends. Without the plugin, a part decrypts with `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256` ([docs/format-v1.md](docs/format-v1.md), section 7).
+Everything that describes the site is encrypted, including the manifest, the database part names and the file name (`backup-<date>-<token>.fmw`). A wrong password is refused before anything happens. While a job runs, its password is kept sealed with a key derived from `wp-config.php`'s AUTH salt, never in plain text, and it is removed when the job ends. Without the plugin, a part decrypts with `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256` ([docs/format-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/format-v1.md), section 7).
 
 Restore onto the same site or a new domain, path or table prefix:
 
@@ -93,7 +96,7 @@ wp fmw restore network.fmw --map=brand.example=brand.staging.example   # subsite
 | `old.example/`, `shop.old.example/` | `new.example/`, `shop.new.example/` |
 | `brand.example/` (own domain) | kept, or the domain given with `--map` |
 
-The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories arrives later in phase 3.
+The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories is not supported.
 
 One site of a network backup restores onto a single site, for example when a brand leaves the network. This works for `.fmw` network backups and for `.wpress` backups of the Multisite Extension, of the whole network or of sites picked one by one:
 
@@ -139,7 +142,7 @@ wp fmw verify site.wpress              # headers + CRC-32 (archives from recent 
 wp fmw restore site.wpress --password=<password>   # password only for encrypted backups; asked for when omitted
 ```
 
-Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. The plugins and theme the backup had active are switched on again, as All-in-One WP Migration does. Whole-network backups from its Multisite Extension restore onto a network like FMW's own network backups (below), one of their sites, or of a backup of sites picked one by one, restores onto a single site, and picked sites restore into a network (below).
+Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. The plugins and theme the backup had active are switched on again, as All-in-One WP Migration does. Whole-network backups from its Multisite Extension restore onto a network like FMW's own network backups (below), one of their sites, or of a backup of sites picked one by one, restores onto a single site, and picked sites restore into a network (below).
 
 How a restore protects the site:
 
@@ -149,30 +152,23 @@ How a restore protects the site:
 - SQL from the archive is checked against an allowlist (table DDL and literal `INSERT`s only), so a crafted backup cannot run arbitrary queries.
 - The FMW plugin folder, backups and storage are never overwritten, the plugin stays active, and files that are not in the backup are kept.
 
-Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to type `fmw backup`.
+All commands (`wp help fmw <command>` lists every option). Add `alias fmw='wp fmw'` to `~/.bashrc` to type `fmw backup`.
 
-| Command | ai1wm equivalent | Available |
-|---|---|---|
-| `wp fmw list-backups` | `wp ai1wm list-backups` | now |
-| `wp fmw delete <file>` | — | now |
-| `wp fmw status` | — | now |
-| `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a network backup onto a single site, a single site or picked sites into a network with `--site`) |
-| `wp fmw jobs` | — | now |
-| `wp fmw resume <job_id>` | — | now |
-| `wp fmw cancel <job_id>` | — | now |
-| `wp fmw log <job_id>` | — | now |
-| `wp fmw cleanup` | — | now |
-| `wp fmw verify <file>` | — | now |
-| `wp fmw inspect <file>` | — | now |
-| `wp fmw reset` | Reset Hub | now (single site; one site of a network with `--site`, the whole network with `--network`) |
-| `wp fmw schedule list\|add\|update\|delete\|enable\|disable` | Schedules (Unlimited) | now |
-| `wp fmw schedule run [<id>]` | — | now (for a system cron) |
-| `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze / Google Drive extensions | now |
-| `wp fmw storage connect\|disconnect` | — | now (Google Drive) |
-| `wp fmw storage files\|upload\|download\|remove` | — | now |
-| `wp fmw pull <url>` | — | now (single site, network onto network) |
-| `wp fmw pull-key create\|list\|revoke` | — | now |
+| Command | What it does |
+|---|---|
+| `wp fmw backup` | Back up the site or the whole network (exclusions, `--password`, `--storage`) |
+| `wp fmw restore <file>` | Restore `.fmw` or `.wpress`: sites and whole networks, one site of a network backup onto a single site, a single site or picked sites into a network (`--site`) |
+| `wp fmw list-backups`, `delete <file>` | List or delete backups |
+| `wp fmw inspect <file>`, `verify <file>` | What is inside a backup; check every part |
+| `wp fmw status` | Server requirements and the data folders |
+| `wp fmw jobs`, `resume <job_id>`, `cancel <job_id>`, `log <job_id>` | Unfinished and past jobs |
+| `wp fmw cleanup` | Storage of finished and stale jobs, and with `--tables` leftover `fmwold_*` / `fmwtmp_*` tables |
+| `wp fmw reset` | Fresh database, media, plugins or themes; one site of a network (`--site`) or the whole network (`--network`) |
+| `wp fmw schedule list\|add\|update\|delete\|enable\|disable\|run` | Scheduled backups (`run` for a system cron) |
+| `wp fmw storage list\|add\|update\|delete\|test\|connect\|disconnect` | Cloud storages (`connect` for Google Drive) |
+| `wp fmw storage files\|upload\|download\|remove` | Backups in a cloud storage |
+| `wp fmw pull <url>` | Copy another site (or network onto a network) onto this one |
+| `wp fmw pull-key create\|list\|revoke` | Keys that let other sites pull this one |
 
 `wp fmw reset --database --media --plugins --themes` (or `--all`, and the Reset screen) brings parts of a site back to a fresh WordPress install:
 
@@ -200,7 +196,7 @@ The whole network (`--network`, or "The whole network" at the end of the Reset s
 - `--media`, `--plugins` and `--themes` work on the whole network (without `--database`, every site's active plugins and media library stay consistent, and every site keeps its theme).
 - Refused: installs with several networks, or whose main site is not site 1 (reset their sites one by one).
 
-**Scheduled backups** (`wp fmw schedule add`, or the Schedules screen) run hourly, daily, weekly or monthly in the site time zone, with the same exclusions and optional password as a manual backup:
+**Scheduled backups** (`wp fmw schedule add`, or the Schedules screen) run hourly, daily, weekly or monthly in the site time zone, with the exclusion flags and optional password of a manual backup (`--exclude-tables`, `--exclude-paths` and `--part-size` are for manual backups only):
 
 - `--keep=<n>` keeps the newest *n* backups of that schedule and deletes older ones; backups made by hand are never touched.
 - E-mail on failure (default), after every backup, or never.
@@ -213,13 +209,13 @@ The whole network (`--network`, or "The whole network" at the end of the Reset s
 - `wp fmw backup --storage=<id> [--delete-local]`, "Then upload to" on the Export screen, "Upload" on the Backups screen, or a schedule's "Upload to" with its own retention (`--remote-keep`, `--no-keep-local`).
 - Pure PHP (curl), no SDK. Multipart uploads with part sizes adapted to the connection (up to 5 TiB, 10,000 parts), resumable after an interruption, every part signed with its SHA-256 so the storage refuses damaged bytes. A cancelled upload is aborted in the storage.
 - Download a backup back to the server (resumable, ranged) and restore it from there.
-- The secret key is stored encrypted with the site's keys in `fmw-storage/storages.json`, never in the database or in job files. The connection is tested (write, read, list, delete) before a storage is saved.
+- The secret key is stored encrypted with the site's keys in `fmw-storage/storages.json`, never in the database or in job files. The connection is tested (write, read, list, delete) before a storage is saved, unless you pass `--skip-test`; Google Drive storages are tested when you connect them.
 
 **Google Drive** uses your own Google OAuth client, so backups go straight from your server to your Drive with no third-party server in between:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/apis/library/drive.googleapis.com), create or pick a project and enable the Google Drive API.
 2. Configure the OAuth consent screen (External). Publish the app ("In production"): while it is in "Testing", Google ends the sign-in after 7 days. FMW only asks for the `drive.file` scope, which Google does not require an app review for.
-3. Create an OAuth client ID of type "Web application" with the redirect URI shown on the Cloud storage screen: `https://example.com/wp-admin/admin-post.php?action=fmw_gdrive_callback`.
+3. Create an OAuth client ID of type "Web application" with the redirect URI shown on the Cloud storage screen: `https://example.com/wp-admin/admin-post.php?action=fmwp_gdrive_callback`.
 4. Add the storage with the client ID and secret, then click **Connect** (or run `wp fmw storage connect <id>` and open the printed link) and allow access.
 
 ```bash
@@ -233,7 +229,7 @@ wp fmw backup --storage=<id>
 - Resumable uploads in 256 KiB-aligned chunks sized to the connection. After an interruption, the upload asks Google how much arrived and continues from there. Older copies with the same name in the folder are replaced.
 - The folder (default `FMW Backups/<domain>`) is created on first use. The client secret and the Google tokens are stored encrypted like S3 keys. **Disconnect** revokes the sign-in; the backups stay in Drive.
 
-**Pulling a site** (server to server, [docs/pull-v1.md](docs/pull-v1.md)) copies a site onto this one without downloading and uploading the backup by hand. On the source site, create a pull key; on the site that should receive the copy, pull:
+**Pulling a site** (server to server, [docs/pull-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/pull-v1.md)) copies a site onto this one without downloading and uploading the backup by hand. On the source site, create a pull key; on the site that should receive the copy, pull:
 
 ```bash
 # On the source (old) site: prints a key once, valid 24 hours by default.
@@ -262,7 +258,7 @@ wp fmw resume <job_id>       # exit 0 = done, 1 = failed, 3 = stopped again (res
 | Folder | Contents |
 |---|---|
 | `wp-content/fmw-backups/` | Finished `.fmw` backups |
-| `wp-content/fmw-storage/` | Job state, logs and temporary parts |
+| `wp-content/fmw-storage/` | Job state, logs and temporary parts, unfinished uploads, and the settings: cloud storages (credentials sealed), schedules and pull keys |
 
 Move both outside the web root (recommended on a VPS) in `wp-config.php`:
 
@@ -277,7 +273,19 @@ Both folders get `index.php`, `.htaccess` and `web.config`. Nginx and OpenLiteSp
 location ~* /wp-content/fmw-(backups|storage)/ { deny all; }
 ```
 
-Deleting the plugin removes its settings but never your backups.
+Deleting the plugin (Plugins → Delete) removes its cloud storages with their stored credentials, schedules, pull keys, jobs and their logs, unfinished uploads and transients, then the storage folder's protection files and the folder itself when nothing else is in it. Only files the plugin made are removed, and nothing in the backups folder. **Backups are never deleted**, on the server or in cloud storage. Unfinished `.fmw.partial` files in the backups folder and `fmwold_*` tables kept with `--keep-old-tables` stay too (`wp fmw cleanup --tables` drops those tables beforehand). Deactivating only stops the scheduler; everything stays.
+
+## Constants and hooks
+
+| Name | Type | Purpose |
+|---|---|---|
+| `FMWP_BACKUPS_PATH`, `FMWP_STORAGE_PATH` | constant | Where backups and job data live (see above) |
+| `FMWP_DISABLE_PULL` | constant | `true` switches off the pull routes, so no other site can pull this one |
+| `fmwp_web_slice_seconds` | filter | Seconds one browser request works on a job (default 20, less when `max_execution_time` is lower) |
+| `fmwp_background_request` | filter | Arguments of the loopback requests that run scheduled backups (`$args`, `$url`), for example HTTP auth on a staging site |
+| `fmwp_pull_client_ip` | filter | The address pull keys are checked against, for sites behind a trusted proxy |
+| `fmwp_remote_curl_options` | filter | curl options for cloud storage and pull requests (proxy, CA bundle) |
+
 
 ## Development
 
@@ -304,7 +312,11 @@ Code layout:
 founders-migration-website.php   plugin header and bootstrap
 constants.php, functions.php     FMWP_* constants and fmwp_* helpers
 loader.php                       autoloader: Founders\Migration\Archive\TarWriter -> lib/archive/TarWriter.php
-lib/archive/                     TAR (PAX) writer and reader, multi-member gzip, safe extractor
+lib/archive/                     TAR (PAX) writer and reader, multi-member gzip, safe extractor, .wpress reader
+lib/database/                    database dump, import and serialized-safe search-replace
+lib/job/                         resumable job engine, job store, sealed secrets
+lib/model/                       the steps of backup, restore, reset, pull and cloud jobs
+lib/pull/                        pull client, pull keys
 lib/storage/                     data folders, protection, backup listing
 lib/schedule/                    scheduled backups, WP-Cron and background requests
 lib/remote/                      cloud storage drivers (S3 SigV4, Google Drive OAuth), shared curl transport
@@ -312,31 +324,28 @@ lib/controller/, lib/view/       admin pages
 lib/cli/                         wp fmw
 docs/format-v1.md                archive format specification
 docs/pull-v1.md                  server-to-server pull protocol
+docs/wpress.md                   the .wpress format as FMW reads it
 tests/                           PHPUnit tests
 tools/                           developer tools (not shipped)
 ```
 
-PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of at least four characters). The command, the file extension and the folder names stay `fmw`.
+PHP functions, constants, options, transients, hooks, script handles and `admin-post` actions use the `fmwp_` / `FMWP_` / `fmwp-` prefix; classes live in the `Founders\\Migration` namespace. The command, the file extension, the folder names, the admin page slugs and the REST namespace (`fmw/v1`) stay `fmw`.
 
 ## Roadmap
 
-| Phase | Scope |
-|---|---|
-| 0 — Foundation | Repository, CI, archive library with tests, synthetic site generator |
-| 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
-| 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
-| 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site (`.fmw` and `.wpress`, picked sites too), single site → subsite, picked `.wpress` sites onto a network, reset of one site or a whole network (done) |
-| 4 — Public release | WordPress.org, documentation site, translations |
+- Listing on WordPress.org, a documentation site and translations.
+- Ideas and requests are welcome in [GitHub issues](https://github.com/akhmadsakhoji/founders-migration-website/issues).
 
 ## Contributing and security
 
-- [CONTRIBUTING.md](CONTRIBUTING.md): coding standards and the Developer Certificate of Origin (`git commit -s`).
-- [SECURITY.md](SECURITY.md): report vulnerabilities privately, never in public issues.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- [CONTRIBUTING.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/CONTRIBUTING.md): coding standards and the Developer Certificate of Origin (`git commit -s`).
+- [SECURITY.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/SECURITY.md): report vulnerabilities privately, never in public issues.
+- [CODE_OF_CONDUCT.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/CODE_OF_CONDUCT.md).
 
 ## License
 
 Copyright (C) 2026 PT Founder Media Partner.
 
-Founders Migration Website is free software, licensed under the [GNU General Public License v2.0 or later](LICENSE). The archive format specification in [docs/format-v1.md](docs/format-v1.md) is licensed under CC BY 4.0 so that anyone can implement it.
+Founders Migration Website is free software, licensed under the [GNU General Public License v2.0 or later](LICENSE). The archive format specification in [docs/format-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/format-v1.md) is licensed under CC BY 4.0 so that anyone can implement it.
+
+All-in-One WP Migration is a trademark of its owner, ServMask. This project is not affiliated with or endorsed by ServMask; it reads the `.wpress` format for compatibility only.

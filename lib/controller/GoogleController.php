@@ -10,13 +10,13 @@
 
 namespace Founders\Migration\Controller;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Remote\GoogleAuth;
 use Founders\Migration\Remote\RemoteException;
 
 /**
- * Where Google sends the browser back after the consent page (admin-post.php?action=fmw_gdrive_callback).
+ * Where Google sends the browser back after the consent page (admin-post.php?action=fmwp_gdrive_callback).
  */
 final class GoogleController {
 

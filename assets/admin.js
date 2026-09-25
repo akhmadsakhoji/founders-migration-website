@@ -15,7 +15,7 @@
 ( function () {
 	'use strict';
 
-	var config = window.FMW || {};
+	var config = window.fmwpAdmin || {};
 	var t      = config.i18n || {};
 	var busy   = false;
 

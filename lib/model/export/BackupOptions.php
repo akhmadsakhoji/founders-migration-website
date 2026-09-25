@@ -14,7 +14,7 @@ use Founders\Migration\Archive\FmwCrypto;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Remote\Storages;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Turns `wp fmw backup` flags (named like `wp ai1wm backup`) into backup job options.

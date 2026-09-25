@@ -1,8 +1,9 @@
 <?php
 /**
  * Plugin Name:       Founders Migration Website
+ * Plugin URI:        https://github.com/akhmadsakhoji/founders-migration-website
  * Description:       Backup, restore, and migrate WordPress sites up to 100 GB and beyond, using open and standard archive formats (TAR, gzip, SQL).
- * Version:           0.1.0-dev
+ * Version:           1.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            PT Founder Media Partner
@@ -11,6 +12,7 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       founders-migration-website
  * Domain Path:       /languages
+ * Network:           true
  *
  * @package   Founders\Migration
  * @copyright Copyright (C) 2026 PT Founder Media Partner
