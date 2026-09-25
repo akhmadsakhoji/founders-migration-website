@@ -53,7 +53,7 @@ final class PullOptions {
 		if ( ! $download_only && empty( $site['multisite'] ) !== ! $here ) {
 			throw new PullException(
 				$here
-					? 'The source is a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.'
+					? 'The source is a single site and this is a multisite network: pull it with --download-only, then restore it as a site of this network with wp fmw restore <file> --site=<address>.'
 					: 'The source is a multisite network and this is a single site; pull it onto a multisite network of the same kind (moving a subsite out of a network arrives later in phase 3).',
 				0,
 				'fmw_pull_multisite'

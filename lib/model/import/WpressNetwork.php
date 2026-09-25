@@ -117,6 +117,26 @@ final class WpressNetwork {
 	}
 
 	/**
+	 * Whether the archive has a multisite.json (a network backup), without reading past its first entries.
+	 *
+	 * @param string $path Archive path.
+	 * @return bool
+	 * @throws ArchiveException When the archive is damaged.
+	 */
+	public static function present( string $path ): bool {
+		$reader = WpressReader::open( $path );
+		try {
+			$entry = $reader->next();
+			while ( null !== $entry && 'package.json' === $entry->name ) {
+				$entry = $reader->next();
+			}
+			return null !== $entry && 'multisite.json' === $entry->name;
+		} finally {
+			$reader->close();
+		}
+	}
+
+	/**
 	 * Parses and checks multisite.json.
 	 *
 	 * @param string $json Contents.
@@ -227,13 +247,14 @@ final class WpressNetwork {
 	 * What a single-site archive had active (package.json), for WpressActivation.
 	 *
 	 * @param WpressPackage $package Package.
+	 * @param int           $blog    Site ID the backup becomes (1 on a single site).
 	 * @return array{sites:array<int,array{plugins:string[],template:string,stylesheet:string}>,sitewide:null}
 	 */
-	public static function single_activation( WpressPackage $package ): array {
+	public static function single_activation( WpressPackage $package, int $blog = 1 ): array {
 		$data = $package->data();
 		return array(
 			'sites'    => array(
-				1 => array(
+				$blog => array(
 					'plugins'    => self::strings( $data['Plugins'] ?? array() ),
 					'template'   => self::theme( $data['Template'] ?? null ),
 					'stylesheet' => self::theme( $data['Stylesheet'] ?? null ),

@@ -70,6 +70,21 @@ final class ReplaceStep implements Step {
 		$site     = (array) ( $job->data['manifest']['site'] ?? array() );
 		$target   = (array) ( $job->options['target'] ?? array() );
 		$replacer = new Replacer( self::pairs( $job ), self::plain_pairs( $job ) );
+		$people   = null;
+		if ( is_array( $job->data['import'] ?? null ) ) {
+			// The backup's users are matched to the network's by e-mail later: their addresses stay as they are.
+			$no_email = static function ( array $pairs ): array {
+				return array_filter(
+					$pairs,
+					static function ( $find ): bool {
+						return false === strpos( (string) $find, '@' );
+					},
+					ARRAY_FILTER_USE_KEY
+				);
+			};
+			$people   = new Replacer( $no_email( self::pairs( $job ) ), $no_email( self::plain_pairs( $job ) ) );
+			SubsiteImport::prepare( $this->restore, (int) $job->data['import']['blog_id'], (string) ( $site['table_prefix'] ?? 'wp_' ) );
+		}
 		if ( is_array( $job->data['subsite'] ?? null ) ) {
 			if ( 'done' !== $this->restore->progress( 'subsite' ) ) {
 				SubsiteExtract::apply( $this->restore, $job->data['subsite'], (string) ( $site['table_prefix'] ?? 'wp_' ), $context );
@@ -86,7 +101,9 @@ final class ReplaceStep implements Step {
 		}
 
 		while ( $cursor['t'] < $count && $context->should_continue() ) {
-			if ( $this->replace_batch( $tables[ $cursor['t'] ], $replacer ) ) {
+			$table = $tables[ $cursor['t'] ];
+			$use   = null !== $people && in_array( $table, array( RestoreDatabase::TMP . 'users', RestoreDatabase::TMP . 'usermeta' ), true ) ? $people : $replacer;
+			if ( $use->is_empty() || $this->replace_batch( $table, $use ) ) {
 				++$cursor['t'];
 			}
 			$context->report_progress(); // Byte counters keep the previous step's totals: tables are not bytes.
@@ -183,6 +200,12 @@ final class ReplaceStep implements Step {
 			);
 			$paths = array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) );
 			$email = ! empty( $job->options['email_replace'] );
+			if ( is_array( $job->data['import'] ?? null ) ) {
+				// The site's media moves to uploads/sites/<id>/: its URL and folder change, not only the address.
+				$uploads = trim( (string) ( $site['uploads_dir'] ?? 'wp-content/uploads' ), '/' );
+				$urls   += array( rtrim( (string) ( $site['site_url'] ?? $site['home_url'] ?? '' ), '/' ) . '/' . $uploads => (string) ( $target['uploads_url'] ?? '' ) );
+				$paths   = array( rtrim( (string) ( $site['abspath'] ?? '' ), '/' ) . '/' . $uploads => (string) ( $target['uploads_dir'] ?? '' ) ) + $paths;
+			}
 		}
 		$keep       = array();
 		$keep_email = array();

@@ -68,7 +68,14 @@ final class SwapStep implements Step {
 		$to      = (string) ( $job->options['target']['table_prefix'] ?? 'wp_' );
 
 		if ( 'done' !== $restore->progress( 'swap' ) ) {
+			$import   = is_array( $job->data['import'] ?? null ) ? $job->data['import'] : null;
+			$network  = (array) ( $job->data['network_target'] ?? $job->options['target'] );
 			$imported = $restore->imported_tables();
+			if ( null !== $import ) {
+				SubsiteImport::check_site( $restore, $import, $network );
+				// Merged into the network's users, never switched in.
+				$imported = array_values( array_diff( $imported, array( RestoreDatabase::TMP . 'users', RestoreDatabase::TMP . 'usermeta' ) ) );
+			}
 			if ( $imported ) {
 				$live    = array_flip( $restore->tables( $to ) );
 				$renames = array();
@@ -117,11 +124,46 @@ final class SwapStep implements Step {
 						$renames[] = Connection::identifier( $table ) . ' TO ' . Connection::identifier( RestoreDatabase::OLD . $base );
 					}
 				}
+				if ( is_array( $job->data['import'] ?? null ) ) {
+					$replaced = array();
+					foreach ( $imported as $table ) {
+						$replaced[] = $to . substr( $table, strlen( RestoreDatabase::TMP ) );
+					}
+					// The site's tables that the backup does not have (an overwritten site's plugin tables) go aside too.
+					foreach ( SubsiteImport::leftovers( array_keys( $live ), $replaced, $to, (int) $job->data['import']['blog_id'] ) as $table ) {
+						$base = substr( $table, strlen( $to ) );
+						if ( strlen( RestoreDatabase::OLD . $base ) > 64 ) {
+							throw new JobException( sprintf( 'Table name for %s would be longer than 64 characters.', $base ) );
+						}
+						$old[]     = RestoreDatabase::OLD . $base;
+						$renames[] = Connection::identifier( $table ) . ' TO ' . Connection::identifier( RestoreDatabase::OLD . $base );
+					}
+				}
+				// Every name is checked: only now does the live network change.
+				if ( null !== $import && ! SubsiteImport::merge_users( $restore, $import, $network, $context ) ) {
+					$db->close();
+					return false;
+				}
 				$restore->drop( $old ); // Leftovers from an earlier restore that kept its old tables.
 				$db->query( 'RENAME TABLE ' . implode( ', ', $renames ) );
+				if ( ! empty( $job->data['import_left'] ) ) {
+					$context->log( sprintf( 'Left out %d files outside uploads, plugins, themes and languages (mu-plugins, drop-ins and other wp-content folders would change every site of the network).', (int) $job->data['import_left'] ) );
+				}
 				$context->log( sprintf( 'Switched %d tables to the %s database (%d previous tables kept as %s*).', count( $imported ), 'reset' === $job->type ? 'fresh' : 'restored', count( $old ), RestoreDatabase::OLD ) );
 				if ( function_exists( 'wp_cache_flush' ) ) {
 					wp_cache_flush(); // A persistent object cache still holds the previous database's options.
+				}
+			} elseif ( null !== $import && ! SubsiteImport::merge_users( $restore, $import, $network, $context ) ) {
+				$db->close();
+				return false;
+			}
+			if ( null !== $import ) {
+				SubsiteImport::register( $restore, $import, $network, $context );
+				if ( ! $imported && function_exists( 'wp_cache_flush' ) ) {
+					wp_cache_flush(); // Resumed after the switch: the flush above did not run.
+				}
+				if ( ! empty( $import['new'] ) && function_exists( 'wp_update_network_site_counts' ) ) {
+					wp_update_network_site_counts();
 				}
 			}
 			if ( ! empty( $job->options['replace_all_tables'] ) ) {
@@ -136,8 +178,22 @@ final class SwapStep implements Step {
 			$restore->set_progress( 'swap', 'done' );
 		}
 
-		$this->create_objects( $job, $db, new SqlGuard( (string) ( $job->data['sql_prefix'] ?? $from ), $to ), $context );
-		$this->keep_plugin_active( $job, $db, $to );
+		if ( empty( $job->data['import'] ) ) {
+			$this->create_objects( $job, $db, new SqlGuard( (string) ( $job->data['sql_prefix'] ?? $from ), $to ), $context );
+			$this->keep_plugin_active( $job, $db, $to );
+		} else {
+			foreach ( (array) ( $job->data['deferred'] ?? array() ) as $relative ) {
+				if ( is_file( $context->dir() . '/' . $relative ) && filesize( $context->dir() . '/' . $relative ) > 0 ) {
+					$context->log( 'Views and triggers of the backup were left out: they name the tables of a single site.' );
+					break;
+				}
+			}
+			// The site's rewrite rules name its old address: WordPress builds them again on the next visit.
+			$options = $to . (int) $job->data['import']['blog_id'] . '_options';
+			if ( $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $options, '\\%_' ) ) ) ) {
+				$db->query( 'DELETE FROM ' . Connection::identifier( $options ) . " WHERE `option_name` = 'rewrite_rules'" );
+			}
+		}
 		if ( ! empty( $job->options['keep_active_network'] ) ) {
 			$this->keep_plugin_network_active( $job, $db, $to );
 		}

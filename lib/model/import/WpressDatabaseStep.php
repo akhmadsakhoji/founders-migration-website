@@ -89,7 +89,14 @@ final class WpressDatabaseStep implements Step {
 		$restore = new RestoreDatabase();
 		if ( 'import' === $cursor['phase'] ) {
 			$job->bytes_total = (int) filesize( $sql );
-			$guard            = new SqlGuard( WpressPackage::SQL_PREFIX, RestoreDatabase::TMP );
+			$import           = is_array( $job->data['import'] ?? null ) ? (int) $job->data['import']['blog_id'] : 0;
+			$guard            = new SqlGuard(
+				WpressPackage::SQL_PREFIX,
+				RestoreDatabase::TMP,
+				$import > 0 ? static function ( string $table ) use ( $import ): ?string {
+					return SubsiteImport::table( $table, WpressPackage::SQL_PREFIX, $import );
+				} : null
+			);
 			$done             = ( new SqlImporter( $restore ) )->import( 'wpress:database.sql', $sql, $guard, $context, $context->dir() . '/' . self::OBJECTS_FILE );
 			if ( ! $done ) {
 				$job->cursor = $cursor;

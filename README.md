@@ -12,7 +12,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks) and moving multisite networks to another domain work end to end and are resumable. Test on staging sites before relying on it in production.
+> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, and moving one site out of or into a network work end to end and are resumable. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -93,7 +93,7 @@ wp fmw restore network.fmw --map=brand.example=brand.staging.example   # subsite
 | `old.example/`, `shop.old.example/` | `new.example/`, `shop.new.example/` |
 | `brand.example/` (own domain) | kept, or the domain given with `--map` |
 
-The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories, and moving a single site into a network, arrive later in phase 3.
+The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories arrives later in phase 3.
 
 One site of a `.fmw` network backup restores onto a single site, for example when a brand leaves the network:
 
@@ -105,6 +105,20 @@ wp fmw restore network.fmw --site=example.com/shop   # or its ID, or its URL; th
 - Its media moves from `uploads/sites/2/` (or `blogs.dir/2/files/` on old networks) to `uploads/`, and its address and media URLs become this site's. Links to the network's other sites, and e-mail addresses at the network's domain, are left as they are.
 - Users come along when they have a role, posts, comments or links on it; super admins become administrators. Their keys lose the site ID (`wp_2_capabilities` → `wp_capabilities`), other sites' keys are dropped, and keys shared by all sites (like a two-factor plugin's) stay.
 - Network-activated plugins become active plugins. Themes and plugins are shared by the network, so all of them are restored. The network's views and triggers are not carried over.
+
+The other way round, a single-site backup (`.fmw` or `.wpress`) becomes one site of a network, for example when a brand joins it:
+
+```bash
+wp fmw restore brand.fmw --site=shop                  # new site: net.example/shop/ (or shop.net.example)
+wp fmw restore brand.wpress --site=brand.example      # new site with its own domain
+wp fmw restore brand.fmw --site=4                     # replaces site 4 (or give its address)
+```
+
+- A name or address no site has yet creates a new site with the next free ID (kept for the restore, so sites made meanwhile get the IDs after it); an existing site's ID or full address replaces that site. A bare name that is already a site (`shop` when `/shop/` exists) is refused, so nothing is replaced by a typo. The main site and site 1 are refused, as are backups without a database and installs with several networks, and so are folders WordPress reserves on subdirectory networks (`blog`, `files`, `wp-admin`, …). In the Restore dialog of Network Admin, type the name or pick a site from the list.
+- Its tables get the site's prefix (`wp_posts` → `wp_3_posts`). A replaced site's tables that the backup does not have go aside with the old ones.
+- Its media moves to `uploads/sites/<id>/`, and its address and media URLs become the site's. Plugins, themes and languages are restored into the shared folders; must-use plugins, drop-ins (`object-cache.php`, …) and other folders in `wp-content` stay out, since they would change every site.
+- Users are merged into the network's: someone with the same login or e-mail address is the network's user (password and profile stay as they are) and gets the backup's role on the site; everyone else is added. Their e-mail addresses are not changed to the network's domain. Posts, comments and links follow the new user IDs (content of users the backup no longer has gets no author, not someone else's); the merge goes in batches, so sites with many customers restore too. People who already had a role on a replaced site keep it.
+- The site's own plugins and theme stay active on it; nothing is network-activated. Views and triggers are not carried over.
 
 All-in-One WP Migration backups restore the same way, found by name in `wp-content/ai1wm-backups` too:
 
@@ -132,7 +146,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a `.fmw` network with `--site`) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a `.fmw` network with `--site`, a single site into a network with `--site`) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
@@ -282,7 +296,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks and subsite → single site (done), single site → subsite and picked `.wpress` sites, reset for networks |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site and single site → subsite (done), picked `.wpress` sites, reset for networks |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

@@ -47,7 +47,7 @@ final class WpressFilesStep implements Step {
 	 * @throws JobException On damaged data or an unsafe path.
 	 */
 	public function run( Job $job, Context $context ): bool {
-		$target  = (array) ( $job->options['target'] ?? array() );
+		$target  = (array) ( $job->data['network_target'] ?? $job->options['target'] ?? array() ); // A site of a network: its media folder is mapped below.
 		$archive = (string) ( $job->options['archive'] ?? '' );
 		$cursor  = $job->cursor + array(
 			'offset'  => 0,
@@ -74,11 +74,19 @@ final class WpressFilesStep implements Step {
 				}
 
 				$relative = PathGuard::relative( $entry->name );
-				$path     = self::target_path( $relative, $target );
 				if ( in_array( $relative, WpressCheckStep::CONFIG_FILES, true ) ) {
 					self::advance( $cursor, $entry->data_offset() + $entry->size );
 					continue;
 				}
+				if ( is_array( $job->data['import'] ?? null ) ) {
+					$relative = SubsiteImport::file( $relative, 'uploads', (int) $job->data['import']['blog_id'] );
+					if ( null === $relative ) {
+						$job->data['import_left'] = (int) ( $job->data['import_left'] ?? 0 ) + 1; // mu-plugins and drop-ins would change every site.
+						self::advance( $cursor, $entry->data_offset() + $entry->size );
+						continue;
+					}
+				}
+				$path = self::target_path( $relative, $target );
 				if ( self::is_protected( $path, $protect ) ) {
 					++$cursor['skipped'];
 					self::advance( $cursor, $entry->data_offset() + $entry->size );

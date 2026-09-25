@@ -27,6 +27,8 @@ use Founders\Migration\Job\Runner;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\RestoreOptions;
+use Founders\Migration\Model\Import\SubsiteImport;
+use Founders\Migration\Model\Import\WpressNetwork;
 use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Schedule\Background;
 use Founders\Migration\Schedule\Scheduler;
@@ -215,6 +217,8 @@ final class RestController {
 						'created'   => wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $backup['mtime'] ),
 						'encrypted' => $package->encrypted(),
 						'size'      => $backup['size'],
+						'network'   => WpressNetwork::present( $backup['path'] ),
+						'targets'   => self::target_sites(),
 					)
 				);
 			}
@@ -230,6 +234,7 @@ final class RestController {
 						'created'   => isset( $header['created_at'] ) ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) strtotime( (string) $header['created_at'] ) ) : '',
 						'encrypted' => true,
 						'size'      => $backup['size'],
+						'targets'   => self::target_sites(),
 					)
 				);
 			}
@@ -247,8 +252,26 @@ final class RestController {
 				'encrypted' => ! empty( $manifest['options']['encrypted'] ),
 				'size'      => $backup['size'],
 				'sites'     => self::network_sites( (array) ( $manifest['site'] ?? array() ) ),
+				'network'   => ! empty( $manifest['site']['multisite'] ),
+				'targets'   => self::target_sites(),
 			)
 		);
+	}
+
+	/**
+	 * On a network: the addresses of its sites, for choosing the site a single-site backup becomes.
+	 *
+	 * @return string[]
+	 */
+	private static function target_sites(): array {
+		if ( ! is_multisite() ) {
+			return array();
+		}
+		$sites = array();
+		foreach ( get_sites( array( 'number' => 2000 ) ) as $blog ) {
+			$sites[] = (string) $blog->domain . (string) $blog->path;
+		}
+		return $sites;
 	}
 
 	/**
@@ -438,12 +461,25 @@ final class RestController {
 					return new WP_Error( 'fmw_not_found', __( 'Backup not found.', 'founders-migration-website' ), array( 'status' => 404 ) );
 				}
 				$options = RestoreOptions::build( $backup['path'], $flags );
+				$single  = null;
 				if ( 'fmw' === $backup['type'] ) {
 					$archive = new FmwArchive( $backup['path'] );
 					if ( $archive->encrypted() ) {
-						$password = (string) $request['password'];
-						$archive->manifest( $password ); // Refuses a missing or wrong password now.
+						$password                   = (string) $request['password'];
+						$manifest                   = $archive->manifest( $password ); // Refuses a missing or wrong password now.
 						$options['secret_password'] = Secrets::seal( $password );
+					} else {
+						$manifest = $archive->manifest();
+					}
+					$single = empty( $manifest['site']['multisite'] );
+				} else {
+					$single = ! WpressNetwork::present( $backup['path'] );
+				}
+				if ( $single && is_multisite() && '' !== $options['subsite'] ) {
+					try {
+						SubsiteImport::resolve( $options['target'], $options['subsite'] ); // The site it becomes: refused before a job exists.
+					} catch ( JobException $e ) {
+						return new WP_Error( 'fmw_invalid_site', $e->getMessage(), array( 'status' => 400 ) );
 					}
 				}
 				if ( 'wpress' === $backup['type'] ) {
@@ -660,6 +696,12 @@ final class RestController {
 			$summary['backup'] = array(
 				'name' => (string) $job->data['archive']['name'],
 				'size' => (int) ( $job->data['archive']['bytes'] ?? 0 ),
+			);
+		}
+		if ( Jobs::is_restore( $job->type ) && is_array( $job->data['import'] ?? null ) ) {
+			$summary['into'] = array(
+				'id'  => (int) $job->data['import']['blog_id'],
+				'url' => esc_url_raw( (string) ( $job->options['target']['home_url'] ?? '' ) ),
 			);
 		}
 		if ( Jobs::is_restore( $job->type ) ) {
