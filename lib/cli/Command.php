@@ -742,12 +742,8 @@ final class Command {
 			return;
 		}
 
-		$job->status      = Job::STATUS_CANCELLED;
-		$job->finished_at = time();
 		$store->log( $job->id, 'Cancelled.' );
-		$store->save( $job );
-		$store->purge_work_files( $job->id );
-		( new Runner( $store, Jobs::registry() ) )->discard( $job );
+		( new Runner( $store, Jobs::registry() ) )->apply_cancel( $job );
 		$lock->release();
 		WP_CLI::success( sprintf( 'Job %s cancelled and its temporary files deleted.', $job->id ) );
 	}

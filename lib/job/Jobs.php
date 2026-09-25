@@ -77,6 +77,28 @@ final class Jobs {
 			self::$registry->register( 'upload', array( \Founders\Migration\Model\Remote\UploadStep::class ) );
 			self::$registry->register( 'download', array( \Founders\Migration\Model\Remote\DownloadStep::class ) );
 			self::$registry->register(
+				'pull',
+				array(
+					\Founders\Migration\Model\Pull\RemoteBackupStep::class,
+					\Founders\Migration\Model\Pull\PullDownloadStep::class,
+					\Founders\Migration\Model\Pull\PullVerifyStep::class,
+					\Founders\Migration\Model\Pull\PullCleanupStep::class, // Only once the copy is proven intact.
+				)
+			);
+			self::$registry->register(
+				'restore-pull',
+				array(
+					\Founders\Migration\Model\Pull\RemoteBackupStep::class,
+					\Founders\Migration\Model\Pull\PullDownloadStep::class,
+					\Founders\Migration\Model\Import\CheckStep::class,
+					\Founders\Migration\Model\Import\PartsStep::class,
+					\Founders\Migration\Model\Import\ReplaceStep::class,
+					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\FinalizeStep::class,
+					\Founders\Migration\Model\Pull\PullCleanupStep::class, // The restore checked every part.
+				)
+			);
+			self::$registry->register(
 				'restore',
 				array(
 					\Founders\Migration\Model\Import\CheckStep::class,

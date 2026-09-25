@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Server-to-server pulls: `wp fmw pull <url> --key=<key>` copies another site onto this one in one resumable job: a backup is made on the source (driven from here, so the source needs no WP-CLI or working WP-Cron), downloaded in byte ranges checked against the file's version, restored with the usual checks, and only then deleted on the source (download-only pulls check every part's SHA-256 first). `--job=<id>` continues a pull with a new key. `--download-only`, `--backup=<name>` (existing backups), `--password` (encrypted while waiting on the source), `--keep-source-backup`, the backup exclusions and the restore options. Waits while the source is busy with another job; cancelling cleans up on both sites.
+- Pull keys on the source: `wp fmw pull-key create|list|revoke`. A key (`fmwpk_…`, 256-bit secret, shown once, stored as SHA-256 outside the database) can only make and download its own backups (`--allow-existing` for existing ones), has at most one unfinished backup (a repeated start returns it) and three waiting on the site, expires after 24 hours by default (at most 30 days), can be limited to IP addresses or CIDR ranges, opens no other route, and is throttled per address after wrong attempts. `FMWP_DISABLE_PULL` switches pulls off. Protocol documented in docs/pull-v1.md.
+- HTTPS with certificate checks for pulls, except local addresses or `--allow-http`; clear messages for redirects, login pages, firewalls that block the API, and a missing plugin on the source.
+
 - Google Drive storage: `wp fmw storage add --provider=gdrive --client-id --client-secret`, `wp fmw storage connect|disconnect`, and the same on the Cloud storage screen with step-by-step setup and the redirect URI to copy. Each site uses its own Google OAuth client (authorization code with PKCE, `drive.file` scope only), so backups go from the server straight to Drive. A single-use sign-in state bound to the admin who clicked Connect protects the callback; the client secret and tokens are stored sealed, refreshed automatically and revoked on Disconnect.
 - Drive uploads are resumable (Google resumable sessions, 256 KiB-aligned chunks sized to the measured speed, after an interruption Google is asked how much arrived; the upload starts over only when Google has forgotten the session); the size is checked at the end and older copies with the same name are replaced. Listing, ranged resumable downloads, delete, schedules with remote retention and "Then upload to" work as with S3. Rate limits and quota errors get clear messages.
 - Cloud storage code is now one `Driver` interface with S3 and Google Drive drivers and a shared curl transport, so later providers plug into the same upload, download and retention steps.
@@ -72,6 +76,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Cancelling a job (also with `wp fmw cancel`) removes its passwords and keys from disk first, then lets its steps clean up with an in-memory copy (a pull needs its key to delete the backup on the source).
+- Cloud and pull requests refuse answers larger than 8 MiB instead of buffering them, and pull requests have an overall time limit.
+- README and the format specification link to FMW Tools.
 - Backups no longer include `wp-content/ai1wm-backups`.
 - `.wpress` restores run the search-replace before writing files, so files and database disagree for as short a time as possible.
 - The runner reloads a job's state after taking its lock, so a retried request never continues from an outdated copy.

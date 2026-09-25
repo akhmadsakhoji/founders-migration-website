@@ -20,6 +20,8 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  */
 final class Http {
 
+	const MAX_BODY = 8388608; // 8 MiB: API answers are far smaller; a larger one is refused, not buffered.
+
 	/**
 	 * Sends one request. The HTTP status is returned, not judged (a 308 is fine for Google Drive).
 	 *
@@ -29,10 +31,11 @@ final class Http {
 	 * @param array{string?:string,file?:string,offset?:int,length?:int} $body    Body: a string, or a file range.
 	 * @param resource|null                                              $sink    Where a 206 range response goes.
 	 * @param int                                                        $limit   Most bytes to accept into $sink.
+	 * @param int                                                        $timeout Seconds for the whole request (0: none, only the low-speed limit).
 	 * @return array{status:int,headers:array<string,string>,body:string}
 	 * @throws RemoteException On a network error, or a range response that is not what was asked for.
 	 */
-	public static function request( string $url, string $method, array $headers, array $body = array( 'string' => '' ), $sink = null, int $limit = 0 ): array {
+	public static function request( string $url, string $method, array $headers, array $body = array( 'string' => '' ), $sink = null, int $limit = 0, int $timeout = 0 ): array {
 		if ( ! function_exists( 'curl_init' ) ) {
 			throw new RemoteException( 'PHP\'s curl extension is needed for cloud storage.' );
 		}
@@ -48,6 +51,7 @@ final class Http {
 		);
 		$written  = 0;
 		$refused  = '';
+		$code     = 'InvalidRange';
 		$curl     = curl_init( $url );
 		$handle   = null;
 		$options  = array(
@@ -67,7 +71,7 @@ final class Http {
 				}
 				return strlen( $line );
 			},
-			CURLOPT_WRITEFUNCTION   => static function ( $curl, string $data ) use ( &$response, &$written, &$refused, $sink, $limit ): int {
+			CURLOPT_WRITEFUNCTION   => static function ( $curl, string $data ) use ( &$response, &$written, &$refused, &$code, $sink, $limit ): int {
 				if ( null !== $sink && $response['status'] >= 200 && $response['status'] < 300 ) {
 					// Only a 206 with at most the bytes asked for goes into the file (a proxy may ignore the range).
 					if ( 206 !== $response['status'] || $written + strlen( $data ) > $limit ) {
@@ -77,12 +81,18 @@ final class Http {
 					$written += strlen( $data );
 					return (int) fwrite( $sink, $data );
 				}
-				if ( strlen( $response['body'] ) < 1048576 ) {
-					$response['body'] .= $data;
+				if ( strlen( $response['body'] ) + strlen( $data ) > self::MAX_BODY ) {
+					$refused = 'The server sent an unexpectedly large answer.';
+					$code    = 'TooLarge';
+					return 0; // Stops the transfer.
 				}
+				$response['body'] .= $data;
 				return strlen( $data );
 			},
 		);
+		if ( $timeout > 0 ) {
+			$options[ CURLOPT_TIMEOUT ] = $timeout;
+		}
 		if ( isset( $body['file'] ) ) {
 			$handle = fopen( (string) $body['file'], 'rb' );
 			if ( false === $handle || 0 !== fseek( $handle, (int) $body['offset'] ) ) {
@@ -121,7 +131,7 @@ final class Http {
 		}
 
 		if ( '' !== $refused ) {
-			throw new RemoteException( $refused, 400, 'InvalidRange' );
+			throw new RemoteException( $refused, 400, $code );
 		}
 		if ( false === $ok || 0 !== $errno ) {
 			throw new RemoteException( sprintf( 'Cannot reach the storage: %s', '' !== $error ? $error : 'curl error ' . $errno ), 0 );
