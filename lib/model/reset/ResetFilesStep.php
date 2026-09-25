@@ -108,6 +108,10 @@ final class ResetFilesStep implements Step {
 			'media'   => 'uploads_dir',
 		);
 		$root   = rtrim( str_replace( '\\', '/', (string) ( $target[ $keys[ $part ] ] ?? '' ) ), '/' );
+		$site   = (int) ( $job->options['reset_site'] ?? 0 );
+		if ( $site > 0 && ( 'media' !== $part || ! ResetOptions::own_uploads( $root, $site ) ) ) {
+			throw new JobException( sprintf( 'Only the media folder of site %d (uploads/sites/%d) is reset on a network; %s is not it.', $site, $site, '' === $root ? '?' : $root ) );
+		}
 		foreach ( array( 'abspath', 'content_dir' ) as $key ) {
 			$other = rtrim( str_replace( '\\', '/', (string) ( $target[ $key ] ?? '' ) ), '/' );
 			if ( '' === $root || '' === $other || $root === $other || 0 === strpos( $other . '/', $root . '/' ) ) {
@@ -168,7 +172,8 @@ final class ResetFilesStep implements Step {
 			return; // The active theme stays; nothing refers to the others.
 		}
 		$db     = Connection::open();
-		$prefix = (string) ( $job->options['target']['table_prefix'] ?? 'wp_' );
+		$site   = (int) ( $job->options['reset_site'] ?? 0 );
+		$prefix = (string) ( $job->options['target']['table_prefix'] ?? 'wp_' ) . ( $site > 0 ? $site . '_' : '' ); // A site of a network: its own tables.
 		try {
 			if ( 'plugins' === $part ) {
 				$plugin = (string) ( $job->options['keep_active_plugin'] ?? '' );

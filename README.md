@@ -12,7 +12,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, and moving one site out of or into a network work end to end and are resumable. Test on staging sites before relying on it in production.
+> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site of a network work end to end and are resumable. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -165,7 +165,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw cleanup` | — | now |
 | `wp fmw verify <file>` | — | now |
 | `wp fmw inspect <file>` | — | now |
-| `wp fmw reset` | Reset Hub | now (single site) |
+| `wp fmw reset` | Reset Hub | now (single site; one site of a network with `--site`) |
 | `wp fmw schedule list\|add\|update\|delete\|enable\|disable` | Schedules (Unlimited) | now |
 | `wp fmw schedule run [<id>]` | — | now (for a system cron) |
 | `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze / Google Drive extensions | now |
@@ -180,6 +180,17 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 - You confirm by typing the site's domain (`--yes` in scripts).
 - The fresh database is built in `fmwtmp_*` tables and switched in with one atomic `RENAME TABLE`. It keeps the site address, title, language, time zone, permalinks and the kept users (all administrators by default, `--keep-user=<id|login|email>`), who stay logged in. This plugin and the active theme stay active.
 - Tables and views of other WordPress installs in the same database (another prefix) are not touched. Must-use plugins, drop-ins and `wp-config.php` are never deleted.
+
+On a multisite network one site is reset at a time, from the CLI or the Reset screen in Network Admin:
+
+```bash
+wp fmw reset --site=example.com/shop --all      # or its ID; --all is --database --media on a network
+```
+
+- Its own tables (`wp_<id>_*`, plugin tables too) are replaced by a fresh site with its address, title, language, time zone and theme; other sites and the network's tables are not touched.
+- Users are shared by the network, so they stay: the kept ones (its administrators by default, `--keep-user`) are its administrators afterwards, everyone else loses their role on it.
+- Media: only its folder (`uploads/sites/<id>/`) and its media library.
+- Plugins and themes are shared by every site, so they are not reset for one site. The main site is reset with the whole network, which arrives in the next update. The safety backup is of the whole network.
 
 **Scheduled backups** (`wp fmw schedule add`, or the Schedules screen) run hourly, daily, weekly or monthly in the site time zone, with the same exclusions and optional password as a manual backup:
 
@@ -307,7 +318,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site (`.fmw` and `.wpress`, picked sites too), single site → subsite and picked `.wpress` sites onto a network (done), reset for networks |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site (`.fmw` and `.wpress`, picked sites too), single site → subsite, picked `.wpress` sites onto a network and reset of one site of a network (done), reset of a whole network |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

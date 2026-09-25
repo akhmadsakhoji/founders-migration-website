@@ -32,9 +32,14 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * active theme stays active. SwapStep then switches every table of the site
  * in one atomic RENAME TABLE; until then the live site is untouched.
  *
+ * On a network (reset_site) only that site's tables are built (fmwtmp_<id>_*,
+ * WordPress's per-site schema) with its own address and settings; the
+ * network's users stay where they are and SwapStep gives the kept ones the
+ * administrator role on the site and takes it from everyone else.
+ *
  * The step is quick and idempotent: after an interruption it starts over.
  *
- * Reads job options: reset, keep_users, keep_active_plugin, keep_themes, target.table_prefix.
+ * Reads job options: reset, reset_site, keep_users, keep_active_plugin, keep_themes, target.table_prefix.
  * Sets job data: has_db, manifest.site.table_prefix.
  */
 final class ResetDatabaseStep implements Step {
@@ -90,8 +95,12 @@ final class ResetDatabaseStep implements Step {
 		if ( ! function_exists( 'is_multisite' ) || ! defined( 'ABSPATH' ) ) {
 			throw new JobException( 'A database reset needs WordPress.' );
 		}
-		if ( is_multisite() ) {
-			throw new JobException( 'Reset is not available on multisite networks yet.' );
+		$site = (int) ( $job->options['reset_site'] ?? 0 );
+		if ( is_multisite() !== $site > 0 ) {
+			throw new JobException( is_multisite() ? 'On a multisite network one site is reset at a time.' : 'This is not a multisite network any more; start the reset again.' );
+		}
+		if ( $site > 0 && ( ! get_site( $site ) || is_main_site( $site ) || 1 === $site ) ) {
+			throw new JobException( sprintf( 'Site %d cannot be reset on its own (it is gone, or it is the main site).', $site ) );
 		}
 		if ( defined( 'CUSTOM_USER_TABLE' ) || defined( 'CUSTOM_USER_META_TABLE' ) ) {
 			throw new JobException( 'This site shares its users table with other sites (CUSTOM_USER_TABLE); its database cannot be reset.' );
@@ -105,32 +114,49 @@ final class ResetDatabaseStep implements Step {
 
 		$restore = new RestoreDatabase();
 		$db      = $restore->db();
+		if ( $site > 0 ) {
+			switch_to_blog( $site ); // Its address, settings and theme; queries below name tables explicitly.
+		}
 		try {
 			$restore->drop( array_merge( $restore->imported_tables(), array( RestoreDatabase::PROGRESS ) ) ); // Leftovers of an earlier, unfinished attempt.
 			$restore->create_progress();
 
-			$tables = $this->create_tables( $db );
-			$this->fill_options( $job, $db, $live );
-			$users = $this->copy_users( $job, $db, $live );
-			$this->add_default_category( $db );
+			$tables = $this->create_tables( $db, $site );
+			$this->fill_options( $job, $db, $live, $site );
+			$users = $site > 0 ? count( (array) ( $job->options['keep_users'] ?? array() ) ) : $this->copy_users( $job, $db, $live );
+			$this->add_default_category( $db, $site );
 		} finally {
+			if ( $site > 0 ) {
+				restore_current_blog();
+			}
 			$db->close();
 		}
 
 		$job->data['has_db']                           = true;
 		$job->data['manifest']['site']['table_prefix'] = $live;
-		$context->log( sprintf( 'Built a fresh database (%d tables) keeping %d user(s) as administrators.', $tables, $users ) );
+		$context->log( $site > 0 ? sprintf( 'Built fresh tables for site %d (%d tables); %d user(s) will be its administrators.', $site, $tables, $users ) : sprintf( 'Built a fresh database (%d tables) keeping %d user(s) as administrators.', $tables, $users ) );
 		return true;
+	}
+
+	/**
+	 * Prefix of the fresh tables: fmwtmp_, or fmwtmp_<id>_ for a site of a network.
+	 *
+	 * @param int $site Site of a network, or 0.
+	 * @return string
+	 */
+	private static function tmp( int $site ): string {
+		return RestoreDatabase::TMP . ( $site > 0 ? $site . '_' : '' );
 	}
 
 	/**
 	 * Creates the WordPress tables as fmwtmp_*.
 	 *
-	 * @param Connection $db Connection.
+	 * @param Connection $db   Connection.
+	 * @param int        $site Site of a network (its tables only), or 0.
 	 * @return int Number of tables.
 	 * @throws JobException When the schema cannot be generated.
 	 */
-	private function create_tables( Connection $db ): int {
+	private function create_tables( Connection $db, int $site ): int {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
@@ -140,7 +166,7 @@ final class ResetDatabaseStep implements Step {
 			throw new JobException( 'Cannot prepare the fresh database: ' . $old->get_error_message() );
 		}
 		try {
-			$schema = wp_get_db_schema( 'all' );
+			$schema = $site > 0 ? wp_get_db_schema( 'blog', $site ) : wp_get_db_schema( 'all' );
 		} finally {
 			$wpdb->set_prefix( $old );
 		}
@@ -151,7 +177,7 @@ final class ResetDatabaseStep implements Step {
 			if ( '' === $sql ) {
 				continue;
 			}
-			if ( 1 !== preg_match( '/^CREATE TABLE `?' . preg_quote( RestoreDatabase::TMP, '/' ) . '/i', $sql ) ) {
+			if ( 1 !== preg_match( '/^CREATE TABLE `?' . preg_quote( self::tmp( $site ), '/' ) . '[a-z]/i', $sql ) ) {
 				throw new JobException( 'Unexpected statement in the WordPress schema.' );
 			}
 			$db->query( $sql );
@@ -165,21 +191,26 @@ final class ResetDatabaseStep implements Step {
 	 *
 	 * @param Job        $job  Job.
 	 * @param Connection $db   Connection.
-	 * @param string     $live Live table prefix.
+	 * @param string     $live Live table prefix (the network's base prefix).
+	 * @param int        $site Site of a network, or 0.
 	 * @return void
 	 */
-	private function fill_options( Job $job, Connection $db, string $live ): void {
+	private function fill_options( Job $job, Connection $db, string $live, int $site ): void {
 		global $wpdb;
 
-		$themes  = array_values( (array) ( $job->options['keep_themes'] ?? array() ) );
-		$plugin  = (string) ( $job->options['keep_active_plugin'] ?? '' );
+		$own    = $live . ( $site > 0 ? $site . '_' : '' );
+		$themes = array_values( (array) ( $job->options['keep_themes'] ?? array() ) );
+		$plugin = (string) ( $job->options['keep_active_plugin'] ?? '' );
+		if ( $site > 0 && ! in_array( $plugin, (array) get_option( 'active_plugins', array() ), true ) ) {
+			$plugin = ''; // Network-activated (or not active on this site): the site's own list stays empty.
+		}
 		$options = array(
-			'siteurl'            => site_url(),
-			'home'               => home_url(),
-			'template'           => get_template(),
-			'stylesheet'         => get_stylesheet(),
-			'active_plugins'     => '' === $plugin ? array() : array( $plugin ),
-			$live . 'user_roles' => self::default_roles(),
+			'siteurl'           => site_url(),
+			'home'              => home_url(),
+			'template'          => get_template(),
+			'stylesheet'        => get_stylesheet(),
+			'active_plugins'    => '' === $plugin ? array() : array( $plugin ),
+			$own . 'user_roles' => self::default_roles(),
 		);
 		if ( isset( $themes[0] ) ) {
 			$options['template']   = (string) $themes[0];
@@ -188,7 +219,7 @@ final class ResetDatabaseStep implements Step {
 
 		// populate_options() only runs direct queries on $wpdb->options (no cached reads or writes of options).
 		$table         = $wpdb->options;
-		$wpdb->options = RestoreDatabase::TMP . 'options';
+		$wpdb->options = self::tmp( $site ) . 'options';
 		$host          = ! isset( $_SERVER['HTTP_HOST'] );
 		if ( $host ) {
 			$_SERVER['HTTP_HOST'] = (string) wp_parse_url( home_url(), PHP_URL_HOST ); // wp_guess_url() reads it; WP-CLI does not set it.
@@ -203,9 +234,9 @@ final class ResetDatabaseStep implements Step {
 		}
 
 		// Carry the live values over byte for byte (no sanitizing, no filters).
-		$tmp  = Connection::identifier( RestoreDatabase::TMP . 'options' );
+		$tmp  = Connection::identifier( self::tmp( $site ) . 'options' );
 		$list = implode( ', ', array_map( array( $db, 'quote' ), self::KEEP_OPTIONS ) );
-		$rows = $db->rows( 'SELECT `option_name`, `option_value`, `autoload` FROM ' . Connection::identifier( $live . 'options' ) . " WHERE `option_name` IN ({$list})" );
+		$rows = $db->rows( 'SELECT `option_name`, `option_value`, `autoload` FROM ' . Connection::identifier( $own . 'options' ) . " WHERE `option_name` IN ({$list})" );
 		foreach ( $rows as $row ) {
 			$name = $db->quote( (string) $row['option_name'] );
 			$db->query( "DELETE FROM {$tmp} WHERE `option_name` = {$name}" );
@@ -282,14 +313,15 @@ final class ResetDatabaseStep implements Step {
 	/**
 	 * The "Uncategorized" category (term 1), which default_category points at.
 	 *
-	 * @param Connection $db Connection.
+	 * @param Connection $db   Connection.
+	 * @param int        $site Site of a network, or 0.
 	 * @return void
 	 */
-	private function add_default_category( Connection $db ): void {
+	private function add_default_category( Connection $db, int $site ): void {
 		$name = __( 'Uncategorized' ); // phpcs:ignore WordPress.WP.I18n.MissingArgDomain -- WordPress's own string, as in a new install.
 		$slug = sanitize_title( _x( 'Uncategorized', 'Default category slug' ) ); // phpcs:ignore WordPress.WP.I18n.MissingArgDomain -- Same.
-		$db->query( 'INSERT INTO ' . Connection::identifier( RestoreDatabase::TMP . 'terms' ) . " (`term_id`, `name`, `slug`, `term_group`) VALUES (1, {$db->quote( $name )}, {$db->quote( $slug )}, 0)" );
-		$db->query( 'INSERT INTO ' . Connection::identifier( RestoreDatabase::TMP . 'term_taxonomy' ) . " (`term_taxonomy_id`, `term_id`, `taxonomy`, `description`, `parent`, `count`) VALUES (1, 1, 'category', '', 0, 0)" );
+		$db->query( 'INSERT INTO ' . Connection::identifier( self::tmp( $site ) . 'terms' ) . " (`term_id`, `name`, `slug`, `term_group`) VALUES (1, {$db->quote( $name )}, {$db->quote( $slug )}, 0)" );
+		$db->query( 'INSERT INTO ' . Connection::identifier( self::tmp( $site ) . 'term_taxonomy' ) . " (`term_taxonomy_id`, `term_id`, `taxonomy`, `description`, `parent`, `count`) VALUES (1, 1, 'category', '', 0, 0)" );
 	}
 
 	/**
