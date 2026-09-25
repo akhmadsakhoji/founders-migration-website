@@ -1466,7 +1466,18 @@
 		var resetSiteChoice = resetPanel.querySelector( '[data-fmw-reset-site]' );
 		if ( resetSiteChoice ) {
 			// The text to type is the chosen site's address.
+			var networkParts = function () {
+				// Plugins and themes are shared by every site: they can be reset only with the whole network.
+				Array.prototype.forEach.call( resetPanel.querySelectorAll( '[data-fmw-network-only]' ), function ( box ) {
+					box.disabled = 'network' !== resetSiteChoice.value;
+					if ( box.disabled ) {
+						box.checked = false;
+					}
+				} );
+			};
+			networkParts();
 			resetSiteChoice.addEventListener( 'change', function () {
+				networkParts();
 				var word = resetSiteChoice.options[ resetSiteChoice.selectedIndex ].getAttribute( 'data-confirm' ) || '';
 				resetPanel.querySelector( '[data-fmw-reset-confirm]' ).setAttribute( 'data-fmw-reset-confirm', word );
 				resetPanel.querySelector( '[data-fmw-reset-confirm]' ).value = '';

@@ -545,13 +545,14 @@ final class RestController {
 				}
 				list( $type, $options ) = $made;
 			} elseif ( 'reset' === $type ) {
-				$site = is_multisite() ? ResetOptions::find_site( is_scalar( $request['site'] ) ? (string) $request['site'] : '' ) : 0; // One site of a network (not the main site).
+				$network = is_multisite() && 'network' === $request['site']; // The whole network, or one site of it (not the main site).
+				$site    = is_multisite() && ! $network ? ResetOptions::find_site( is_scalar( $request['site'] ) ? (string) $request['site'] : '' ) : 0;
 				if ( ! ResetOptions::confirmed( (string) $request['confirm'], $site ) ) {
 					/* translators: %s: site host name, or a network site's address. */
 					return new WP_Error( 'fmw_not_confirmed', sprintf( __( 'Type %s to confirm the reset.', 'founders-migration-website' ), ResetOptions::confirm_word( $site ) ), array( 'status' => 400 ) );
 				}
 				$parts   = array_values( array_filter( (array) $request['parts'], 'is_string' ) );
-				$options = ResetOptions::build( $parts, array( get_current_user_id() ), ! empty( $flags['keep-old-tables'] ), $site );
+				$options = ResetOptions::build( $parts, array( get_current_user_id() ), ! empty( $flags['keep-old-tables'] ), $site, $network );
 			} else {
 				return new WP_Error( 'fmw_invalid_type', __( 'Unknown job type.', 'founders-migration-website' ), array( 'status' => 400 ) );
 			}

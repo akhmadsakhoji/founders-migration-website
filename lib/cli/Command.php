@@ -711,12 +711,22 @@ final class Command {
 	 * site; --all means --database --media there. The safety backup is of the
 	 * whole network.
 	 *
+	 * Or the whole network (--network): a fresh network at the same address
+	 * and of the same kind with only its main site. Kept: the network's name,
+	 * admin e-mail, language and file settings, the main site's address,
+	 * title and settings as above, and the kept users (the super admins by
+	 * default) as super admins. Every other site, user and setting is gone;
+	 * --media, --plugins and --themes then work on the whole network.
+	 *
 	 * Resumable: `wp fmw resume <job_id>`.
 	 *
 	 * ## OPTIONS
 	 *
 	 * [--site=<site>]
 	 * : Multisite: the site to reset, by its ID or address (3, example.com/shop, shop.example.com).
+	 *
+	 * [--network]
+	 * : Multisite: reset the whole network instead of one site.
 	 *
 	 * [--database]
 	 * : Replace the database with a fresh WordPress install.
@@ -754,19 +764,24 @@ final class Command {
 	 *     wp fmw reset --plugins --themes
 	 *     wp fmw reset --database --keep-user=admin --yes
 	 *     wp fmw reset --site=example.com/shop --all       # on a network: that site's tables and media
+	 *     wp fmw reset --network --all                     # the whole network: only its main site stays, fresh
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
 	 * @return void
 	 */
 	public function reset( $args, $assoc_args ) {
-		$site = 0;
-		if ( isset( $assoc_args['site'] ) || is_multisite() ) {
+		$site    = 0;
+		$network = (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'network', false );
+		if ( $network && ( ! is_multisite() || isset( $assoc_args['site'] ) ) ) {
+			WP_CLI::error( is_multisite() ? 'Choose --site=<site> or --network, not both.' : '--network is for multisite networks.' );
+		}
+		if ( ! $network && ( isset( $assoc_args['site'] ) || is_multisite() ) ) {
 			if ( ! is_multisite() ) {
 				WP_CLI::error( '--site is for multisite networks.' );
 			}
 			if ( ! isset( $assoc_args['site'] ) ) {
-				WP_CLI::error( 'On a multisite network one site is reset at a time: choose it with --site=<id or address> (resetting the whole network arrives in the next update).' );
+				WP_CLI::error( 'On a multisite network, choose one site with --site=<id or address>, or the whole network with --network.' );
 			}
 			try {
 				$site = ResetOptions::find_site( (string) $assoc_args['site'] );
@@ -785,7 +800,7 @@ final class Command {
 			WP_CLI::error( 'Choose what to reset: --database, --media, --plugins, --themes or --all.' );
 		}
 
-		$users = ResetOptions::administrators( $site );
+		$users = $network ? ResetOptions::super_admins() : ResetOptions::administrators( $site );
 		if ( $site > 0 && ! $users && ! isset( $assoc_args['keep-user'] ) && in_array( 'database', $parts, true ) ) {
 			WP_CLI::error( sprintf( 'Site %d has no administrators: choose who keeps it with --keep-user=<login>.', $site ) );
 		}
@@ -802,14 +817,14 @@ final class Command {
 		}
 
 		try {
-			$options = ResetOptions::build( $parts, $users, (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'keep-old-tables', false ), $site );
+			$options = ResetOptions::build( $parts, $users, (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'keep-old-tables', false ), $site, $network );
 		} catch ( \InvalidArgumentException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
 		}
 
 		$skip_backup = (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'skip-backup', false );
-		WP_CLI::log( sprintf( 'Reset of %s: %s.', $site > 0 ? get_home_url( $site ) . ' (site ' . $site . ' of the network)' : home_url(), implode( ', ', $parts ) ) );
+		WP_CLI::log( sprintf( 'Reset of %s: %s.', $site > 0 ? get_home_url( $site ) . ' (site ' . $site . ' of the network)' : ( $network ? network_home_url() . ' (the whole network, ' . get_blog_count() . ' sites)' : home_url() ), implode( ', ', $parts ) ) );
 		if ( in_array( 'database', $parts, true ) ) {
 			$logins = array_map(
 				static function ( int $id ): string {
@@ -818,13 +833,17 @@ final class Command {
 				},
 				$options['keep_users']
 			);
-			WP_CLI::log(
-				$site > 0
-					? sprintf( 'Its administrators after the reset: %s. All its content and settings are deleted; other users lose their role on it (their accounts stay on the network).', implode( ', ', $logins ) )
-					: sprintf( 'Users kept as administrators: %s. All other content, settings and users are deleted.', implode( ', ', $logins ) )
-			);
+			if ( $network ) {
+				WP_CLI::log( sprintf( 'Super admins after the reset: %s. Every site but the main one, all content, other users and network settings are deleted.', implode( ', ', $logins ) ) );
+			} else {
+				WP_CLI::log(
+					$site > 0
+						? sprintf( 'Its administrators after the reset: %s. All its content and settings are deleted; other users lose their role on it (their accounts stay on the network).', implode( ', ', $logins ) )
+						: sprintf( 'Users kept as administrators: %s. All other content, settings and users are deleted.', implode( ', ', $logins ) )
+				);
+			}
 		}
-		WP_CLI::log( $skip_backup ? 'No backup is made first (--skip-backup): this cannot be undone.' : ( $site > 0 ? 'A backup of the whole network is made first.' : 'A backup of the whole site is made first.' ) );
+		WP_CLI::log( $skip_backup ? 'No backup is made first (--skip-backup): this cannot be undone.' : ( is_multisite() ? 'A backup of the whole network is made first.' : 'A backup of the whole site is made first.' ) );
 
 		if ( ! WP_CLI\Utils\get_flag_value( $assoc_args, 'yes', false ) ) {
 			if ( ! function_exists( 'posix_isatty' ) || ! posix_isatty( STDIN ) ) {

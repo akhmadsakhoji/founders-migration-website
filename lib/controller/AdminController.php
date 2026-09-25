@@ -367,6 +367,7 @@ final class AdminController {
 				'confirm' => ResetOptions::confirm_word( (int) ( self::reset_sites()[0]['id'] ?? 0 ) ),
 				'theme'   => wp_get_theme()->get( 'Name' ),
 				'sites'   => self::reset_sites(),
+				'network' => is_multisite() && 1 === get_main_site_id() && count( get_networks( array( 'number' => 2 ) ) ) < 2 ? ResetOptions::confirm_word() : '', // The whole network can be reset here.
 			)
 		);
 	}

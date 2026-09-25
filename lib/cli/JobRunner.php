@@ -60,11 +60,14 @@ final class JobRunner {
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
 			if ( Jobs::changes_site( $job->type ) ) {
+				if ( ! empty( $job->options['reset_network'] ) && is_multisite() && get_current_blog_id() !== get_main_site_id() ) {
+					switch_to_blog( get_main_site_id() ); // Only the main site is left: the site of --url is gone.
+				}
 				Jobs::store()->purge_work_files( $job->id );
 				wp_cache_flush();
 				delete_option( 'rewrite_rules' );
 				if ( 'reset' === $job->type ) {
-					WP_CLI::success( sprintf( 'Reset complete%s: %s.', (int) ( $job->options['reset_site'] ?? 0 ) > 0 ? ' (site ' . (int) $job->options['reset_site'] . ')' : '', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
+					WP_CLI::success( sprintf( 'Reset complete%s: %s.', (int) ( $job->options['reset_site'] ?? 0 ) > 0 ? ' (site ' . (int) $job->options['reset_site'] . ')' : ( empty( $job->options['reset_network'] ) ? '' : ' (the whole network)' ), implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
 					return;
 				}
 				if ( ! empty( $job->data['import']['picked'] ) ) {
