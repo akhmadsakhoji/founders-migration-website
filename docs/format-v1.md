@@ -143,6 +143,7 @@ The manifest is the single source of truth for verification and restore.
 | `site.abspath`, `site.content_dir`, `site.uploads_dir` | yes | Source paths, used to rewrite absolute paths stored in the database |
 | `site.table_prefix` | yes | Prefix used in the SQL files |
 | `site.multisite`, `site.sites` | yes | `sites` lists `{ "blog_id", "domain", "path" }` for every subsite on a network |
+| `site.network` | no | Networks only: `{ "id", "domain", "path", "subdomain", "main_site", "networks" }` (`SITE_ID_CURRENT_SITE`, `DOMAIN_CURRENT_SITE`, `PATH_CURRENT_SITE`, `SUBDOMAIN_INSTALL`, `BLOG_ID_CURRENT_SITE`, number of networks in the install), `null` for single sites; `sites[]` then also carry `network_id`. Older backups leave these out; readers work them out from `sites` (blog 1 is the main site) |
 | `site.db` | yes | Used to warn about incompatible collations before restore |
 | `options` | yes | What was deliberately left out, so restore does not treat it as missing |
 | `totals` | yes | Progress bars and disk space checks |
@@ -208,7 +209,7 @@ for p in files/part-*.tar;    do tar -xf  "$p" -C /path/to/wp-content; done
 for s in database/*.sql.gz;   do gunzip -c "$s" | mysql -u USER -p DB_NAME; done
 ```
 
-Then replace the old URL if the domain changed, for example with `wp search-replace`.
+Then replace the old URL if the domain changed, for example with `wp search-replace`. For a multisite network also set the new domain and path in the `blogs` and `site` tables (they hold bare domains, not URLs) and in `DOMAIN_CURRENT_SITE` / `PATH_CURRENT_SITE` in `wp-config.php`.
 
 ## 9. Compatibility rules
 

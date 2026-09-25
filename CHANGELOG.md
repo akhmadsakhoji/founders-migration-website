@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Multisite networks restore at another address: the main site and every subsite under the network's address move with it (subdirectories: `old.example/shop/` → `new.example/shop/`; subdomains: `shop.old.example` → `shop.new.example`, "www." ignored), URLs are replaced per site in one pass, and the `blogs` and `site` tables get the new domains and paths. Subsites with their own domain keep it unless mapped with `wp fmw restore --map=old=new`. `wp fmw restore` shows where each site goes before asking; `wp fmw inspect` shows the network type. Kept domains that start with the network's domain (`brand.com.au` next to `brand.com`) stay untouched. Refused with a clear message: a subdomain backup onto a subdirectory network (and the reverse), a different main site ID, installs with several networks, `--map` entries that match no site or put two sites at one address, invalid site addresses in the backup, a network onto a single site.
+- Backups of networks record the network (ID, domain, path, subdomain install, main site, number of networks) and each site's network in the manifest (`site.network`, `site.sites[].network_id`, optional; older backups are worked out from their list of sites).
+
 - Pull screen: copy another site onto this one from the browser (address, pull key, check, options, confirmation, the usual progress dialog; download-only offers Restore afterwards), and manage this site's pull keys (create with validity, allowed addresses and existing backups, shown once with copy buttons and the matching command; list with last use and bytes sent; revoke). REST: `GET|POST /pull-keys`, `DELETE /pull-keys/<id>`, `POST /pull-check`, and `type: pull` for `POST /jobs`.
 
 - Server-to-server pulls: `wp fmw pull <url> --key=<key>` copies another site onto this one in one resumable job: a backup is made on the source (driven from here, so the source needs no WP-CLI or working WP-Cron), downloaded in byte ranges checked against the file's version, restored with the usual checks, and only then deleted on the source (download-only pulls check every part's SHA-256 first). `--job=<id>` continues a pull with a new key. `--download-only`, `--backup=<name>` (existing backups), `--password` (encrypted while waiting on the source), `--keep-source-backup`, the backup exclusions and the restore options. Waits while the source is busy with another job; cancelling cleans up on both sites.
@@ -78,6 +81,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Restoring a network replaces the whole network: tables of its sites that are not in the backup (only sites listed in its `blogs` table) go aside with the replaced tables (`fmwold_*`) and are removed at the end, so a site created later with the same ID does not find old content. The plugin stays network-active when it was.
 - Cancelling a job (also with `wp fmw cancel`) removes its passwords and keys from disk first, then lets its steps clean up with an in-memory copy (a pull needs its key to delete the backup on the source).
 - Cloud and pull requests refuse answers larger than 8 MiB instead of buffering them, and pull requests have an overall time limit.
 - README and the format specification link to FMW Tools.

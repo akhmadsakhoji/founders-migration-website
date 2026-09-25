@@ -14,6 +14,7 @@ use Founders\Migration\Database\Connection;
 use Founders\Migration\Database\Replacer;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
+use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
@@ -30,7 +31,7 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * the old one. posts.guid is left alone, as WordPress recommends.
  *
  * Reads job options: target { home_url, site_url, abspath, table_prefix },
- * email_replace. Reads job data: manifest.site.
+ * email_replace. Reads job data: manifest.site, network (see NetworkMove).
  */
 final class ReplaceStep implements Step {
 
@@ -91,12 +92,63 @@ final class ReplaceStep implements Step {
 		}
 
 		$this->fix_prefix_keys( (string) ( $site['table_prefix'] ?? 'wp_' ), (string) ( $target['table_prefix'] ?? 'wp_' ), $tables, $context );
+		if ( is_array( $job->data['network'] ?? null ) ) {
+			$this->fix_network( $job->data['network'], $tables, $context );
+		}
 		$context->log(
 			$replacer->is_empty()
 				? 'Same URL and path: nothing to replace.'
 				: sprintf( 'Replaced %s with %s in %d tables.', (string) ( $site['home_url'] ?? '' ), (string) ( $target['home_url'] ?? '' ), count( $tables ) )
 		);
 		return true;
+	}
+
+	/**
+	 * Moves the network's sites in the blogs and site tables, whose domains and paths are no URLs. Runs once.
+	 *
+	 * @param array<string,mixed> $network Plan from NetworkMove::plan().
+	 * @param string[]            $tables  Imported tables.
+	 * @param Context             $context Context.
+	 * @return void
+	 * @throws JobException When the backup's site table does not hold the network.
+	 * @throws \Throwable After rolling back, when an update fails.
+	 */
+	private function fix_network( array $network, array $tables, Context $context ): void {
+		if ( empty( $network['moved'] ) || 'done' === $this->restore->progress( 'network' ) ) {
+			return;
+		}
+		$blogs = RestoreDatabase::TMP . 'blogs';
+		$site  = RestoreDatabase::TMP . 'site';
+		$db    = $this->restore->db();
+		$moved = 0;
+		$db->query( 'START TRANSACTION' );
+		try {
+			if ( in_array( $blogs, $tables, true ) ) {
+				foreach ( (array) $network['sites'] as $blog ) {
+					if ( $blog['from'] !== $blog['to'] ) {
+						$db->query( 'UPDATE ' . Connection::identifier( $blogs ) . ' SET `domain` = ' . $db->quote( (string) $blog['to']['domain'] ) . ', `path` = ' . $db->quote( (string) $blog['to']['path'] ) . ' WHERE `blog_id` = ' . (int) $blog['blog_id'] );
+						++$moved;
+					}
+				}
+			}
+			if ( in_array( $site, $tables, true ) ) {
+				$found = $db->column( 'SELECT COUNT(*) FROM ' . Connection::identifier( $site ) . ' WHERE `domain` = ' . $db->quote( (string) $network['network']['from']['domain'] ) . ' AND `path` = ' . $db->quote( (string) $network['network']['from']['path'] ) );
+				if ( 1 !== (int) ( $found[0] ?? 0 ) ) {
+					throw new JobException( sprintf( 'The backup\'s site table has no single network at %s%s; the network cannot be moved.', (string) $network['network']['from']['domain'], (string) $network['network']['from']['path'] ) );
+				}
+				$db->query(
+					'UPDATE ' . Connection::identifier( $site )
+					. ' SET `domain` = ' . $db->quote( (string) $network['network']['to']['domain'] ) . ', `path` = ' . $db->quote( (string) $network['network']['to']['path'] )
+					. ' WHERE `domain` = ' . $db->quote( (string) $network['network']['from']['domain'] ) . ' AND `path` = ' . $db->quote( (string) $network['network']['from']['path'] )
+				);
+			}
+			$this->restore->set_progress( 'network', 'done' );
+			$db->query( 'COMMIT' );
+		} catch ( \Throwable $e ) {
+			$db->query( 'ROLLBACK' );
+			throw $e;
+		}
+		$context->log( sprintf( 'Moved the network to %s%s (%d sites).', (string) $network['network']['to']['domain'], (string) $network['network']['to']['path'], $moved ) );
 	}
 
 	/**
@@ -113,14 +165,43 @@ final class ReplaceStep implements Step {
 		}
 		$site   = (array) ( $job->data['manifest']['site'] ?? array() );
 		$target = (array) ( $job->options['target'] ?? array() );
-		return Replacer::site_pairs(
-			array(
-				(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
-				(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
-			),
+		$urls   = array(
+			(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
+			(string) ( $site['site_url'] ?? $site['home_url'] ?? '' ) => (string) ( $target['site_url'] ?? $target['home_url'] ?? '' ),
+		);
+		$keep   = array();
+		if ( is_array( $job->data['network'] ?? null ) ) {
+			$urls = self::network_urls( $job->data['network'], $urls );
+			foreach ( (array) $job->data['network']['sites'] as $blog ) {
+				if ( $blog['from'] === $blog['to'] ) {
+					$keep[] = '//' . $blog['from']['domain'] . $blog['from']['path'];
+				}
+			}
+		}
+		$pairs = Replacer::site_pairs(
+			$urls,
 			array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) ),
 			! empty( $job->options['email_replace'] )
 		);
+		return $pairs ? $pairs + Replacer::keep_pairs( $keep, ! empty( $job->options['email_replace'] ) ) : $pairs;
+	}
+
+	/**
+	 * URLs of a network: every site that moves, besides the main site's home and site URL.
+	 *
+	 * @param array<string,mixed>  $network Plan from NetworkMove::plan().
+	 * @param array<string,string> $main    Main site's old => new URLs.
+	 * @return array<string,string>
+	 */
+	private static function network_urls( array $network, array $main ): array {
+		$urls = array();
+		foreach ( (array) ( $network['urls'] ?? array() ) as $old => $new ) {
+			$urls[ (string) $old ] = (string) $new;
+		}
+		foreach ( $main as $old => $new ) {
+			$urls += array( (string) $old => (string) $new );
+		}
+		return $urls;
 	}
 
 	/**

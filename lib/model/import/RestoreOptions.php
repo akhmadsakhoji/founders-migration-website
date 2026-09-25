@@ -10,6 +10,8 @@
 
 namespace Founders\Migration\Model\Import;
 
+use Founders\Migration\Model\Export\BackupOptions;
+
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 /**
@@ -23,6 +25,7 @@ final class RestoreOptions {
 	 * @param string              $archive Archive path.
 	 * @param array<string,mixed> $flags   WP-CLI associative arguments.
 	 * @return array<string,mixed>
+	 * @throws \InvalidArgumentException On an invalid --map.
 	 */
 	public static function build( string $archive, array $flags ): array {
 		global $wpdb;
@@ -44,8 +47,8 @@ final class RestoreOptions {
 		$uploads = wp_upload_dir( null, false );
 
 		return array(
-			'archive'            => $archive,
-			'target'             => array(
+			'archive'             => $archive,
+			'target'              => array(
 				'home_url'       => home_url(),
 				'site_url'       => site_url(),
 				'abspath'        => trailingslashit( wp_normalize_path( ABSPATH ) ),
@@ -57,12 +60,15 @@ final class RestoreOptions {
 				'themes_dir'     => untrailingslashit( wp_normalize_path( get_theme_root() ) ),
 				'table_prefix'   => (string) $wpdb->base_prefix,
 				'multisite'      => is_multisite(),
+				'network'        => is_multisite() ? BackupOptions::network() : null,
 			),
-			'protect_paths'      => $protect,
-			'email_replace'      => empty( $flags['exclude-email-replace'] ),
-			'keep_old_tables'    => ! empty( $flags['keep-old-tables'] ),
-			'skip_space_check'   => ! empty( $flags['skip-space-check'] ),
-			'keep_active_plugin' => FMWP_BASENAME,
+			'domain_map'          => NetworkMove::parse_map( is_string( $flags['map'] ?? null ) ? $flags['map'] : '' ),
+			'protect_paths'       => $protect,
+			'email_replace'       => empty( $flags['exclude-email-replace'] ),
+			'keep_old_tables'     => ! empty( $flags['keep-old-tables'] ),
+			'skip_space_check'    => ! empty( $flags['skip-space-check'] ),
+			'keep_active_plugin'  => FMWP_BASENAME,
+			'keep_active_network' => is_multisite() && isset( ( (array) get_site_option( 'active_sitewide_plugins', array() ) )[ FMWP_BASENAME ] ),
 		);
 	}
 }

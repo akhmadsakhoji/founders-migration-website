@@ -129,15 +129,18 @@ final class BackupOptions {
 		$uploads = untrailingslashit( wp_normalize_path( (string) $uploads['basedir'] ) );
 		$server  = (string) $wpdb->db_server_info();
 
-		$sites = array();
+		$sites   = array();
+		$network = null;
 		if ( is_multisite() ) {
 			foreach ( get_sites( array( 'number' => 0 ) ) as $blog ) {
 				$sites[] = array(
-					'blog_id' => (int) $blog->blog_id,
-					'domain'  => (string) $blog->domain,
-					'path'    => (string) $blog->path,
+					'blog_id'    => (int) $blog->blog_id,
+					'domain'     => (string) $blog->domain,
+					'path'       => (string) $blog->path,
+					'network_id' => (int) $blog->site_id,
 				);
 			}
+			$network = self::network();
 		}
 
 		return array(
@@ -149,6 +152,7 @@ final class BackupOptions {
 			'table_prefix'   => (string) $wpdb->base_prefix,
 			'multisite'      => is_multisite(),
 			'sites'          => $sites,
+			'network'        => $network,
 			'wp_version'     => (string) $wp_version,
 			'php_version'    => PHP_VERSION,
 			'db'             => array(
@@ -160,6 +164,30 @@ final class BackupOptions {
 			'active_plugins' => array_values( (array) get_option( 'active_plugins', array() ) ),
 			'template'       => get_template(),
 			'stylesheet'     => get_stylesheet(),
+		);
+	}
+
+	/**
+	 * This multisite network: its domain and path, subdomain or subdirectory install, its main site, and how many networks the install has.
+	 *
+	 * @return array{id:int,domain:string,path:string,subdomain:bool,main_site:int,networks:int}
+	 */
+	public static function network(): array {
+		$network = get_network();
+		return array(
+			'id'        => null === $network ? 1 : (int) $network->id,
+			'domain'    => null === $network ? '' : (string) $network->domain,
+			'path'      => null === $network ? '/' : (string) $network->path,
+			'subdomain' => is_subdomain_install(),
+			'main_site' => (int) get_main_site_id(),
+			'networks'  => count(
+				get_networks(
+					array(
+						'fields' => 'ids',
+						'number' => 0,
+					)
+				)
+			),
 		);
 	}
 

@@ -12,7 +12,7 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive) and server-to-server pulls work end to end and are resumable. Test on staging sites before relying on it in production.
+> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls and moving multisite networks to another domain work end to end and are resumable. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -80,6 +80,21 @@ wp fmw restore <file> --keep-old-tables
 wp fmw cleanup --tables                # drop fmwold_* / leftover fmwtmp_* tables
 ```
 
+Multisite networks restore onto a network of the same kind (subdomains or subdirectories), at the same or another address. The main site and every subsite under the network's address move with it, and the `blogs` and `site` tables follow:
+
+```bash
+wp fmw restore network.fmw             # shows where each site goes before asking
+wp fmw restore network.fmw --map=brand.example=brand.staging.example   # subsites with their own domain
+```
+
+| Backup | Restored on `new.example` |
+|---|---|
+| `old.example/`, `old.example/shop/` | `new.example/`, `new.example/shop/` |
+| `old.example/`, `shop.old.example/` | `new.example/`, `shop.new.example/` |
+| `brand.example/` (own domain) | kept, or the domain given with `--map` |
+
+The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories, and moving a single site into a network or a subsite out of one, arrive later in phase 3.
+
 All-in-One WP Migration backups restore the same way, found by name in `wp-content/ai1wm-backups` too:
 
 ```bash
@@ -106,7 +121,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`; networks from `.fmw`) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
@@ -255,7 +270,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), network and subsite scenarios |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain (done), `.wpress` networks, subsite ↔ single site, pulls and reset for networks |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security
