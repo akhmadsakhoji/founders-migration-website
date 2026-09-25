@@ -26,6 +26,10 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * tables (wp_<id>_*) and its media (uploads/sites/<id>/). Users are shared:
  * they stay, but only the chosen ones keep a role on the site (administrator).
  * Plugins and themes are shared too, so they are not reset per site.
+ *
+ * Or the whole network is reset (reset_network): a fresh network at the same
+ * address with only its main site, the chosen users as super admins, and
+ * every other site, user and setting gone; plugins and themes can go too.
  */
 final class ResetOptions {
 
@@ -38,11 +42,14 @@ final class ResetOptions {
 	 * @param int[]    $keep_users IDs of the users to keep as administrators (database reset).
 	 * @param bool     $keep_old   Keep the replaced tables as fmwold_*.
 	 * @param int      $site       On a network: the site to reset.
+	 * @param bool     $network    On a network: reset all of it.
 	 * @return array<string,mixed>
-	 * @throws \InvalidArgumentException On an unknown part, nothing to reset, a site that cannot be reset, or no user to keep.
+	 * @throws \InvalidArgumentException On an unknown part, nothing to reset, a site or network that cannot be reset, or no user to keep.
 	 */
-	public static function build( array $parts, array $keep_users, bool $keep_old = false, int $site = 0 ): array {
-		if ( is_multisite() ) {
+	public static function build( array $parts, array $keep_users, bool $keep_old = false, int $site = 0, bool $network = false ): array {
+		if ( $network ) {
+			self::check_network( $site );
+		} elseif ( is_multisite() ) {
 			self::check_site( $site );
 			if ( array_intersect( array( 'plugins', 'themes' ), $parts ) ) {
 				throw new \InvalidArgumentException( 'Plugins and themes are shared by every site of the network: they are not reset for one site. Deactivate or delete them in Network Admin.' );
@@ -77,16 +84,25 @@ final class ResetOptions {
 			}
 		}
 
-		if ( $site > 0 ) {
-			switch_to_blog( $site ); // Its address, uploads folder and theme.
+		$switch = $site > 0 ? $site : ( $network ? get_main_site_id() : 0 );
+		if ( $switch > 0 ) {
+			switch_to_blog( $switch ); // Its address, uploads folder and theme (the main site's for a whole network).
 		}
 		try {
 			$restore = RestoreOptions::build( '', array() );
-			$themes  = array_values( array_unique( array( get_template(), get_stylesheet() ) ) );
+			$active  = array(
+				'template'   => get_template(),
+				'stylesheet' => get_stylesheet(),
+			);
+			$themes  = array_values( array_unique( array_values( $active ) ) );
 		} finally {
-			if ( $site > 0 ) {
+			if ( $switch > 0 ) {
 				restore_current_blog();
 			}
+		}
+		if ( $network ) {
+			// Every site keeps its theme when only files are reset; new sites always get the default theme.
+			$themes = array_values( array_unique( array_merge( in_array( 'database', $parts, true ) ? $themes : self::network_themes(), self::default_theme() ) ) );
 		}
 		unset( $restore['archive'], $restore['email_replace'], $restore['skip_space_check'] );
 		if ( $site > 0 ) {
@@ -102,8 +118,10 @@ final class ResetOptions {
 			array(
 				'reset'              => $parts,
 				'reset_site'         => $site,
+				'reset_network'      => $network,
 				'keep_users'         => $keep_users,
 				'keep_themes'        => $themes,
+				'active_theme'       => $active, // The fresh (main) site's theme; keep_themes may list more.
 				'keep_paths'         => array_values( array_unique( array( wp_normalize_path( FMWP_PATH ), fmwp_backups_path(), fmwp_storage_path() ) ) ), // Wherever they live.
 				'keep_old_tables'    => $keep_old,
 				'replace_all_tables' => true, // The fresh database replaces every table of this site, plugin tables included.
@@ -183,6 +201,77 @@ final class ResetOptions {
 	}
 
 	/**
+	 * Refuses a network that cannot be reset as a whole here.
+	 *
+	 * @param int $site A site chosen as well (not allowed).
+	 * @return void
+	 * @throws \InvalidArgumentException When this is no network, a site is chosen too, or the install is not a plain network.
+	 */
+	private static function check_network( int $site ): void {
+		if ( ! is_multisite() ) {
+			throw new \InvalidArgumentException( '--network is for multisite networks.' );
+		}
+		if ( $site > 0 ) {
+			throw new \InvalidArgumentException( 'Choose --site=<site> or --network, not both.' );
+		}
+		if ( count( get_networks( array( 'number' => 2 ) ) ) > 1 ) {
+			throw new \InvalidArgumentException( 'This install has several networks; resetting one of them as a whole is not supported. Reset its sites one by one.' );
+		}
+		if ( 1 !== get_main_site_id() ) {
+			throw new \InvalidArgumentException( 'The main site of this network is not site 1; resetting the whole network is not supported. Reset its sites one by one.' );
+		}
+	}
+
+	/**
+	 * Themes any site of this network uses (template and stylesheet), plus the network's default.
+	 *
+	 * @return string[]
+	 */
+	private static function network_themes(): array {
+		$themes = array();
+		foreach ( get_sites(
+			array(
+				'number'  => 0,
+				'fields'  => 'ids',
+				'network' => get_current_network_id(),
+			)
+		) as $id ) {
+			$themes[] = (string) get_blog_option( (int) $id, 'template' );
+			$themes[] = (string) get_blog_option( (int) $id, 'stylesheet' );
+		}
+		return array_values( array_unique( array_filter( $themes ) ) );
+	}
+
+	/**
+	 * The theme new sites get: WP_DEFAULT_THEME, or the newest core default theme when that one is missing.
+	 *
+	 * @return string[]
+	 */
+	private static function default_theme(): array {
+		if ( defined( 'WP_DEFAULT_THEME' ) && wp_get_theme( WP_DEFAULT_THEME )->exists() ) {
+			return array( (string) WP_DEFAULT_THEME );
+		}
+		$core = method_exists( 'WP_Theme', 'get_core_default_theme' ) ? \WP_Theme::get_core_default_theme() : false; // @phpstan-ignore function.alreadyNarrowedType (WordPress 6.4+; older ones have no such method.)
+		return $core ? array( (string) $core->get_stylesheet() ) : array();
+	}
+
+	/**
+	 * IDs of the network's super admins, the default users kept by `wp fmw reset --network`.
+	 *
+	 * @return int[]
+	 */
+	public static function super_admins(): array {
+		$ids = array();
+		foreach ( get_super_admins() as $login ) {
+			$user = get_user_by( 'login', $login );
+			if ( $user ) {
+				$ids[] = (int) $user->ID;
+			}
+		}
+		return $ids;
+	}
+
+	/**
 	 * Refuses a site of this network that cannot be reset alone.
 	 *
 	 * @param int $site Site ID (0: none chosen).
@@ -191,14 +280,14 @@ final class ResetOptions {
 	 */
 	private static function check_site( int $site ): void {
 		if ( $site < 1 ) {
-			throw new \InvalidArgumentException( 'On a multisite network one site is reset at a time: choose it with --site=<id or address> (resetting the whole network arrives in the next update).' );
+			throw new \InvalidArgumentException( 'On a multisite network, choose one site with --site=<id or address>, or the whole network with --network.' );
 		}
 		$blog = get_site( $site );
 		if ( ! $blog || get_current_network_id() !== (int) $blog->network_id ) {
 			throw new \InvalidArgumentException( sprintf( 'This network has no site %d.', $site ) );
 		}
 		if ( is_main_site( $site ) || 1 === $site ) {
-			throw new \InvalidArgumentException( 'That is the network\'s main site (its tables hold the network\'s users and settings): it is reset with the whole network, which arrives in the next update.' );
+			throw new \InvalidArgumentException( 'That is the network\'s main site (its tables hold the network\'s users and settings): it is reset with the whole network (--network).' );
 		}
 	}
 

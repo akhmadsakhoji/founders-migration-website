@@ -171,17 +171,40 @@ final class ResetFilesStep implements Step {
 		if ( 'themes' === $part ) {
 			return; // The active theme stays; nothing refers to the others.
 		}
-		$db     = Connection::open();
-		$site   = (int) ( $job->options['reset_site'] ?? 0 );
-		$prefix = (string) ( $job->options['target']['table_prefix'] ?? 'wp_' ) . ( $site > 0 ? $site . '_' : '' ); // A site of a network: its own tables.
+		$db       = Connection::open();
+		$site     = (int) ( $job->options['reset_site'] ?? 0 );
+		$base     = (string) ( $job->options['target']['table_prefix'] ?? 'wp_' );
+		$prefixes = array( $base . ( $site > 0 ? $site . '_' : '' ) ); // A site of a network: its own tables.
+		if ( ! empty( $job->options['reset_network'] ) ) {
+			// A whole network without a database reset: every site stays consistent with the files.
+			foreach ( $db->column( 'SELECT `blog_id` FROM ' . Connection::identifier( $base . 'blogs' ) . ' WHERE `blog_id` <> 1' ) as $id ) {
+				$prefixes[] = $base . (int) $id . '_';
+			}
+		}
 		try {
 			if ( 'plugins' === $part ) {
 				$plugin = (string) ( $job->options['keep_active_plugin'] ?? '' );
-				$value  = $db->quote( serialize( '' === $plugin ? array() : array( $plugin ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- WordPress stores the option serialized.
-				$db->query( 'UPDATE ' . Connection::identifier( $prefix . 'options' ) . " SET `option_value` = {$value} WHERE `option_name` = 'active_plugins'" );
-				$context->log( 'Deactivated all plugins except this one.' );
+				foreach ( $prefixes as $prefix ) {
+					$raw   = $db->column( 'SELECT `option_value` FROM ' . Connection::identifier( $prefix . 'options' ) . " WHERE `option_name` = 'active_plugins'" );
+					$was   = isset( $raw[0] ) ? unserialize( (string) $raw[0], array( 'allowed_classes' => false ) ) : array(); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- allowed_classes=false.
+					$keep  = count( $prefixes ) > 1 && ! in_array( $plugin, is_array( $was ) ? $was : array(), true ) ? array() : array( $plugin ); // On a network: only where it was active.
+					$value = $db->quote( serialize( '' === $plugin ? array() : $keep ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- WordPress stores the option serialized.
+					$db->query( 'UPDATE ' . Connection::identifier( $prefix . 'options' ) . " SET `option_value` = {$value} WHERE `option_name` = 'active_plugins'" );
+				}
+				if ( ! empty( $job->options['reset_network'] ) ) {
+					$meta = Connection::identifier( $base . 'sitemeta' );
+					foreach ( $db->rows( "SELECT `meta_id`, `meta_value` FROM {$meta} WHERE `meta_key` = 'active_sitewide_plugins'" ) as $row ) {
+						$was  = unserialize( (string) $row['meta_value'], array( 'allowed_classes' => false ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- allowed_classes=false.
+						$keep = is_array( $was ) && '' !== $plugin && isset( $was[ $plugin ] ) ? array( $plugin => $was[ $plugin ] ) : array();
+						$db->query( "UPDATE {$meta} SET `meta_value` = " . $db->quote( serialize( $keep ) ) . ' WHERE `meta_id` = ' . (int) $row['meta_id'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- WordPress stores the option serialized.
+					}
+				}
+				$context->log( count( $prefixes ) > 1 ? sprintf( 'Deactivated all plugins except this one on the network and its %d sites.', count( $prefixes ) ) : 'Deactivated all plugins except this one.' );
 			} else {
-				$removed = self::delete_attachments( $db, $prefix );
+				$removed = 0;
+				foreach ( $prefixes as $prefix ) {
+					$removed += self::delete_attachments( $db, $prefix );
+				}
 				$context->log( sprintf( 'Removed %d media library entries.', $removed ) );
 			}
 		} finally {

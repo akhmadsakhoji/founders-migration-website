@@ -272,6 +272,87 @@ final class ResetTest extends TestCase {
 		$db->close();
 	}
 
+	public function test_a_whole_network_is_switched_to_a_fresh_one(): void {
+		$db = $this->database();
+		foreach ( array( 'wp_options', 'wp_posts', 'wp_users', 'wp_blogs', 'wp_sitemeta', 'wp_2_options', 'wp_2_posts', 'wp_2_shop_orders', 'wp_7_posts', 'wp_2fa_codes' ) as $table ) {
+			$db->query( "CREATE TABLE {$table} (id int PRIMARY KEY)" );
+		}
+		$db->query( 'DROP TABLE wp_blogs' );
+		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint PRIMARY KEY)' );
+		$db->query( 'INSERT INTO wp_blogs VALUES (1), (2), (7)' );
+		$db->query( 'CREATE TABLE wp_9_posts (id int PRIMARY KEY)' ); // Left by a deleted site 9: the network's too.
+		$db->query( 'CREATE TABLE wp_5_options (id int PRIMARY KEY)' ); // Another install with the prefix wp_5_ (no site 5).
+		$db->query( 'CREATE TABLE wp_5_posts (id int PRIMARY KEY)' );
+		$db->query( 'CREATE TABLE other_posts (id int PRIMARY KEY)' ); // Another install.
+		$db->query( 'CREATE VIEW wp_2_recent AS SELECT id FROM wp_2_posts' );
+		foreach ( array( 'options', 'posts', 'users', 'sitemeta' ) as $table ) {
+			$db->query( "CREATE TABLE fmwtmp_{$table} (id int PRIMARY KEY)" );
+		}
+		$db->query( 'CREATE TABLE fmwtmp_blogs (blog_id bigint PRIMARY KEY)' );
+		$db->query( 'INSERT INTO fmwtmp_blogs VALUES (1)' );
+		( new RestoreDatabase() )->create_progress();
+
+		$job                            = $this->job( array( 'database' ), array() );
+		$job->options['reset_network']  = true;
+		$job->options['keep_active_plugin'] = '';
+		$job->data['has_db']            = true;
+		$job->data['manifest']['site']['table_prefix'] = 'wp_';
+		$log = array();
+		$this->assertTrue( ( new SwapStep() )->run( $job, $this->context( $log ) ) );
+
+		$this->assertSame( array( 'wp_5_options', 'wp_5_posts', 'wp_blogs', 'wp_options', 'wp_posts', 'wp_sitemeta', 'wp_users' ), ( new RestoreDatabase() )->tables( 'wp_' ) );
+		$this->assertSame( array( '1' ), array_map( 'strval', $db->column( 'SELECT blog_id FROM wp_blogs' ) ) );
+		$aside = ( new RestoreDatabase() )->tables( 'fmwold_' );
+		sort( $aside );
+		$this->assertSame( array( 'fmwold_2_options', 'fmwold_2_posts', 'fmwold_2_shop_orders', 'fmwold_2fa_codes', 'fmwold_7_posts', 'fmwold_9_posts', 'fmwold_blogs', 'fmwold_options', 'fmwold_posts', 'fmwold_sitemeta', 'fmwold_users' ), $aside );
+		$this->assertSame( array(), ( new RestoreDatabase() )->tables( 'wp_', 'VIEW' ) );
+		$this->assertSame( array( 'other_posts' ), ( new RestoreDatabase() )->tables( 'other_' ) );
+		$this->assertTrue( ( new FinalizeStep() )->run( $job, $this->context( $log ) ) );
+		$this->assertSame( array(), ( new RestoreDatabase() )->tables( 'fmwold_' ) );
+		$db->close();
+	}
+
+	public function test_files_of_a_whole_network_without_its_database(): void {
+		$db = $this->database();
+		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint PRIMARY KEY)' );
+		$db->query( 'INSERT INTO wp_blogs VALUES (1), (3)' );
+		$db->query( 'CREATE TABLE wp_sitemeta (meta_id bigint AUTO_INCREMENT PRIMARY KEY, site_id bigint, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO wp_sitemeta (site_id, meta_key, meta_value) VALUES (1, 'active_sitewide_plugins', '" . serialize( array( 'akismet/akismet.php' => 1, self::PLUGIN => 2 ) ) . "')" );
+		foreach ( array( 'wp_', 'wp_3_' ) as $prefix ) {
+			$db->query( "CREATE TABLE {$prefix}options (option_name varchar(191) PRIMARY KEY, option_value longtext NOT NULL)" );
+			$db->query( "INSERT INTO {$prefix}options VALUES ('active_plugins', '" . serialize( array( 'shop/shop.php' ) ) . "')" );
+			$db->query( "CREATE TABLE {$prefix}posts (ID bigint PRIMARY KEY, post_type varchar(20))" );
+			$db->query( "INSERT INTO {$prefix}posts VALUES (1, 'attachment'), (2, 'post')" );
+			$db->query( "CREATE TABLE {$prefix}postmeta (meta_id bigint AUTO_INCREMENT PRIMARY KEY, post_id bigint, meta_key varchar(255), meta_value longtext)" );
+			$db->query( "CREATE TABLE {$prefix}term_relationships (object_id bigint, term_taxonomy_id bigint, PRIMARY KEY (object_id, term_taxonomy_id))" );
+		}
+		$content = $this->tmp . '/wp-content';
+		foreach ( array( 'plugins/shop/shop.php', 'plugins/founders-migration-website/f.php', 'uploads/2026/a.jpg', 'uploads/sites/3/2026/b.jpg' ) as $path ) {
+			$this->make_file( 'wp-content/' . $path, 'x' );
+		}
+		$job                           = $this->job(
+			array( 'plugins', 'media' ),
+			array(
+				'abspath'     => $this->tmp . '/',
+				'content_dir' => $content,
+				'plugins_dir' => $content . '/plugins',
+				'uploads_dir' => $content . '/uploads',
+			)
+		);
+		$job->options['reset_network'] = true;
+		$log                           = array();
+		$this->assertTrue( ( new ResetFilesStep() )->run( $job, $this->context( $log ) ) );
+		$this->assertSame( array( serialize( array( self::PLUGIN => 2 ) ) ), $db->column( "SELECT meta_value FROM wp_sitemeta WHERE meta_key = 'active_sitewide_plugins'" ) );
+		$this->assertSame( array( 'a:0:{}', 'a:0:{}' ), array( $db->column( "SELECT option_value FROM wp_options WHERE option_name = 'active_plugins'" )[0], $db->column( "SELECT option_value FROM wp_3_options WHERE option_name = 'active_plugins'" )[0] ) );
+		$this->assertSame( array( '2', '2' ), array( (string) $db->column( 'SELECT ID FROM wp_posts' )[0], (string) $db->column( 'SELECT ID FROM wp_3_posts' )[0] ) );
+		$this->assertFileDoesNotExist( $content . '/plugins/shop' );
+		$this->assertFileExists( $content . '/plugins/founders-migration-website/f.php' );
+		$this->assertFileDoesNotExist( $content . '/uploads/sites' );
+		$this->assertFileDoesNotExist( $content . '/uploads/2026' );
+		$this->assertStringContainsString( 'on the network and its 2 sites', implode( "\n", $log ) );
+		$db->close();
+	}
+
 	public function test_media_of_one_site_of_a_network_only(): void {
 		$db = $this->database();
 		foreach ( array( 'wp_', 'wp_3_' ) as $prefix ) {

@@ -101,8 +101,8 @@ final class SwapStep implements Step {
 					if ( $site > 0 && ( 1 === $site || (int) ( $job->options['target']['network']['main_site'] ?? 1 ) === $site || ! $db->column( 'SELECT `blog_id` FROM ' . Connection::identifier( $to . 'blogs' ) . " WHERE `blog_id` = {$site}" ) ) ) {
 						throw new JobException( sprintf( 'Site %d is gone from the network (or became its main site) since the reset started; nothing was switched. Cancel the job.', $site ) );
 					}
-					// A site of a network: its own tables (wp_<id>_*) only; else every table of the site.
-					foreach ( $site > 0 ? SubsiteImport::leftovers( array_keys( $live ), array_keys( $fresh ), $to, $site ) : $restore->site_tables( $to ) as $table ) {
+					// A site of a network: its own tables (wp_<id>_*) only; a whole network: every site's too; else every table of the site.
+					foreach ( $site > 0 ? SubsiteImport::leftovers( array_keys( $live ), array_keys( $fresh ), $to, $site ) : array_values( array_unique( array_merge( $restore->site_tables( $to ), self::network_site_tables( $job, $db, $restore, $to ) ) ) ) as $table ) {
 						$base = substr( $table, strlen( $to ) );
 						if ( isset( $fresh[ $table ] ) || '' === $base ) {
 							continue;
@@ -182,8 +182,15 @@ final class SwapStep implements Step {
 					wp_cache_flush(); // Its roles changed by SQL; on a resume after the switch nothing above flushed.
 				}
 			}
+			if ( ! empty( $job->options['reset_network'] ) && function_exists( 'wp_update_network_counts' ) ) {
+				wp_cache_flush();
+				wp_update_network_counts(); // One site, the kept users.
+			}
 			if ( ! empty( $job->options['replace_all_tables'] ) ) {
 				$views = $restore->site_tables( $to . ( (int) ( $job->options['reset_site'] ?? 0 ) > 0 ? (int) $job->options['reset_site'] . '_' : '' ), 'VIEW' ); // They would point at tables that are gone.
+				foreach ( ! empty( $job->options['reset_network'] ) ? (array) ( $job->data['network_prefixes'] ?? array() ) : array() as $other ) {
+					$views = array_merge( $views, $restore->tables( (string) $other, 'VIEW' ) );
+				}
 				foreach ( $views as $view ) {
 					$db->query( 'DROP VIEW IF EXISTS ' . Connection::identifier( $view ) );
 				}
@@ -224,6 +231,30 @@ final class SwapStep implements Step {
 		}
 		$db->close();
 		return true;
+	}
+
+	/**
+	 * A whole network reset: the tables of every site but the main one (wp_<id>_*), whose IDs come
+	 * from the live blogs table; the prefixes are kept in job data for the views.
+	 *
+	 * @param Job             $job     Job.
+	 * @param Connection      $db      Connection.
+	 * @param RestoreDatabase $restore Database helper.
+	 * @param string          $prefix  Network prefix.
+	 * @return string[]
+	 */
+	private static function network_site_tables( Job $job, Connection $db, RestoreDatabase $restore, string $prefix ): array {
+		if ( empty( $job->options['reset_network'] ) ) {
+			return array();
+		}
+		$tables   = array();
+		$prefixes = array();
+		foreach ( $db->column( 'SELECT `blog_id` FROM ' . Connection::identifier( $prefix . 'blogs' ) . ' WHERE `blog_id` <> 1' ) as $id ) {
+			$prefixes[] = $prefix . (int) $id . '_';
+			$tables     = array_merge( $tables, $restore->tables( $prefix . (int) $id . '_' ) );
+		}
+		$job->data['network_prefixes'] = $prefixes;
+		return $tables;
 	}
 
 	/**
