@@ -229,13 +229,28 @@ final class Runner {
 	 * @return void
 	 */
 	private function cancel( Job $job, callable $logger ): void {
+		$logger( 'Cancelled.' );
+		$this->apply_cancel( $job );
+	}
+
+	/**
+	 * Marks a job cancelled, removes its secrets and work files, then lets its
+	 * steps clean up. The secrets are gone from disk before any cleanup starts
+	 * (a slow or hanging cleanup cannot leave them behind); the steps get an
+	 * in-memory copy that still holds them (a pull needs its key to delete
+	 * the backup it made on the source site).
+	 *
+	 * @param Job $job Job (the caller holds its lock).
+	 * @return void
+	 */
+	public function apply_cancel( Job $job ): void {
 		$job->status      = Job::STATUS_CANCELLED;
 		$job->finished_at = time();
+		$copy             = clone $job;
 		Secrets::forget( $job ); // A cancelled job never needs its passwords again.
-		$logger( 'Cancelled.' );
 		$this->store->save( $job );
 		$this->store->purge_work_files( $job->id );
-		$this->discard( $job );
+		$this->discard( $copy );
 		$this->notify( $job );
 	}
 

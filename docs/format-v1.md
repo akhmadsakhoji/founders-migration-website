@@ -196,7 +196,7 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 \
   -in files/part-0001.tar.gz.enc -out files/part-0001.tar.gz
 ```
 
-FMW Tools, a standalone command-line program maintained next to the plugin, decrypts and verifies archives on Windows, macOS and Linux without PHP.
+[FMW Tools](https://github.com/akhmadsakhoji/fmw-tools), a standalone command-line program maintained next to the plugin, inspects, verifies, decrypts and extracts archives on Windows, macOS and Linux without PHP (`fmw-tools decrypt backup.fmw`).
 
 ## 8. Manual restore
 

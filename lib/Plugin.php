@@ -14,11 +14,14 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 
 use Founders\Migration\Cli\Command;
 use Founders\Migration\Cli\ScheduleCommand;
+use Founders\Migration\Cli\PullCommand;
+use Founders\Migration\Cli\PullKeyCommand;
 use Founders\Migration\Cli\StorageCommand;
 use Founders\Migration\Controller\AdminController;
 use Founders\Migration\Controller\DownloadController;
 use Founders\Migration\Controller\RestController;
 use Founders\Migration\Controller\GoogleController;
+use Founders\Migration\Controller\PullRestController;
 use Founders\Migration\Controller\RemoteRestController;
 use Founders\Migration\Controller\ScheduleRestController;
 use Founders\Migration\Schedule\Scheduler;
@@ -60,12 +63,15 @@ final class Plugin {
 		( new ScheduleRestController() )->register();
 		( new RemoteRestController() )->register();
 		( new GoogleController() )->register();
+		( new PullRestController() )->register();
 		Scheduler::register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'fmw', Command::class );
 			\WP_CLI::add_command( 'fmw schedule', ScheduleCommand::class );
 			\WP_CLI::add_command( 'fmw storage', StorageCommand::class );
+			\WP_CLI::add_command( 'fmw pull', PullCommand::class );
+			\WP_CLI::add_command( 'fmw pull-key', PullKeyCommand::class );
 		}
 	}
 

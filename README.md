@@ -8,9 +8,11 @@ Founders Migration Website (FMW) works like All-in-One WP Migration: the same Ex
 - **Standard formats, no lock-in.** An `.fmw` file is a TAR archive of TAR/gzip parts, gzip SQL and a JSON manifest. You can restore it by hand with `tar`, `gunzip` and `mysql` if the plugin or WordPress is broken. See [docs/format-v1.md](docs/format-v1.md).
 - **Honest progress.** Percentage, speed and ETA in both the browser and the terminal.
 - **Imports `.wpress`.** Existing All-in-One WP Migration backups (old and new versions, encrypted or compressed) restore with `wp fmw restore`.
+- **Site to site.** `wp fmw pull https://old.example.com` copies a site onto this one over HTTPS with a short-lived pull key: no download and upload by hand.
+- **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Base, "unlimited" and multisite features are all in one GPL plugin.
 
-> **Status: phase 2 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups and cloud storage (S3-compatible and Google Drive) work end to end and are resumable, both in the admin screens and from WP-CLI. Test on staging sites before relying on it in production.
+> **Status: phase 3 in progress.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive) and server-to-server pulls work end to end and are resumable. Pulls are WP-CLI only for now; their admin screen comes next. Test on staging sites before relying on it in production.
 
 ## Requirements
 
@@ -117,7 +119,8 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw storage list\|add\|update\|delete\|test` | S3 / Wasabi / Backblaze / Google Drive extensions | now |
 | `wp fmw storage connect\|disconnect` | — | now (Google Drive) |
 | `wp fmw storage files\|upload\|download\|remove` | — | now |
-| `wp fmw pull <url>` | — | phase 3 |
+| `wp fmw pull <url>` | — | now (single site) |
+| `wp fmw pull-key create\|list\|revoke` | — | now |
 
 `wp fmw reset --database --media --plugins --themes` (or `--all`, and the Reset screen) brings parts of a site back to a fresh WordPress install:
 
@@ -158,6 +161,22 @@ wp fmw backup --storage=<id>
 - With `drive.file`, FMW sees only the files it created itself. Backups you put into the folder by hand do not show in the list; upload them with FMW instead.
 - Resumable uploads in 256 KiB-aligned chunks sized to the connection. After an interruption, the upload asks Google how much arrived and continues from there. Older copies with the same name in the folder are replaced.
 - The folder (default `FMW Backups/<domain>`) is created on first use. The client secret and the Google tokens are stored encrypted like S3 keys. **Disconnect** revokes the sign-in; the backups stay in Drive.
+
+**Pulling a site** (server to server, [docs/pull-v1.md](docs/pull-v1.md)) copies a site onto this one without downloading and uploading the backup by hand. On the source site, create a pull key; on the site that should receive the copy, pull:
+
+```bash
+# On the source (old) site: prints a key once, valid 24 hours by default.
+wp fmw pull-key create --name="new server" --expires=2h --ip=203.0.113.7
+
+# On the target (new) site: backup there, download here, restore here, in one resumable job.
+wp fmw pull https://old.example.com --key=fmwpk_1a2b3c4d_... --exclude-cache
+```
+
+- The target drives the backup on the source slice by slice, so the source needs no WP-CLI, SSH or working WP-Cron; a shared host is enough.
+- The download is resumable (byte ranges checked against the file's version). The temporary backup on the source is deleted only once the copy here is proven intact: after the restore, which checks every part's SHA-256, or after the same check for `--download-only`. `--keep-source-backup` keeps it; `--password` encrypts it while it waits on the source.
+- A pull that outlives its key continues with a new one: `wp fmw pull --job=<job_id> --key=<new key>`. Prefer the key prompt or `FMW_PULL_KEY` over `--key=` on shared machines, where the process list and shell history are visible.
+- A key can only make backups and download its own (`--allow-existing` also allows the backups already there, for `--backup=<name>`). It expires (at most 30 days), can be limited to addresses or CIDR ranges, is stored only as a SHA-256 hash, and is revoked with `wp fmw pull-key revoke <id>`. Wrong keys are throttled per address, and `define( 'FMWP_DISABLE_PULL', true );` switches pulls off.
+- HTTPS with certificate checks is required, except for local addresses or with `--allow-http`. Multisite sources arrive later in phase 3.
 
 Every backup, restore and reset runs as a **job** that checkpoints its position. Press Ctrl+C, lose the SSH session or hit a server restart, then continue where it stopped:
 
@@ -220,6 +239,7 @@ lib/remote/                      cloud storage drivers (S3 SigV4, Google Drive O
 lib/controller/, lib/view/       admin pages
 lib/cli/                         wp fmw
 docs/format-v1.md                archive format specification
+docs/pull-v1.md                  server-to-server pull protocol
 tests/                           PHPUnit tests
 tools/                           developer tools (not shipped)
 ```
@@ -233,8 +253,8 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 0 — Foundation | Repository, CI, archive library with tests, synthetic site generator |
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
-| 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP |
-| 3 — Pull and multisite | Server-to-server migration, network and subsite scenarios |
+| 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
+| 3 — Pull and multisite | Server-to-server migration (CLI done), its admin screen, network and subsite scenarios |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

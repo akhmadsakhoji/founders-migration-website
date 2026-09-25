@@ -69,6 +69,11 @@ final class JobRunner {
 				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored site; log in with its accounts.', home_url() ) );
 				return;
 			}
+			if ( 'pull' === $job->type ) {
+				Jobs::store()->purge_work_files( $job->id );
+				WP_CLI::success( sprintf( 'Pulled to %s (%s). Restore it with `wp fmw restore %s`.', $job->data['archive']['path'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ), $job->data['archive']['name'] ) );
+				return;
+			}
 			if ( 'download' === $job->type ) {
 				Jobs::store()->purge_work_files( $job->id );
 				WP_CLI::success( sprintf( 'Downloaded to %s (%s). Restore it with `wp fmw restore %s`.', $job->data['archive']['path'], ProgressBar::bytes( (int) $job->data['archive']['bytes'] ), $job->data['archive']['name'] ) );
