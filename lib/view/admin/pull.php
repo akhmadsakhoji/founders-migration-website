@@ -27,58 +27,57 @@ $fmwp_ttls    = array(
 	<p><?php esc_html_e( 'The other site makes a backup, this site downloads it and restores it: no downloading and uploading by hand. Create a pull key on the other site first (on its Pull page, the section below). Large sites are fine: the pull runs in short steps and continues where it stopped.', 'founders-migration-website' ); ?></p>
 
 	<?php if ( is_multisite() ) : ?>
-		<div class="notice inline notice-info"><p><?php esc_html_e( 'Pulling into a multisite network is not available yet.', 'founders-migration-website' ); ?></p></div>
-	<?php else : ?>
-		<form data-fmw-pull-form autocomplete="off">
-			<table class="form-table" role="presentation">
-				<tr>
-					<th scope="row"><label for="fmw-pull-url"><?php esc_html_e( 'Source site address', 'founders-migration-website' ); ?></label></th>
-					<td><input type="text" inputmode="url" id="fmw-pull-url" name="url" class="regular-text code" placeholder="https://old.example.com" spellcheck="false" autocapitalize="off" /></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="fmw-pull-key"><?php esc_html_e( 'Pull key', 'founders-migration-website' ); ?></label></th>
-					<td>
-						<input type="password" id="fmw-pull-key" name="key" class="large-text code" autocomplete="one-time-code" spellcheck="false" placeholder="fmwpk_…" />
-						<p class="description"><?php esc_html_e( 'From the source site\'s Pull page (or wp fmw pull-key create there). It is kept encrypted while the pull runs and removed afterwards.', 'founders-migration-website' ); ?></p>
-					</td>
-				</tr>
-			</table>
-
-			<details class="fmw-advanced">
-				<summary><?php esc_html_e( 'Options', 'founders-migration-website' ); ?> <span class="description"><?php esc_html_e( '(click to expand)', 'founders-migration-website' ); ?></span></summary>
-				<fieldset data-fmw-pull-exclusions>
-					<?php foreach ( $fmwp_options as $fmwp_flag => $fmwp_label ) : ?>
-						<label class="fmw-option">
-							<input type="checkbox" name="<?php echo esc_attr( $fmwp_flag ); ?>" value="1" data-fmw-pull-flag />
-							<?php echo esc_html( $fmwp_label ); ?>
-						</label>
-					<?php endforeach; ?>
-				</fieldset>
-				<fieldset>
-					<label class="fmw-option"><input type="checkbox" name="download_only" value="1" /> <?php esc_html_e( 'Only download the backup into the backups folder (restore it later from the Backups page)', 'founders-migration-website' ); ?></label>
-					<label class="fmw-option"><input type="checkbox" name="keep_source" value="1" /> <?php esc_html_e( 'Keep the backup on the source site afterwards', 'founders-migration-website' ); ?></label>
-					<label class="fmw-option"><input type="checkbox" name="keep-old-tables" value="1" data-fmw-pull-flag /> <?php esc_html_e( 'Keep the current database tables as fmwold_*', 'founders-migration-website' ); ?></label>
-					<label class="fmw-option"><input type="checkbox" name="exclude-email-replace" value="1" data-fmw-pull-flag /> <?php esc_html_e( 'Do not change e-mail addresses at the old domain', 'founders-migration-website' ); ?></label>
-					<label class="fmw-option"><input type="checkbox" name="allow_http" value="1" /> <?php esc_html_e( 'Allow a plain http:// address (only on a trusted network: the key and the backup would travel unencrypted)', 'founders-migration-website' ); ?></label>
-				</fieldset>
-				<fieldset>
-					<p>
-						<label><?php esc_html_e( 'Password (optional, at least 8 characters)', 'founders-migration-website' ); ?><br />
-							<input type="password" name="password" class="regular-text" autocomplete="new-password" /></label>
-					</p>
-					<p class="description"><?php esc_html_e( 'Encrypts the backup while it waits on the source site. For an existing encrypted backup, its password.', 'founders-migration-website' ); ?></p>
-				</fieldset>
-			</details>
-
-			<div data-fmw-pull-source hidden></div>
-			<p class="fmw-error" role="alert" data-fmw-pull-error></p>
-			<p class="fmw-actions">
-				<button type="button" class="button button-hero" data-fmw-pull-check><?php esc_html_e( 'Check', 'founders-migration-website' ); ?></button>
-				<button type="submit" class="button button-primary button-hero" data-fmw-pull-submit><?php esc_html_e( 'Pull and restore', 'founders-migration-website' ); ?></button>
-			</p>
-			<p class="description"><?php esc_html_e( 'Same as: wp fmw pull <address> --key=<key>', 'founders-migration-website' ); ?></p>
-		</form>
+		<p class="description"><?php esc_html_e( 'This is a network: the source must be a network of the same kind (subdomains or subdirectories), and it replaces this whole network. Give the source network\'s main address.', 'founders-migration-website' ); ?></p>
 	<?php endif; ?>
+	<form data-fmw-pull-form autocomplete="off">
+		<table class="form-table" role="presentation">
+			<tr>
+				<th scope="row"><label for="fmw-pull-url"><?php esc_html_e( 'Source site address', 'founders-migration-website' ); ?></label></th>
+				<td><input type="text" inputmode="url" id="fmw-pull-url" name="url" class="regular-text code" placeholder="https://old.example.com" spellcheck="false" autocapitalize="off" /></td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="fmw-pull-key"><?php esc_html_e( 'Pull key', 'founders-migration-website' ); ?></label></th>
+				<td>
+					<input type="password" id="fmw-pull-key" name="key" class="large-text code" autocomplete="one-time-code" spellcheck="false" placeholder="fmwpk_…" />
+					<p class="description"><?php esc_html_e( 'From the source site\'s Pull page (or wp fmw pull-key create there). It is kept encrypted while the pull runs and removed afterwards.', 'founders-migration-website' ); ?></p>
+				</td>
+			</tr>
+		</table>
+
+		<details class="fmw-advanced">
+			<summary><?php esc_html_e( 'Options', 'founders-migration-website' ); ?> <span class="description"><?php esc_html_e( '(click to expand)', 'founders-migration-website' ); ?></span></summary>
+			<fieldset data-fmw-pull-exclusions>
+				<?php foreach ( $fmwp_options as $fmwp_flag => $fmwp_label ) : ?>
+					<label class="fmw-option">
+						<input type="checkbox" name="<?php echo esc_attr( $fmwp_flag ); ?>" value="1" data-fmw-pull-flag />
+						<?php echo esc_html( $fmwp_label ); ?>
+					</label>
+				<?php endforeach; ?>
+			</fieldset>
+			<fieldset>
+				<label class="fmw-option"><input type="checkbox" name="download_only" value="1" /> <?php esc_html_e( 'Only download the backup into the backups folder (restore it later from the Backups page)', 'founders-migration-website' ); ?></label>
+				<label class="fmw-option"><input type="checkbox" name="keep_source" value="1" /> <?php esc_html_e( 'Keep the backup on the source site afterwards', 'founders-migration-website' ); ?></label>
+				<label class="fmw-option"><input type="checkbox" name="keep-old-tables" value="1" data-fmw-pull-flag /> <?php esc_html_e( 'Keep the current database tables as fmwold_*', 'founders-migration-website' ); ?></label>
+				<label class="fmw-option"><input type="checkbox" name="exclude-email-replace" value="1" data-fmw-pull-flag /> <?php esc_html_e( 'Do not change e-mail addresses at the old domain', 'founders-migration-website' ); ?></label>
+				<label class="fmw-option"><input type="checkbox" name="allow_http" value="1" /> <?php esc_html_e( 'Allow a plain http:// address (only on a trusted network: the key and the backup would travel unencrypted)', 'founders-migration-website' ); ?></label>
+			</fieldset>
+			<fieldset>
+				<p>
+					<label><?php esc_html_e( 'Password (optional, at least 8 characters)', 'founders-migration-website' ); ?><br />
+						<input type="password" name="password" class="regular-text" autocomplete="new-password" /></label>
+				</p>
+				<p class="description"><?php esc_html_e( 'Encrypts the backup while it waits on the source site. For an existing encrypted backup, its password.', 'founders-migration-website' ); ?></p>
+			</fieldset>
+		</details>
+
+		<div data-fmw-pull-source hidden></div>
+		<p class="fmw-error" role="alert" data-fmw-pull-error></p>
+		<p class="fmw-actions">
+			<button type="button" class="button button-hero" data-fmw-pull-check><?php esc_html_e( 'Check', 'founders-migration-website' ); ?></button>
+			<button type="submit" class="button button-primary button-hero" data-fmw-pull-submit><?php esc_html_e( 'Pull and restore', 'founders-migration-website' ); ?></button>
+		</p>
+		<p class="description"><?php esc_html_e( 'Same as: wp fmw pull <address> --key=<key>', 'founders-migration-website' ); ?></p>
+	</form>
 </div>
 
 <div class="fmw-panel" id="fmw-pull-keys">
@@ -87,9 +86,10 @@ $fmwp_ttls    = array(
 
 	<?php if ( ! empty( $fmwp_data['disabled'] ) ) : ?>
 		<div class="notice inline notice-info"><p><?php esc_html_e( 'Pulls from this site are switched off (FMWP_DISABLE_PULL in wp-config.php).', 'founders-migration-website' ); ?></p></div>
-	<?php elseif ( is_multisite() ) : ?>
-		<div class="notice inline notice-info"><p><?php esc_html_e( 'Pulling a multisite network is not available yet.', 'founders-migration-website' ); ?></p></div>
 	<?php else : ?>
+		<?php if ( is_multisite() ) : ?>
+			<p class="description"><?php esc_html_e( 'On a network, a pull key lets another network copy this whole network, with all its sites.', 'founders-migration-website' ); ?></p>
+		<?php endif; ?>
 		<table class="widefat striped fmw-keys">
 			<thead>
 				<tr>

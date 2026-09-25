@@ -351,7 +351,7 @@ final class PullKeys {
 	 * @return bool
 	 */
 	private static function too_many_failures( string $ip ): bool {
-		return function_exists( 'get_transient' ) && (int) get_transient( self::fail_key( $ip ) ) >= self::FAIL_LIMIT;
+		return function_exists( 'get_site_transient' ) && (int) get_site_transient( self::fail_key( $ip ) ) >= self::FAIL_LIMIT; // Network-wide: every site's address takes pull requests.
 	}
 
 	/**
@@ -361,8 +361,8 @@ final class PullKeys {
 	 * @return void
 	 */
 	private static function record_failure( string $ip ): void {
-		if ( function_exists( 'set_transient' ) ) {
-			set_transient( self::fail_key( $ip ), (int) get_transient( self::fail_key( $ip ) ) + 1, self::FAIL_WINDOW );
+		if ( function_exists( 'set_site_transient' ) ) {
+			set_site_transient( self::fail_key( $ip ), (int) get_site_transient( self::fail_key( $ip ) ) + 1, self::FAIL_WINDOW );
 		}
 	}
 

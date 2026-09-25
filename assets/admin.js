@@ -1121,6 +1121,10 @@
 			[ t.pullVersions, 'WordPress ' + info.wp_version + ' · PHP ' + info.php_version + ' · FMW ' + info.fmw ],
 			[ t.pullKeyValid, info.expires ],
 		];
+		if ( info.network ) {
+			var kind = info.network.subdomain ? t.subdomains : t.subdirectories;
+			rows.splice( 2, 0, [ t.pullNetwork, 1 === info.network.sites ? sprintf( t.pullNetworkFact, kind ) : sprintf( t.pullNetworkFacts, info.network.sites, kind ) ] );
+		}
 		return el( 'table', { class: 'fmw-facts' }, rows.map( function ( row ) {
 			return el( 'tr', {}, [ el( 'th', { text: row[ 0 ] } ), el( 'td', { text: row[ 1 ] || '-' } ) ] );
 		} ) );

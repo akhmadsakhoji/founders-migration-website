@@ -12,6 +12,8 @@ namespace Founders\Migration\Pull;
 
 use Founders\Migration\Controller\PullRestController;
 use Founders\Migration\Job\Secrets;
+use Founders\Migration\Model\Export\BackupOptions;
+use Founders\Migration\Model\Import\NetworkMove;
 use Founders\Migration\Model\Import\RestoreOptions;
 
 defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
@@ -27,25 +29,42 @@ final class PullOptions {
 
 	/**
 	 * Connects to the source and checks that it can be pulled here: the
-	 * same protocol, not this site itself, not a multisite network, and for
-	 * an existing backup a key that may download it.
+	 * same protocol, not this site itself, a network only onto a network of
+	 * the same kind (see NetworkMove::incompatible()), and for an existing
+	 * backup a key that may download it.
 	 *
-	 * @param PullClient $client Client.
-	 * @param string     $backup Existing backup to pull ('' for a new one).
+	 * @param PullClient $client        Client.
+	 * @param string     $backup        Existing backup to pull ('' for a new one).
+	 * @param bool       $download_only Only download: any backup fits in the backups folder.
 	 * @return array<string,mixed> What the source said (GET /pull).
 	 * @throws PullException When it cannot be pulled.
 	 */
-	public static function check( PullClient $client, string $backup = '' ): array {
-		if ( function_exists( 'is_multisite' ) && is_multisite() ) {
-			throw new PullException( 'Pulling into a multisite network is not available yet.', 0, 'fmw_pull_multisite' );
-		}
+	public static function check( PullClient $client, string $backup = '', bool $download_only = false ): array {
+		$here = function_exists( 'is_multisite' ) && is_multisite();
 		$info = $client->info();
 		$site = (array) ( $info['site'] ?? array() );
-		if ( function_exists( 'home_url' ) && in_array( self::place( home_url() ), array( self::place( $client->url() ), self::place( (string) ( $site['home_url'] ?? '' ) ) ), true ) ) {
+		if ( function_exists( 'home_url' ) && in_array( self::place( $here ? network_home_url() : home_url() ), array( self::place( $client->url() ), self::place( (string) ( $site['home_url'] ?? '' ) ) ), true ) ) {
 			throw new PullException( 'That is this site. Pull from the site you want to copy, on the site that should receive the copy.', 0, 'fmw_pull_self' );
 		}
-		if ( ! empty( $site['multisite'] ) ) {
-			throw new PullException( 'The source is a multisite network; pulling networks arrives in a later version.', 0, 'fmw_pull_multisite' );
+		if ( ! empty( $site['multisite'] ) && ! is_array( $site['network'] ?? null ) ) {
+			throw new PullException( 'The source is a multisite network with an older Founders Migration Website that cannot be pulled from: update it there to the same version as here.', 0, 'fmw_pull_protocol' );
+		}
+		// A download-only pull restores nothing: kinds are checked when its backup is restored later.
+		if ( ! $download_only && empty( $site['multisite'] ) !== ! $here ) {
+			throw new PullException(
+				$here
+					? 'The source is a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.'
+					: 'The source is a multisite network and this is a single site; pull it onto a multisite network of the same kind (moving a subsite out of a network arrives later in phase 3).',
+				0,
+				'fmw_pull_multisite'
+			);
+		}
+		if ( $here && ! $download_only ) {
+			$network = (array) ( $site['network'] ?? array() );
+			$problem = NetworkMove::incompatible( $network, BackupOptions::network(), (int) ( $network['sites'] ?? 1 ) );
+			if ( null !== $problem ) {
+				throw new PullException( $problem, 0, 'fmw_pull_multisite' );
+			}
 		}
 		if ( '' !== $backup && empty( $info['key']['allow_existing'] ) ) {
 			throw new PullException( 'This key may not download existing backups; create one that allows it on the source, or make a new backup.', 0, 'fmw_pull_existing' );

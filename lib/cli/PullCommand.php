@@ -15,6 +15,7 @@ defined( 'ABSPATH' ) || exit;
 use Founders\Migration\Controller\PullRestController;
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\Secrets;
+use Founders\Migration\Model\Import\NetworkMove;
 use Founders\Migration\Pull\PullClient;
 use Founders\Migration\Pull\PullException;
 use Founders\Migration\Pull\PullOptions;
@@ -35,6 +36,10 @@ final class PullCommand {
 	 * backup on the source is deleted after the download. The restore works
 	 * like `wp fmw restore`: URLs and paths are replaced for this site, and
 	 * the database is switched in with one atomic rename at the end.
+	 *
+	 * A multisite network is pulled whole onto a network of the same kind
+	 * (subdomains or subdirectories): give the source network's main address.
+	 * Its sites move to this network's address as with `wp fmw restore`.
 	 *
 	 * ## OPTIONS
 	 *
@@ -110,6 +115,9 @@ final class PullCommand {
 	 * [--skip-space-check]
 	 * : Start even if the free disk space looks too small.
 	 *
+	 * [--map=<domains>]
+	 * : Multisite: new domains for subsites with their own domain, as old=new pairs separated by commas (see `wp fmw restore`).
+	 *
 	 * [--allow-http]
 	 * : Allow a plain http:// source address (only on a trusted network; local addresses are always allowed).
 	 *
@@ -122,6 +130,7 @@ final class PullCommand {
 	 *     wp fmw pull https://old.example.com --exclude-cache --exclude-post-revisions --yes
 	 *     wp fmw pull https://old.example.com --download-only --keep-source-backup
 	 *     wp fmw pull --job=01J9ZX0Q8W5S3T2H6D1M4K7B9C --key=fmwpk_...   # continue with a new key
+	 *     wp fmw pull https://network.example --map=brand.example=brand.staging.example
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -157,7 +166,7 @@ final class PullCommand {
 
 		try {
 			$client = new PullClient( $args[0], $key, (bool) WP_CLI\Utils\get_flag_value( $assoc_args, 'allow-http', false ) );
-			$info   = PullOptions::check( $client, (string) ( $assoc_args['backup'] ?? '' ) );
+			$info   = PullOptions::check( $client, (string) ( $assoc_args['backup'] ?? '' ), $download_only );
 		} catch ( PullException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
@@ -173,8 +182,31 @@ final class PullCommand {
 				wp_date( 'Y-m-d H:i', (int) ( $info['key']['expires_at'] ?? 0 ) )
 			)
 		);
+		if ( ! empty( $site['network'] ) ) {
+			WP_CLI::log(
+				sprintf(
+					'Network with %d sites (%s); its main site and the subsites under its address move to %s.',
+					(int) ( $site['network']['sites'] ?? 0 ),
+					empty( $site['network']['subdomain'] ) ? 'subdirectories' : 'subdomains',
+					network_home_url()
+				)
+			);
+		}
+		try {
+			$map = NetworkMove::parse_map( is_string( $assoc_args['map'] ?? null ) ? $assoc_args['map'] : '' );
+		} catch ( \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		if ( isset( $assoc_args['map'] ) && ( empty( $site['network'] ) || $download_only ) ) {
+			WP_CLI::error( $download_only ? '--map applies when restoring; pass it to `wp fmw restore` later.' : '--map is for pulling a multisite network onto a network.' );
+		}
+		$unknown = array_diff( array_keys( $map ), (array) ( $site['network']['domains'] ?? array_keys( $map ) ) );
+		if ( $unknown ) {
+			WP_CLI::error( sprintf( 'No site of the source network has the domain %s; check --map.', implode( ', ', $unknown ) ) );
+		}
 		if ( ! $download_only ) {
-			WP_CLI::confirm( sprintf( 'Copy %s onto %s? This replaces this site\'s files and database.', (string) ( $site['home_url'] ?? '?' ), home_url() ), $assoc_args );
+			WP_CLI::confirm( sprintf( 'Copy %s onto %s? This replaces this %s\'s files and database.', (string) ( $site['home_url'] ?? '?' ), is_multisite() ? network_home_url() : home_url(), is_multisite() ? 'whole network' : 'site' ), $assoc_args );
 		}
 
 		$flags = array();
