@@ -178,16 +178,21 @@ final class SwapStep implements Step {
 			$restore->set_progress( 'swap', 'done' );
 		}
 
-		if ( empty( $job->data['import'] ) ) {
+		if ( empty( $job->data['import'] ) && empty( $job->data['subsite'] ) ) {
 			$this->create_objects( $job, $db, new SqlGuard( (string) ( $job->data['sql_prefix'] ?? $from ), $to ), $context );
 			$this->keep_plugin_active( $job, $db, $to );
 		} else {
+			// Their table names follow another layout: a single site's, or the network's (several sites' tables).
 			foreach ( (array) ( $job->data['deferred'] ?? array() ) as $relative ) {
 				if ( is_file( $context->dir() . '/' . $relative ) && filesize( $context->dir() . '/' . $relative ) > 0 ) {
-					$context->log( 'Views and triggers of the backup were left out: they name the tables of a single site.' );
+					$context->log( empty( $job->data['import'] ) ? 'Views and triggers of the network backup were left out: they name the tables of several sites.' : 'Views and triggers of the backup were left out: they name the tables of a single site.' );
 					break;
 				}
 			}
+		}
+		if ( ! empty( $job->data['subsite'] ) ) {
+			$this->keep_plugin_active( $job, $db, $to );
+		} elseif ( ! empty( $job->data['import'] ) ) {
 			// The site's rewrite rules name its old address: WordPress builds them again on the next visit.
 			$options = $to . (int) $job->data['import']['blog_id'] . '_options';
 			if ( $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $options, '\\%_' ) ) ) ) {

@@ -10,6 +10,7 @@
 
 namespace Founders\Migration\Model\Import;
 
+use Founders\Migration\Archive\WpressPackage;
 use Founders\Migration\Database\Connection;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\JobException;
@@ -141,6 +142,85 @@ final class SubsiteExtract {
 			return null;
 		}
 		return 1 === $blog ? $rest : null; // Tables with the bare prefix are site 1's.
+	}
+
+	/**
+	 * Name a table of a .wpress backup of picked sites gets in the single site, or null when it stays out.
+	 *
+	 * All-in-One WP Migration names them SERVMASK_PREFIX_mainsite_* (users,
+	 * usermeta and the network's tables), SERVMASK_PREFIX_basesite_* (the
+	 * main site's own, site 1) and SERVMASK_PREFIX_<id>_* (other sites).
+	 *
+	 * @param string $table Source table.
+	 * @param int    $blog  Chosen site.
+	 * @return string|null
+	 */
+	public static function picked_table( string $table, int $blog ): ?string {
+		$mask = WpressPackage::SQL_PREFIX;
+		if ( 0 !== strpos( $table, $mask ) ) {
+			return null;
+		}
+		$rest = substr( $table, strlen( $mask ) );
+		if ( 0 === strpos( $rest, 'mainsite_' ) ) {
+			$rest = substr( $rest, 9 );
+			return in_array( $rest, array( 'users', 'usermeta', 'sitemeta', 'blogs' ), true ) ? $rest : null; // sitemeta and blogs (every site of the network) are read, then dropped.
+		}
+		if ( 0 === strpos( $rest, 'basesite_' ) ) {
+			return 1 === $blog && strlen( $rest ) > 9 ? substr( $rest, 9 ) : null;
+		}
+		if ( 1 === preg_match( '/^([1-9][0-9]*)_(.+)$/', $rest, $m ) ) {
+			return (int) $m[1] === $blog ? $m[2] : null;
+		}
+		return null;
+	}
+
+	/**
+	 * Notes every site of the network from the imported blogs table of a .wpress backup of picked
+	 * sites (their links stay), for pairs(). Read again on every run; the table is dropped with sitemeta.
+	 *
+	 * @param RestoreDatabase $restore Database helper.
+	 * @return array<int,array{blog_id:int,domain:string,path:string}>
+	 */
+	public static function note_sites( RestoreDatabase $restore ): array {
+		if ( ! in_array( RestoreDatabase::TMP . 'blogs', $restore->imported_tables(), true ) ) {
+			return array();
+		}
+		$sites = array();
+		foreach ( $restore->db()->rows( 'SELECT `blog_id`, `domain`, `path` FROM ' . Connection::identifier( RestoreDatabase::TMP . 'blogs' ) . ' ORDER BY `blog_id` LIMIT 10000' ) as $row ) {
+			$sites[] = array(
+				'blog_id' => (int) $row['blog_id'],
+				'domain'  => strtolower( (string) $row['domain'] ),
+				'path'    => (string) $row['path'],
+			);
+		}
+		return $sites;
+	}
+
+	/**
+	 * Gives the user meta keys and option names of a .wpress backup of picked sites
+	 * the placeholders of a whole network (SERVMASK_PREFIX_basesite_capabilities ->
+	 * SERVMASK_PREFIX_capabilities), before WpressDatabaseStep unmasks them. Idempotent.
+	 *
+	 * @param RestoreDatabase $restore Database helper.
+	 * @return void
+	 */
+	public static function unpick( RestoreDatabase $restore ): void {
+		$db     = $restore->db();
+		$mask   = WpressPackage::SQL_PREFIX;
+		$tables = array_flip( $restore->imported_tables() );
+		foreach ( array(
+			'usermeta' => 'meta_key',
+			'options'  => 'option_name',
+		) as $name => $column ) {
+			if ( ! isset( $tables[ RestoreDatabase::TMP . $name ] ) ) {
+				continue;
+			}
+			$col = Connection::identifier( $column );
+			foreach ( array( 'basesite_', 'mainsite_' ) as $kind ) {
+				$like = $db->escape( addcslashes( $mask . $kind, '\\%_' ) ) . '%';
+				$db->query( 'UPDATE ' . Connection::identifier( RestoreDatabase::TMP . $name ) . " SET {$col} = CONCAT(" . $db->quote( $mask ) . ", SUBSTRING({$col}, " . ( strlen( $mask . $kind ) + 1 ) . ")) WHERE {$col} LIKE BINARY '{$like}'" );
+			}
+		}
 	}
 
 	/**
@@ -344,9 +424,17 @@ final class SubsiteExtract {
 		if ( '' !== $source ) {
 			$paths[ $source ] = rtrim( (string) ( $target['abspath'] ?? '' ), '/' );
 		}
+		// Paths a .wpress recorded: the site's uploads folder, wp-content, the root.
+		foreach ( (array) ( $plan['source_paths'] ?? array() ) as $old => $name ) {
+			$old = rtrim( (string) $old, '/' );
+			if ( '' !== $old && is_string( $name ) && ! empty( $target[ $name ] ) ) {
+				$paths += array( $old => rtrim( (string) $target[ $name ], '/' ) );
+			}
+		}
 
 		$keep = array();
-		foreach ( (array) ( $site['sites'] ?? array() ) as $other ) {
+		// A backup of picked sites lists only those; the network's other sites come from its blogs table (see note_sites()).
+		foreach ( array_merge( (array) ( $site['sites'] ?? array() ), (array) ( $plan['network_sites'] ?? array() ) ) as $other ) {
 			$id = (int) ( is_array( $other ) ? ( $other['blog_id'] ?? 0 ) : 0 );
 			if ( $id > 0 && $id !== $blog ) {
 				$keep[] = '//' . strtolower( (string) ( $other['domain'] ?? '' ) ) . (string) ( $other['path'] ?? '/' );

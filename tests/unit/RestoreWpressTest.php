@@ -432,16 +432,173 @@ final class RestoreWpressTest extends TestCase {
 		$db->close();
 		$this->assertSame( 'shop photo', file_get_contents( $this->tmp . '/target/wp-content/uploads/sites/2/2026/09/shop.jpg' ) );
 
-		// A network backup onto a single site, and sites picked one by one, are refused before anything changes.
+		// On a single site, a network backup needs --site; sites picked one by one cannot go onto a network yet; both before anything changes.
 		$job = $this->run_job( $this->options( $archive, true ) );
-		$this->assertStringContainsString( 'backup of a whole multisite network', (string) $job->error );
+		$this->assertStringContainsString( 'choose the site to restore with --site', (string) $job->error );
 		$multisite['Network'] = false;
 		$builder              = new WpressBuilder( self::PASSWORD, 'gzip', true );
 		$builder->add( 'package.json', (string) json_encode( $package ) );
 		$builder->add( 'multisite.json', (string) json_encode( $multisite ) );
 		$builder->add( 'database.sql', $sql );
-		$job = $this->run_job( $this->options( $builder->save( $this->tmp . '/picked.wpress' ), true ) );
+		$options['archive'] = $builder->save( $this->tmp . '/picked.wpress' );
+		$job                = $this->run_job( $options );
 		$this->assertStringContainsString( 'picked one by one', (string) $job->error );
+		$this->assertSame( 'https://shop.staging.test', $this->connect( self::TARGET )->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'home'" )[0] );
+
+		// One site of the whole network onto a single site.
+		$single            = $this->options( $archive, true );
+		$single['subsite'] = 'shop.old.example';
+		$job               = $this->run_job( $single );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( 'https://new.example', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'home'" )[0] );
+		$this->assertSame( 'See https://new.example/deal and mail@old.example', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'note'" )[0] ); // The network's e-mail domain stays.
+		$this->assertSame( array( 'demo/demo.php', 'founders-migration-website/founders-migration-website.php', 'shop/shop.php' ), unserialize( (string) $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'active_plugins'" )[0] ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test. FMW stays active.
+		$this->assertSame( array( 'shop_user_roles' ), $db->column( "SELECT option_name FROM shop_options WHERE option_name LIKE '%user_roles'" ) );
+		$this->assertSame( array( 'https://shop.staging.test' ), $db->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'home'" ) ); // Left from the network restore, untouched.
+		$db->close();
+		$this->assertSame( 'shop photo', file_get_contents( $this->tmp . '/target/wp-content/uploads/2026/09/shop.jpg' ) );
+	}
+
+	/**
+	 * A .wpress of sites picked one by one, as the Multisite Extension writes it: SERVMASK_PREFIX_mainsite_ for
+	 * users and network tables, _basesite_ for the main site's, _<id>_ for the others, also in keys and option names.
+	 *
+	 * @param int[] $ids Sites in the backup (1 and/or 2).
+	 * @return string Archive.
+	 */
+	private function picked_archive( array $ids ): string {
+		$table = static function ( string $name, string $columns ): string {
+			return "CREATE TABLE `SERVMASK_PREFIX_{$name}` ({$columns}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n";
+		};
+		$opts  = '`option_id` bigint unsigned NOT NULL AUTO_INCREMENT, `option_name` varchar(191) NOT NULL, `option_value` longtext NOT NULL, `autoload` varchar(20) NOT NULL DEFAULT \'yes\', PRIMARY KEY (`option_id`), UNIQUE KEY `option_name` (`option_name`)';
+		$posts = '`ID` bigint unsigned NOT NULL AUTO_INCREMENT, `post_author` bigint unsigned NOT NULL DEFAULT 0, `post_content` longtext NOT NULL, PRIMARY KEY (`ID`)';
+		$sql   = $table( 'mainsite_users', '`ID` bigint unsigned NOT NULL AUTO_INCREMENT, `user_login` varchar(60) NOT NULL, `user_email` varchar(100) NOT NULL, PRIMARY KEY (`ID`)' )
+			. $table( 'mainsite_usermeta', '`umeta_id` bigint unsigned NOT NULL AUTO_INCREMENT, `user_id` bigint unsigned NOT NULL, `meta_key` varchar(255), `meta_value` longtext, PRIMARY KEY (`umeta_id`)' )
+			. $table( 'mainsite_sitemeta', '`meta_id` bigint NOT NULL AUTO_INCREMENT, `site_id` bigint NOT NULL, `meta_key` varchar(255), `meta_value` longtext, PRIMARY KEY (`meta_id`)' )
+			. $table( 'mainsite_blogs', '`blog_id` bigint NOT NULL AUTO_INCREMENT, `domain` varchar(200) NOT NULL, `path` varchar(100) NOT NULL, PRIMARY KEY (`blog_id`)' )
+			. "INSERT INTO `SERVMASK_PREFIX_mainsite_users` VALUES (1,'admin','admin@neta.test'),(2,'shopeditor','se@shop.example'),(3,'mainonly','mo@main.example');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_mainsite_sitemeta` VALUES (1,1,'site_admins','a:1:{i:0;s:5:\"admin\";}');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_mainsite_blogs` VALUES (1,'neta.test','/'),(2,'shop.neta.test','/'),(3,'news.neta.test','/');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_mainsite_usermeta` (`user_id`, `meta_key`, `meta_value`) VALUES (1,'nickname','admin'),(1,'primary_blog','1'),(2,'nickname','se'),(3,'nickname','mo')";
+		$sites = array(
+			1 => array( 'basesite_', 'https://neta.test', 'twentytwentyfive', array() ),
+			2 => array( '2_', 'https://shop.neta.test', 'storefront', array( 'shop/shop.php' ) ),
+		);
+		$meta  = array(
+			1 => array( 1 => 'administrator', 3 => 'subscriber' ),
+			2 => array( 1 => 'administrator', 2 => 'editor' ),
+		);
+		$json  = array();
+		foreach ( $ids as $id ) {
+			list( $mask, $url, $theme, $plugins ) = $sites[ $id ];
+			foreach ( $meta[ $id ] as $user => $role ) {
+				$sql .= ",({$user},'SERVMASK_PREFIX_{$mask}capabilities','a:1:{s:" . strlen( $role ) . ":\"{$role}\";b:1;}')";
+			}
+			$json[] = array(
+				'BlogID'     => $id,
+				'SiteID'     => 1,
+				'Domain'     => (string) parse_url( $url, PHP_URL_HOST ), // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Test.
+				'Path'       => '/',
+				'SiteURL'    => $url,
+				'HomeURL'    => $url,
+				'Plugins'    => $plugins,
+				'Template'   => $theme,
+				'Stylesheet' => $theme,
+				'WordPress'  => array(
+					'Uploads'    => '/srv/neta/wp-content/uploads' . ( 1 === $id ? '' : '/sites/' . $id ),
+					'UploadsURL' => 'https://neta.test/wp-content/uploads/' . ( 1 === $id ? '' : 'sites/' . $id . '/' ),
+				),
+			);
+		}
+		$sql .= ";\n";
+		foreach ( $ids as $id ) {
+			list( $mask, $url ) = $sites[ $id ];
+			$author             = 1 === $id ? 3 : 2;
+			$sql               .= $table( $mask . 'options', $opts ) . $table( $mask . 'posts', $posts )
+				. "INSERT INTO `SERVMASK_PREFIX_{$mask}options` (`option_name`, `option_value`) VALUES ('home','{$url}'),('siteurl','{$url}'),('SERVMASK_PREFIX_{$mask}user_roles','a:0:{}'),('active_plugins','a:0:{}'),('template',''),('stylesheet',''),('cache_dir','/srv/neta/wp-content/uploads" . ( 1 === $id ? '' : '/sites/2' ) . "/cache');\n"
+				. "INSERT INTO `SERVMASK_PREFIX_{$mask}posts` VALUES (1,{$author},'<img src=\"https://neta.test/wp-content/uploads/" . ( 1 === $id ? '' : 'sites/2/' ) . "2026/09/p.jpg\"> {$url}/about, main https://neta.test/, shop https://shop.neta.test/, news https://neta.test/wp-content/uploads/sites/3/n.jpg');\n";
+		}
+		// A view of the network names its tables: it is left out, not recreated on the wrong tables.
+		$sql .= "DROP VIEW IF EXISTS `SERVMASK_PREFIX_{$sites[ $ids[0] ][0]}published`;\nCREATE VIEW `SERVMASK_PREFIX_{$sites[ $ids[0] ][0]}published` AS select `ID` from `SERVMASK_PREFIX_{$sites[ $ids[0] ][0]}posts`;\n";
+		$package = array(
+			'SiteURL'   => 'https://neta.test',
+			'HomeURL'   => 'https://neta.test',
+			'Plugin'    => array( 'Version' => '7.111' ),
+			'WordPress' => array(
+				'Version' => '6.8',
+				'Content' => '/srv/neta/wp-content', // As 7.85 writes it: no Absolute.
+			),
+			'Database'  => array( 'Prefix' => 'wp_' ),
+		);
+		$builder = new WpressBuilder( null, 'none', false );
+		$builder->add( 'package.json', (string) json_encode( $package ) );
+		$builder->add(
+			'multisite.json',
+			(string) json_encode(
+				array(
+					'Network'  => false,
+					'Networks' => array(
+						array(
+							'SiteID' => 1,
+							'Domain' => 'neta.test',
+							'Path'   => '/',
+						),
+					),
+					'Sites'    => $json,
+					'Plugins'  => array( 'demo/demo.php' ),
+					'Admins'   => array( 'admin' ),
+				)
+			)
+		);
+		foreach ( $ids as $id ) {
+			$builder->add( 'uploads/' . ( 1 === $id ? '' : 'sites/2/' ) . '2026/09/p.jpg', 'photo of site ' . $id );
+		}
+		$builder->add( 'plugins/shop/shop.php', '<?php // shop' );
+		$builder->add( 'database.sql', $sql );
+		return $builder->save( $this->tmp . '/picked-' . implode( '-', $ids ) . '.wpress' );
+	}
+
+	public function test_one_picked_site_of_a_wpress_network_backup_restores_onto_a_single_site(): void {
+		// The only site of the backup: no --site needed.
+		$job = $this->run_job( $this->options( $this->picked_archive( array( 2 ) ), false ) );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( array( 'other_site_posts', 'shop_options', 'shop_posts', 'shop_usermeta', 'shop_users' ), $db->column( 'SHOW TABLES' ) );
+		$this->assertSame( 'https://new.example', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'home'" )[0] );
+		$this->assertSame( array( 'shop_user_roles' ), $db->column( "SELECT option_name FROM shop_options WHERE option_name LIKE '%user_roles'" ) );
+		$this->assertSame( 'storefront', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'template'" )[0] );
+		$this->assertSame( array( 'demo/demo.php', 'founders-migration-website/founders-migration-website.php', 'shop/shop.php' ), unserialize( (string) $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'active_plugins'" )[0] ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test. FMW stays active.
+		$this->assertSame( '<img src="https://new.example/wp-content/uploads/2026/09/p.jpg"> https://new.example/about, main https://neta.test/, shop https://new.example/, news https://neta.test/wp-content/uploads/sites/3/n.jpg', $db->column( 'SELECT post_content FROM shop_posts' )[0] ); // Site 3 was not picked: its media link stays.
+		$this->assertSame( $this->tmp . '/target/wp-content/uploads/cache', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'cache_dir'" )[0] );
+		$this->assertStringContainsString( 'Views and triggers of the network backup were left out', (string) file_get_contents( $this->tmp . '/jobs/' . $job->id . '/job.log' ) );
+		// Admin (super admin) and the editor; mainonly has no role here. Keys lose the site ID.
+		$this->assertSame( array( '1 admin', '2 shopeditor' ), $db->column( "SELECT CONCAT(ID, ' ', user_login) FROM shop_users ORDER BY ID" ) );
+		$this->assertSame( array( '1 shop_capabilities a:1:{s:13:"administrator";b:1;}', '2 shop_capabilities a:1:{s:6:"editor";b:1;}' ), $db->column( "SELECT CONCAT(user_id, ' ', meta_key, ' ', meta_value) FROM shop_usermeta WHERE meta_key LIKE '%capabilities' ORDER BY user_id" ) );
+		$this->assertSame( array(), $db->column( "SELECT meta_key FROM shop_usermeta WHERE meta_key LIKE 'SERVMASK%' OR meta_key = 'primary_blog'" ) );
+		$db->close();
+		$this->assertSame( 'photo of site 2', file_get_contents( $this->tmp . '/target/wp-content/uploads/2026/09/p.jpg' ) );
+		$this->assertFileDoesNotExist( $this->tmp . '/target/wp-content/uploads/sites' );
+
+		// Two picked sites: --site is needed; the main site then comes with its own users and media.
+		$archive = $this->picked_archive( array( 1, 2 ) );
+		$job     = $this->run_job( $this->options( $archive, false ) );
+		$this->assertStringContainsString( 'Its sites: 1 neta.test/, 2 shop.neta.test/', (string) $job->error );
+		$options            = $this->options( $archive, false );
+		$options['subsite'] = '1';
+		$job                = $this->run_job( $options );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( 'https://new.example', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'home'" )[0] );
+		$this->assertSame( 'twentytwentyfive', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'template'" )[0] );
+		$this->assertSame( array( '1 admin', '3 mainonly' ), $db->column( "SELECT CONCAT(ID, ' ', user_login) FROM shop_users ORDER BY ID" ) );
+		$this->assertSame( array( '1 a:1:{s:13:"administrator";b:1;}', '3 a:1:{s:10:"subscriber";b:1;}' ), $db->column( "SELECT CONCAT(user_id, ' ', meta_value) FROM shop_usermeta WHERE meta_key = 'shop_capabilities' ORDER BY user_id" ) );
+		$this->assertSame( array( 'shop_user_roles' ), $db->column( "SELECT option_name FROM shop_options WHERE option_name LIKE '%user_roles'" ) );
+		$this->assertStringContainsString( 'https://new.example/about', $db->column( 'SELECT post_content FROM shop_posts' )[0] );
+		$this->assertStringContainsString( 'shop https://shop.neta.test/', $db->column( 'SELECT post_content FROM shop_posts' )[0] ); // The other site's link stays.
+		$db->close();
+		$this->assertSame( 'photo of site 1', file_get_contents( $this->tmp . '/target/wp-content/uploads/2026/09/p.jpg' ) );
+		$this->assertFileDoesNotExist( $this->tmp . '/target/wp-content/uploads/sites' );
 	}
 
 	public function test_a_damaged_archive_is_refused_before_anything_changes(): void {

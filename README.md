@@ -95,10 +95,11 @@ wp fmw restore network.fmw --map=brand.example=brand.staging.example   # subsite
 
 The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories arrives later in phase 3.
 
-One site of a `.fmw` network backup restores onto a single site, for example when a brand leaves the network:
+One site of a network backup restores onto a single site, for example when a brand leaves the network. This works for `.fmw` network backups and for `.wpress` backups of the Multisite Extension, of the whole network or of sites picked one by one:
 
 ```bash
 wp fmw restore network.fmw --site=example.com/shop   # or its ID, or its URL; the Restore dialog offers a list
+wp fmw restore shop.wpress                            # a .wpress of one picked site needs no --site
 ```
 
 - Its tables become the site's (`wp_2_posts` → `wp_posts`); other sites' tables and the network tables stay in the backup.
@@ -128,7 +129,7 @@ wp fmw verify site.wpress              # headers + CRC-32 (archives from recent 
 wp fmw restore site.wpress --password=<password>   # password only for encrypted backups; asked for when omitted
 ```
 
-Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. The plugins and theme the backup had active are switched on again, as All-in-One WP Migration does. Whole-network backups from its Multisite Extension restore onto a network like FMW's own network backups (below); backups of sites picked one by one from a network arrive later in phase 3.
+Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. The plugins and theme the backup had active are switched on again, as All-in-One WP Migration does. Whole-network backups from its Multisite Extension restore onto a network like FMW's own network backups (below), and one of their sites, or of a backup of sites picked one by one, restores onto a single site; picked sites onto a network arrive in the next update.
 
 How a restore protects the site:
 
@@ -146,7 +147,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a `.fmw` network with `--site`, a single site into a network with `--site`) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a network backup onto a single site, a single site into a network with `--site`) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
@@ -296,7 +297,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site and single site → subsite (done), picked `.wpress` sites, reset for networks |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks, subsite → single site (`.fmw` and `.wpress`, picked sites too) and single site → subsite (done), picked `.wpress` sites onto a network, reset for networks |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

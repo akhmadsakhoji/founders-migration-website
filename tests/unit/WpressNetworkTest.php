@@ -12,6 +12,7 @@ namespace Founders\Migration\Tests\Unit;
 
 use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\WpressPackage;
+use Founders\Migration\Job\JobException;
 use Founders\Migration\Model\Import\WpressNetwork;
 use Founders\Migration\Tests\TestCase;
 
@@ -24,9 +25,10 @@ final class WpressNetworkTest extends TestCase {
 	 * A network with these sites (domain, path) at old.example.
 	 *
 	 * @param array<int,array{0:string,1:string}> $sites BlogID => [domain, path].
+	 * @param bool                                $whole A whole network (else sites picked one by one).
 	 * @return WpressNetwork
 	 */
-	private function network( array $sites ): WpressNetwork {
+	private function network( array $sites, bool $whole = true ): WpressNetwork {
 		$list = array();
 		foreach ( $sites as $id => $site ) {
 			$list[] = array(
@@ -41,7 +43,7 @@ final class WpressNetworkTest extends TestCase {
 		return WpressNetwork::parse(
 			(string) json_encode(
 				array(
-					'Network'  => true,
+					'Network'  => $whole,
 					'Networks' => array(
 						array(
 							'SiteID' => 1,
@@ -82,6 +84,27 @@ final class WpressNetworkTest extends TestCase {
 		$this->assertSame( 'astra', $plan['sites'][1]['template'] );
 		$this->assertSame( '', $plan['sites'][5]['template'] ); // "../../evil" is not a theme folder.
 		$this->assertSame( array( 'demo/demo.php' ), $plan['sitewide'] );
+	}
+
+	public function test_one_site_is_chosen_for_a_single_site(): void {
+		$package = WpressPackage::parse( '{"HomeURL":"https://old.example","SiteURL":"https://old.example","Database":{"Prefix":"wp_"}}' );
+		$whole   = $this->network( array( 1 => array( 'old.example', '/' ), 2 => array( 'shop.old.example', '/' ) ) );
+		$this->assertSame( 2, $whole->extract( $package, 'shop.old.example' )['blog_id'] );
+		$this->assertFalse( $whole->extract( $package, '2' )['picked'] );
+		try {
+			$whole->extract( $package, '' );
+			$this->fail( 'A whole network needs --site.' );
+		} catch ( JobException $e ) {
+			$this->assertStringContainsString( 'Its sites: 1 old.example/, 2 shop.old.example/', $e->getMessage() );
+		}
+
+		// One picked site needs no choice; the main site is 1 even when it is not in the backup.
+		$one  = $this->network( array( 3 => array( 'shop.old.example', '/' ) ), false );
+		$plan = $one->extract( $package, '' );
+		$this->assertSame( array( 3, true, 1, 'uploads' ), array( $plan['blog_id'], $plan['picked'], $plan['main_site'], $plan['uploads'] ) );
+		$this->assertSame( array( 1 ), array_keys( $one->extract_activation( 3 )['sites'] ) );
+		$this->assertSame( array( 'shop/shop.php', 'demo/demo.php' ), $one->extract_activation( 3 )['sites'][1]['plugins'] ); // Network-activated ones too.
+		$this->assertNull( $one->extract_activation( 3 )['sitewide'] );
 	}
 
 	public function test_damaged_multisite_json_is_refused(): void {

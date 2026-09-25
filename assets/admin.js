@@ -403,9 +403,12 @@
 				site = el( 'select', { required: 'required' }, [ el( 'option', { value: '', text: t.restoreSiteChoose } ) ].concat( info.sites.map( function ( blog ) {
 					return el( 'option', { value: String( blog.id ), text: blog.id + ' · ' + blog.address } );
 				} ) ) );
+				if ( 1 === info.sites.length ) {
+					site.value = String( info.sites[ 0 ].id ); // A backup of one picked site: nothing to choose.
+				}
 				body.push( el( 'div', { class: 'notice inline notice-info' }, [ el( 'p', { text: t.restoreSiteNote } ) ] ) );
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSite, el( 'br' ), site ] ) ] ) );
-			} else if ( ! config.multisite && info.encrypted && 'fmw' === info.format ) {
+			} else if ( ! config.multisite && info.encrypted && ( 'fmw' === info.format || info.network ) ) {
 				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false' } );
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSiteOptional, el( 'br' ), site ] ) ] ) );
 			} else if ( config.multisite && ! info.network ) {

@@ -85,6 +85,13 @@ final class WpressFilesStep implements Step {
 						self::advance( $cursor, $entry->data_offset() + $entry->size );
 						continue;
 					}
+				} elseif ( is_array( $job->data['subsite'] ?? null ) ) {
+					// The chosen site's media moves to uploads/; the other sites' stays in the backup.
+					$relative = SubsiteExtract::file( $relative, 'uploads', (int) $job->data['subsite']['blog_id'], (int) ( $job->data['subsite']['main_site'] ?? 1 ) );
+					if ( null === $relative ) {
+						self::advance( $cursor, $entry->data_offset() + $entry->size );
+						continue;
+					}
 				}
 				$path = self::target_path( $relative, $target );
 				if ( self::is_protected( $path, $protect ) ) {
