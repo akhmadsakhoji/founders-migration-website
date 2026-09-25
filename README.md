@@ -93,7 +93,18 @@ wp fmw restore network.fmw --map=brand.example=brand.staging.example   # subsite
 | `old.example/`, `shop.old.example/` | `new.example/`, `shop.new.example/` |
 | `brand.example/` (own domain) | kept, or the domain given with `--map` |
 
-The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories, and moving a single site into a network or a subsite out of one, arrive later in phase 3.
+The whole network is replaced: its sites that are not in the backup are removed with the old tables when the restore finishes (kept as `fmwold_*` with `--keep-old-tables`). The main site needs the same ID on both sides (`BLOG_ID_CURRENT_SITE`, normally 1), and installs with several networks are refused. Converting between subdomains and subdirectories, and moving a single site into a network, arrive later in phase 3.
+
+One site of a `.fmw` network backup restores onto a single site, for example when a brand leaves the network:
+
+```bash
+wp fmw restore network.fmw --site=example.com/shop   # or its ID, or its URL; the Restore dialog offers a list
+```
+
+- Its tables become the site's (`wp_2_posts` → `wp_posts`); other sites' tables and the network tables stay in the backup.
+- Its media moves from `uploads/sites/2/` (or `blogs.dir/2/files/` on old networks) to `uploads/`, and its address and media URLs become this site's. Links to the network's other sites, and e-mail addresses at the network's domain, are left as they are.
+- Users come along when they have a role, posts, comments or links on it; super admins become administrators. Their keys lose the site ID (`wp_2_capabilities` → `wp_capabilities`), other sites' keys are dropped, and keys shared by all sites (like a two-factor plugin's) stay.
+- Network-activated plugins become active plugins. Themes and plugins are shared by the network, so all of them are restored. The network's views and triggers are not carried over.
 
 All-in-One WP Migration backups restore the same way, found by name in `wp-content/ai1wm-backups` too:
 
@@ -109,7 +120,7 @@ How a restore protects the site:
 
 - Every part is checked against its SHA-256 before it is used; a damaged archive stops the restore before anything live changes.
 - The database is imported into `fmwtmp_*` tables and put live with **one atomic `RENAME TABLE`**; the previous tables become `fmwold_*` and are dropped at the end (kept with `--keep-old-tables`). Tables of other sites in a shared database are left alone.
-- URLs, paths and e-mail domains are replaced for the new location, serialized data included, without running `unserialize()` on backup data. `posts.guid` stays unchanged, as WordPress recommends. A changed table prefix is applied to user roles and user meta keys.
+- URLs, paths and e-mail domains are replaced for the new location, serialized data included, without running `unserialize()` on backup data. Addresses match whole: moving `example.com/shop` leaves `example.com/shopping` and `example.com.au` alone. `posts.guid` stays unchanged, as WordPress recommends. A changed table prefix is applied to user roles and user meta keys.
 - SQL from the archive is checked against an allowlist (table DDL and literal `INSERT`s only), so a crafted backup cannot run arbitrary queries.
 - The FMW plugin folder, backups and storage are never overwritten, the plugin stays active, and files that are not in the backup are kept.
 
@@ -121,7 +132,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks; one site of a `.fmw` network with `--site`) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
@@ -271,7 +282,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls and `.wpress` networks (done), subsite ↔ single site and picked sites, reset for networks |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls, `.wpress` networks and subsite → single site (done), single site → subsite and picked `.wpress` sites, reset for networks |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

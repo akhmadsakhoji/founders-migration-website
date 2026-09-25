@@ -258,6 +258,9 @@ final class WpressCheckStep implements Step {
 	 */
 	private static function check_kind( ?WpressNetwork $network, array $target, array $info, Job $job ): void {
 		$here = ! empty( $target['multisite'] );
+		if ( '' !== (string) ( $job->options['subsite'] ?? '' ) ) {
+			throw new JobException( 'Choosing one site works with .fmw network backups for now; restoring one site of a .wpress network backup arrives later.' );
+		}
 		if ( null === $network ) {
 			if ( $here ) {
 				throw new JobException( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );

@@ -79,6 +79,7 @@ final class AdminController {
 			),
 			'chunk'         => RestController::chunk_bytes(),
 			'version'       => FMWP_VERSION,
+			'multisite'     => is_multisite(),
 			'storages'      => self::storage_choices(),
 			'loginUrl'      => wp_login_url( add_query_arg( 'page', self::SLUG_BACKUPS, $base ) ),
 			'backupsUrl'    => add_query_arg( 'page', self::SLUG_BACKUPS, $base ),
@@ -106,6 +107,10 @@ final class AdminController {
 				'confirmCancel'         => __( 'Cancel this job?', 'founders-migration-website' ),
 				'confirmDelete'         => /* translators: %s: file name. */ __( 'Delete %s? This cannot be undone.', 'founders-migration-website' ),
 				'confirmRestore'        => __( 'Restore this backup?', 'founders-migration-website' ),
+				'restoreSite'           => __( 'Site to restore', 'founders-migration-website' ),
+				'restoreSiteChoose'     => __( 'Choose the site to restore.', 'founders-migration-website' ),
+				'restoreSiteNote'       => __( 'This is a backup of a whole network. Only the chosen site is restored as this site: its content, its media and the users with a role, posts or comments on it (super admins become administrators). The other sites stay in the backup.', 'founders-migration-website' ),
+				'restoreSiteOptional'   => __( 'Only for a backup of a whole network: the site to restore (its ID or address, for example example.com/shop)', 'founders-migration-website' ),
 				'restoreWarning'        => is_multisite()
 					? __( 'This replaces the files and database of the whole network, including sites that are not in the backup. The main site and its subsites move to this network\'s address; subsites with their own domain keep it (give them a new one with wp fmw restore --map). The database is switched in one step at the end, so the network stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored network.', 'founders-migration-website' )
 					: __( 'This replaces the files and database of this site. The database is switched in one step at the end, so the site stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored site.', 'founders-migration-website' ),

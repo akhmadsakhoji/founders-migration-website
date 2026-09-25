@@ -44,14 +44,23 @@ final class SqlGuard {
 	private $to;
 
 	/**
+	 * Picks and renames tables: source name => name after the destination prefix, or null to leave the table out.
+	 *
+	 * @var callable|null
+	 */
+	private $rename;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param string $from Source prefix, for example "wp_".
-	 * @param string $to   Destination prefix, for example "fmwtmp_".
+	 * @param string        $from   Source prefix, for example "wp_".
+	 * @param string        $to     Destination prefix, for example "fmwtmp_".
+	 * @param callable|null $rename Optional: source table => name after the destination prefix, or null to leave it out (default: the name after the source prefix).
 	 */
-	public function __construct( string $from, string $to ) {
-		$this->from = $from;
-		$this->to   = $to;
+	public function __construct( string $from, string $to, ?callable $rename = null ) {
+		$this->from   = $from;
+		$this->to     = $to;
+		$this->rename = $rename;
 	}
 
 	/**
@@ -161,7 +170,11 @@ final class SqlGuard {
 		if ( '' !== $this->from && 0 !== strpos( $table, $this->from ) ) {
 			return null;
 		}
-		$mapped = $this->to . substr( $table, strlen( $this->from ) );
+		$rest = null === $this->rename ? substr( $table, strlen( $this->from ) ) : ( $this->rename )( $table );
+		if ( ! is_string( $rest ) || '' === $rest ) {
+			return null;
+		}
+		$mapped = $this->to . $rest;
 		if ( strlen( $mapped ) > 64 ) {
 			throw new UnsafeSqlException( sprintf( 'Table name %s would be longer than 64 characters.', $mapped ) );
 		}

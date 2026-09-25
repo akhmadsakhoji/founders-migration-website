@@ -478,7 +478,85 @@ final class RestoreTest extends TestCase {
 		$archive = $this->backup( '', array( 'multisite' => true, 'sites' => array( array( 'blog_id' => 1, 'domain' => 'example.com', 'path' => '/' ) ) ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
 		$job     = $this->run_job( new JobStore( $this->tmp . '/restore-jobs' ), 'restore', $this->restore_options( $archive ), self::TARGET );
 		$this->assertSame( Job::STATUS_FAILED, $job->status );
-		$this->assertStringContainsString( 'between a single site and a multisite network', (string) $job->error );
+		$this->assertStringContainsString( 'choose the site to restore', (string) $job->error );
+	}
+
+	public function test_one_site_of_a_network_backup_becomes_a_single_site(): void {
+		$db = $this->connect( self::SOURCE );
+		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL)' );
+		$db->query( "INSERT INTO wp_blogs VALUES (1, 1, 'example.com', '/'), (2, 1, 'example.com', '/shop/'), (3, 1, 'example.com', '/news/')" );
+		$db->query( 'CREATE TABLE wp_sitemeta (meta_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO wp_sitemeta (site_id, meta_key, meta_value) VALUES (1, 'site_admins', " . $db->quote( serialize( array( 'admin' ) ) ) . "), (1, 'active_sitewide_plugins', " . $db->quote( serialize( array( 'net/net.php' => 1 ) ) ) . ')' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		foreach ( array( 2, 3 ) as $id ) {
+			$db->query( "CREATE TABLE wp_{$id}_options (option_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) NOT NULL UNIQUE, option_value longtext NOT NULL)" );
+			$db->query( "CREATE TABLE wp_{$id}_posts (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, post_author bigint unsigned NOT NULL DEFAULT 0, guid varchar(255) NOT NULL, post_title text, post_content longtext)" );
+		}
+		$shop = 'https://example.com/shop';
+		$db->query( "INSERT INTO wp_2_options (option_name, option_value) VALUES ('home', '{$shop}'), ('siteurl', '{$shop}'), ('wp_2_user_roles', 'a:1:{s:6:\"editor\";a:0:{}}'), ('active_plugins', " . $db->quote( serialize( array( 'shop/shop.php' ) ) ) . ')' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		$db->query( "INSERT INTO wp_2_posts (post_author, guid, post_title, post_content) VALUES (2, '{$shop}/?p=1', 'Shop post', " . $db->quote( "<img src=\"https://example.com/wp-content/uploads/sites/2/2026/09/shop.jpg\"> <img src=\"{$shop}/wp-content/uploads/sites/2/2026/09/shop.jpg\"> <a href=\"{$shop}/cart\">cart</a> <a href=\"https://example.com/news/x\">news</a> <a href=\"https://example.com/about\">main</a> <a href=\"https://example.com/shopping-guide/\">guide</a> /home/old/public_html/wp-content/uploads/sites/2/x" ) . ')' );
+		$db->query( 'CREATE TABLE wp_2_comments (comment_ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id bigint unsigned NOT NULL DEFAULT 0, comment_content text)' );
+		$db->query( "INSERT INTO wp_2_comments (user_id, comment_content) VALUES (3, 'Nice shop')" );
+		$db->query( "INSERT INTO wp_3_posts (post_author, guid, post_title, post_content) VALUES (3, 'https://example.com/news/?p=1', 'News post', 'x')" );
+		$db->query( "INSERT INTO wp_users (user_login, user_email) VALUES ('editor2', 'editor2@example.com'), ('newsonly', 'news@example.com')" );
+		$db->query( "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (2, 'wp_2_capabilities', 'a:1:{s:6:\"editor\";b:1;}'), (2, 'wp_2_user_level', '7'), (2, 'primary_blog', '2'), (2, 'wp_3_capabilities', 'a:0:{}'), (3, 'wp_3_capabilities', 'a:1:{s:6:\"author\";b:1;}'), (2, 'wp_2fa_enabled', '1')" );
+		$db->close();
+		$this->make_file( 'source/wp-content/uploads/sites/2/2026/09/shop.jpg', 'shop photo' );
+		$this->make_file( 'source/wp-content/uploads/sites/3/2026/09/news.jpg', 'news photo' );
+
+		$archive = $this->backup(
+			'',
+			array(
+				'multisite'   => true,
+				'uploads_dir' => 'wp-content/uploads',
+				'content_dir' => 'wp-content',
+				'sites'       => array(
+					array( 'blog_id' => 1, 'domain' => 'example.com', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'blog_id' => 2, 'domain' => 'example.com', 'path' => '/shop/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'blog_id' => 3, 'domain' => 'example.com', 'path' => '/news/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+				),
+				'network'     => array(
+					'domain'    => 'example.com',
+					'path'      => '/',
+					'subdomain' => false,
+					'main_site' => 1,
+				),
+			)
+		);
+		$options                          = $this->restore_options( $archive );
+		$options['subsite']               = 'https://example.com/shop/';
+		$options['target']['uploads_dir'] = $this->tmp . '/target/wp-content/uploads';
+		$options['target']['uploads_url'] = 'https://example.com/staging/wp-content/uploads';
+		$job                              = $this->run_job( new JobStore( $this->tmp . '/restore-jobs' ), 'restore', $options, self::TARGET );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+
+		$db     = $this->connect( self::TARGET );
+		$tables = $db->column( 'SHOW TABLES' );
+		$this->assertSame( array( 'other_site_posts', 'shop_comments', 'shop_extra', 'shop_options', 'shop_posts', 'shop_usermeta', 'shop_users' ), $tables ); // No network tables, no other site's.
+		$this->assertSame( array( 'Shop post' ), $db->column( 'SELECT post_title FROM shop_posts' ) );
+		$this->assertSame(
+			'<img src="https://example.com/staging/wp-content/uploads/2026/09/shop.jpg"> <img src="https://example.com/staging/wp-content/uploads/2026/09/shop.jpg"> <a href="https://example.com/staging/cart">cart</a> <a href="https://example.com/news/x">news</a> <a href="https://example.com/about">main</a> <a href="https://example.com/shopping-guide/">guide</a> ' . $this->tmp . '/target/wp-content/uploads/x',
+			(string) $db->column( 'SELECT post_content FROM shop_posts' )[0]
+		);
+		$this->assertSame( array( 'https://example.com/staging' ), $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'home'" ) );
+		$this->assertSame( array( 'shop_user_roles' ), $db->column( "SELECT option_name FROM shop_options WHERE option_name LIKE '%user_roles'" ) );
+		$plugins = unserialize( (string) $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'active_plugins'" )[0] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize
+		$this->assertSame( array( self::PLUGIN, 'net/net.php', 'shop/shop.php' ), $plugins );
+		// Users with a role or posts here stay, super admins become administrators, the rest stays out.
+		$this->assertSame( array( 'admin', 'editor2', 'newsonly' ), $db->column( 'SELECT user_login FROM shop_users ORDER BY ID' ) ); // newsonly commented here.
+		$this->assertSame( array( 'admin@example.com', 'editor2@example.com', 'news@example.com' ), $db->column( 'SELECT user_email FROM shop_users ORDER BY ID' ) ); // The network's e-mail domain stays.
+		$this->assertSame( array( '1' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE meta_key = 'shop_2fa_enabled'" ) ); // Global key with the bare prefix: kept (and moved to the target prefix).
+		$this->assertSame(
+			array( '1 shop_capabilities a:1:{s:13:"administrator";b:1;}', '1 shop_user_level 10', '2 shop_2fa_enabled 1', '2 shop_capabilities a:1:{s:6:"editor";b:1;}', '2 shop_user_level 7' ),
+			$db->column( "SELECT CONCAT(user_id, ' ', meta_key, ' ', meta_value) FROM shop_usermeta WHERE meta_key LIKE 'shop\\_%' ORDER BY user_id, meta_key" )
+		);
+		$this->assertSame( array(), $db->column( "SELECT meta_key FROM shop_usermeta WHERE meta_key LIKE 'wp\\_%' OR meta_key = 'primary_blog'" ) );
+		$db->close();
+
+		$content = $this->tmp . '/target/wp-content';
+		$this->assertSame( 'shop photo', file_get_contents( $content . '/uploads/2026/09/shop.jpg' ) );
+		$this->assertFileDoesNotExist( $content . '/uploads/2026/09/photo.jpg' ); // Site 1's media.
+		$this->assertFileDoesNotExist( $content . '/uploads/sites' );
+		$this->assertFileExists( $content . '/themes/astra/style.css' );
 	}
 
 	public function test_a_damaged_archive_fails_before_the_live_site_changes(): void {

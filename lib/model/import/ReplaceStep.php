@@ -69,7 +69,13 @@ final class ReplaceStep implements Step {
 
 		$site     = (array) ( $job->data['manifest']['site'] ?? array() );
 		$target   = (array) ( $job->options['target'] ?? array() );
-		$replacer = new Replacer( self::pairs( $job ) );
+		$replacer = new Replacer( self::pairs( $job ), self::plain_pairs( $job ) );
+		if ( is_array( $job->data['subsite'] ?? null ) ) {
+			if ( 'done' !== $this->restore->progress( 'subsite' ) ) {
+				SubsiteExtract::apply( $this->restore, $job->data['subsite'], (string) ( $site['table_prefix'] ?? 'wp_' ), $context );
+			}
+			$this->restore->drop( array( RestoreDatabase::TMP . 'sitemeta' ) ); // Network settings: read, not restored.
+		}
 
 		$tables = $this->restore->imported_tables();
 		$count  = count( $tables );
@@ -98,7 +104,12 @@ final class ReplaceStep implements Step {
 		$context->log(
 			$replacer->is_empty()
 				? 'Same URL and path: nothing to replace.'
-				: sprintf( 'Replaced %s with %s in %d tables.', (string) ( $site['home_url'] ?? '' ), (string) ( $target['home_url'] ?? '' ), count( $tables ) )
+				: sprintf(
+					'Replaced %s with %s in %d tables.',
+					is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite']['domain'] . rtrim( (string) $job->data['subsite']['path'], '/' ) : (string) ( $site['home_url'] ?? '' ),
+					(string) ( $target['home_url'] ?? '' ),
+					count( $tables )
+				)
 		);
 		return true;
 	}
@@ -165,7 +176,6 @@ final class ReplaceStep implements Step {
 			$urls  = (array) $plan['urls'];
 			$paths = (array) $plan['paths'];
 			$email = ! empty( $plan['email'] );
-			$raw   = Replacer::value_pairs( (array) ( $plan['raw'] ?? array() ) );
 		} else {
 			$urls  = array(
 				(string) ( $site['home_url'] ?? '' ) => (string) ( $target['home_url'] ?? '' ),
@@ -173,9 +183,16 @@ final class ReplaceStep implements Step {
 			);
 			$paths = array( (string) ( $site['abspath'] ?? '' ) => (string) ( $target['abspath'] ?? '' ) );
 			$email = ! empty( $job->options['email_replace'] );
-			$raw   = array();
 		}
-		$keep = array();
+		$keep       = array();
+		$keep_email = array();
+		if ( is_array( $job->data['subsite'] ?? null ) ) {
+			$subsite    = SubsiteExtract::pairs( $job->data['subsite'], $site, $target );
+			$urls       = $subsite['urls'];
+			$paths      = $subsite['paths'];
+			$keep       = $subsite['keep'];
+			$keep_email = $subsite['keep_email'];
+		}
 		if ( is_array( $job->data['network'] ?? null ) ) {
 			$urls = self::network_urls( $job->data['network'], $urls );
 			foreach ( (array) $job->data['network']['sites'] as $blog ) {
@@ -185,7 +202,21 @@ final class ReplaceStep implements Step {
 			}
 		}
 		$pairs = Replacer::site_pairs( $urls, $paths, $email );
-		return ( $pairs ? $pairs + Replacer::keep_pairs( $keep, $email ) : $pairs ) + $raw;
+		foreach ( $keep_email as $host ) {
+			unset( $pairs[ '@' . $host ] );
+		}
+		return $pairs ? $pairs + Replacer::keep_pairs( $keep, $email ) : $pairs;
+	}
+
+	/**
+	 * Find / replace pairs chosen at export (.wpress): they match anywhere, like in All-in-One WP Migration.
+	 *
+	 * @param Job $job Job.
+	 * @return array<string,string>
+	 */
+	private static function plain_pairs( Job $job ): array {
+		$plan = $job->data['replace'] ?? null;
+		return is_array( $plan ) ? Replacer::value_pairs( (array) ( $plan['raw'] ?? array() ) ) : array();
 	}
 
 	/**

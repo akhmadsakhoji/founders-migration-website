@@ -25,9 +25,11 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * Reads the archive's manifest and refuses restores that cannot succeed, before anything changes.
  *
  * Reads job options: archive, target { home_url, site_url, abspath,
- * content_dir, table_prefix, multisite, network }, domain_map, skip_space_check.
+ * content_dir, table_prefix, multisite, network }, domain_map, subsite (the
+ * site to restore from a network backup onto a single site), skip_space_check.
  * Writes job data: manifest (site, options, totals, parts), network (where
- * each site of a multisite network goes, see NetworkMove).
+ * each site of a multisite network goes, see NetworkMove), subsite (see
+ * SubsiteExtract).
  */
 final class CheckStep implements Step {
 
@@ -60,12 +62,24 @@ final class CheckStep implements Step {
 
 		$site    = (array) ( $manifest['site'] ?? array() );
 		$network = null;
-		if ( ! empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
-			if ( empty( $site['multisite'] ) !== empty( $target['multisite'] ) ) {
-				throw new JobException( 'Restoring between a single site and a multisite network arrives later in phase 3.' );
+		$subsite = null;
+		$choice  = (string) ( $job->options['subsite'] ?? '' );
+		if ( '' !== $choice ) {
+			if ( empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
+				throw new JobException( 'Choosing a site (--site) is for restoring one site of a network backup onto a single site.' );
+			}
+			$subsite            = SubsiteExtract::resolve( $site, $choice );
+			$subsite['uploads'] = self::uploads_folder( $site );
+		} elseif ( ! empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
+			if ( ! empty( $site['multisite'] ) && empty( $target['multisite'] ) ) {
+				throw new JobException( sprintf( 'This is a backup of a whole network and this is a single site: choose the site to restore (wp fmw restore <file> --site=<id or address>). Its sites: %s.', SubsiteExtract::listing( $site ) ) );
+			}
+			if ( empty( $site['multisite'] ) ) {
+				throw new JobException( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
 			}
 			$network = NetworkMove::plan( $site, $target, (array) ( $job->options['domain_map'] ?? array() ) );
-		} elseif ( ! empty( $job->options['domain_map'] ) ) {
+		}
+		if ( null === $network && ! empty( $job->options['domain_map'] ) ) {
 			throw new JobException( '--map is for restoring a multisite network onto a network.' );
 		}
 
@@ -116,6 +130,7 @@ final class CheckStep implements Step {
 			'parts'   => array_values( (array) $manifest['parts'] ),
 		);
 		$job->data['network']   = $network;
+		$job->data['subsite']   = $subsite;
 		$job->data['has_db']    = $has_db;
 		$job->data['encrypted'] = $encrypted;
 		if ( $encrypted ) {
@@ -137,7 +152,22 @@ final class CheckStep implements Step {
 		if ( null !== $network ) {
 			self::log_network( $network, $context );
 		}
+		if ( null !== $subsite ) {
+			$context->log( sprintf( 'Restoring site %d (%s) of the network as this site.', $subsite['blog_id'], SubsiteExtract::printable( $subsite['domain'] . $subsite['path'] ) ) );
+		}
 		return true;
+	}
+
+	/**
+	 * The uploads folder relative to wp-content in the backup ("uploads").
+	 *
+	 * @param array<string,mixed> $site Manifest site.
+	 * @return string
+	 */
+	private static function uploads_folder( array $site ): string {
+		$content = trim( (string) ( $site['content_dir'] ?? 'wp-content' ), '/' );
+		$uploads = trim( (string) ( $site['uploads_dir'] ?? 'wp-content/uploads' ), '/' );
+		return 0 === strpos( $uploads, $content . '/' ) ? substr( $uploads, strlen( $content ) + 1 ) : 'uploads';
 	}
 
 	/**
