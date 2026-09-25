@@ -188,6 +188,9 @@ final class WpressCheckStep implements Step {
 		self::check_kind( $network, $target, $info, $job );
 		$import  = null;
 		$subsite = null !== $network && empty( $target['multisite'] ) ? $network->extract( $package, (string) ( $job->options['subsite'] ?? '' ) ) : null;
+		if ( null !== $network && ! empty( $target['multisite'] ) && ! $network->is_network() ) {
+			$import = SubsiteImport::plan_picked( $job, $network->site( $package ), $context );
+		}
 		if ( null === $network && ! empty( $target['multisite'] ) ) {
 			$import            = SubsiteImport::plan_for( $job, $context );
 			$import['uploads'] = 'uploads';
@@ -237,15 +240,29 @@ final class WpressCheckStep implements Step {
 		$job->data['has_db']      = $has_db;
 		$job->data['compression'] = $package->compression();
 		$job->data['encrypted']   = $package->encrypted();
-		$job->data['replace']     = self::replace_plan( $package, $target, ! empty( $job->options['email_replace'] ) );
+		$job->data['replace']     = ! empty( $import['picked'] )
+			? SubsiteImport::picked_replace_plan(
+				$network->entries(),
+				$import,
+				$target,
+				array(
+					'Content'  => $package->wordpress( 'Content' ),
+					'Absolute' => $package->wordpress( 'Absolute' ),
+					'raw'      => $package->replace_pairs(),
+				),
+				! empty( $job->options['email_replace'] ) && empty( $package->data()['NoEmailReplace'] )
+			)
+			: self::replace_plan( $package, $target, ! empty( $job->options['email_replace'] ) );
 		if ( null !== $subsite ) {
 			$job->data['activate'] = $network->extract_activation( (int) $subsite['blog_id'] );
+		} elseif ( ! empty( $import['picked'] ) ) {
+			$job->data['activate'] = $network->import_activation( (array) $import['sites'] );
 		} else {
 			$job->data['activate'] = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package, null !== $import ? (int) $import['blog_id'] : 1 );
 		}
 		$job->data['import']  = $import;
 		$job->data['subsite'] = $subsite;
-		$job->data['network'] = null !== $network && null === $subsite ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
+		$job->data['network'] = null !== $network && null === $subsite && null === $import ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
 
 		$context->log(
 			sprintf(
@@ -268,8 +285,8 @@ final class WpressCheckStep implements Step {
 	}
 
 	/**
-	 * Refuses what cannot be restored here: sites picked one by one onto a
-	 * network, --site where it chooses nothing, old blogs.dir networks onto a network.
+	 * Refuses what cannot be restored here: --site where it chooses nothing,
+	 * old blogs.dir networks as a whole onto a network.
 	 *
 	 * @param WpressNetwork|null  $network multisite.json, when there is one.
 	 * @param array<string,mixed> $target  Target site.
@@ -297,7 +314,7 @@ final class WpressCheckStep implements Step {
 			return; // One of its sites becomes this site (see WpressNetwork::extract()).
 		}
 		if ( ! $network->is_network() ) {
-			throw new JobException( sprintf( 'This backup holds %d site(s) picked one by one from a network; restoring them onto a network arrives in the next update. On a single site, one of them can be restored.', $network->count() ) );
+			return; // Each chosen site becomes a site of the network (see SubsiteImport::plan_picked()).
 		}
 		if ( $choice ) {
 			throw new JobException( 'This is a backup of a whole network: on a network it restores as a whole, without --site.' );

@@ -21,6 +21,7 @@ use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\StepRegistry;
 use Founders\Migration\Model\Import\FinalizeStep;
 use Founders\Migration\Model\Import\ReplaceStep;
+use Founders\Migration\Model\Import\SubsiteImport;
 use Founders\Migration\Model\Import\SwapStep;
 use Founders\Migration\Model\Import\WpressCheckStep;
 use Founders\Migration\Model\Import\WpressDatabaseStep;
@@ -432,7 +433,7 @@ final class RestoreWpressTest extends TestCase {
 		$db->close();
 		$this->assertSame( 'shop photo', file_get_contents( $this->tmp . '/target/wp-content/uploads/sites/2/2026/09/shop.jpg' ) );
 
-		// On a single site, a network backup needs --site; sites picked one by one cannot go onto a network yet; both before anything changes.
+		// On a single site, a network backup needs --site; on a network, so do sites picked one by one; both before anything changes.
 		$job = $this->run_job( $this->options( $archive, true ) );
 		$this->assertStringContainsString( 'choose the site to restore with --site', (string) $job->error );
 		$multisite['Network'] = false;
@@ -442,7 +443,7 @@ final class RestoreWpressTest extends TestCase {
 		$builder->add( 'database.sql', $sql );
 		$options['archive'] = $builder->save( $this->tmp . '/picked.wpress' );
 		$job                = $this->run_job( $options );
-		$this->assertStringContainsString( 'picked one by one', (string) $job->error );
+		$this->assertStringContainsString( 'choose the site each becomes with --site=<site of the backup>=<new address or existing site>', (string) $job->error );
 		$this->assertSame( 'https://shop.staging.test', $this->connect( self::TARGET )->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'home'" )[0] );
 
 		// One site of the whole network onto a single site.
@@ -599,6 +600,130 @@ final class RestoreWpressTest extends TestCase {
 		$db->close();
 		$this->assertSame( 'photo of site 1', file_get_contents( $this->tmp . '/target/wp-content/uploads/2026/09/p.jpg' ) );
 		$this->assertFileDoesNotExist( $this->tmp . '/target/wp-content/uploads/sites' );
+	}
+
+	/**
+	 * A subdirectory network at net.test (sites 1 and 3, users netadmin and admin) and restore options for a picked backup onto it.
+	 *
+	 * @param int[] $ids Sites in the backup.
+	 * @return array<string,mixed>
+	 */
+	private function picked_onto_network( array $ids ): array {
+		$db = $this->connect( self::TARGET );
+		$db->query( 'CREATE TABLE shop_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL, registered datetime NOT NULL, last_updated datetime NOT NULL, public tinyint NOT NULL DEFAULT 1)' );
+		$db->query( "INSERT INTO shop_blogs (blog_id, site_id, domain, path, registered, last_updated) VALUES (1, 1, 'net.test', '/', NOW(), NOW()), (3, 1, 'net.test', '/news/', NOW(), NOW())" );
+		$db->query( "CREATE TABLE shop_users (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_login varchar(60) NOT NULL, user_pass varchar(255) NOT NULL DEFAULT '', user_email varchar(100) NOT NULL DEFAULT '', user_nicename varchar(50) NOT NULL DEFAULT '')" );
+		$db->query( "INSERT INTO shop_users (ID, user_login, user_pass, user_email, user_nicename) VALUES (1, 'netadmin', 'x', 'root@net.test', 'netadmin'), (7, 'admin', 'network-password', 'admin@net.test', 'admin')" );
+		$db->query( 'CREATE TABLE shop_usermeta (umeta_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id bigint unsigned NOT NULL, meta_key varchar(255), meta_value longtext)' );
+		$db->query( 'CREATE TABLE shop_3_posts (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, post_author bigint unsigned NOT NULL DEFAULT 0, post_content longtext NOT NULL)' );
+		$db->query( "INSERT INTO shop_3_posts (post_content) VALUES ('old news')" );
+		$db->query( 'CREATE TABLE shop_3_extra (id int PRIMARY KEY)' );
+		$db->close();
+
+		$content                    = $this->tmp . '/target/wp-content';
+		$options                    = $this->options( $this->picked_archive( $ids ), false );
+		$options['target']          = array(
+			'home_url'    => 'https://net.test',
+			'site_url'    => 'https://net.test',
+			'uploads_url' => 'https://net.test/wp-content/uploads',
+			'multisite'   => true,
+			'network'     => array(
+				'id'        => 1,
+				'domain'    => 'net.test',
+				'path'      => '/',
+				'subdomain' => false,
+				'main_site' => 1,
+				'networks'  => 1,
+			),
+			'sites'       => array(
+				array( 'blog_id' => 1, 'domain' => 'net.test', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+				array( 'blog_id' => 3, 'domain' => 'net.test', 'path' => '/news/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+			),
+		) + $options['target'];
+		return $options;
+	}
+
+	public function test_picked_sites_of_a_wpress_network_backup_become_sites_of_a_network(): void {
+		$content = $this->tmp . '/target/wp-content';
+		$options = $this->picked_onto_network( array( 1, 2 ) );
+		$options['subsite'] = 'shop';
+		$job                = $this->run_job( $options );
+		$this->assertStringContainsString( 'This backup holds 2 sites: give the site each becomes', (string) $job->error );
+		$options['subsite'] = '2=shop,1=3';
+		$job                = $this->run_job( $options );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+
+		$db    = $this->connect( self::TARGET );
+		$value = static function ( string $table, string $name ) use ( $db ): string {
+			return (string) ( $db->column( "SELECT option_value FROM {$table} WHERE option_name = " . $db->quote( $name ) )[0] ?? '' );
+		};
+		$this->assertSame( array( '1 net.test /', '3 net.test /news/', '4 net.test /shop/' ), $db->column( "SELECT CONCAT(blog_id, ' ', domain, ' ', path) FROM shop_blogs ORDER BY blog_id" ) );
+		$this->assertSame( 'https://net.test/shop', $value( 'shop_4_options', 'home' ) );
+		$this->assertSame( 'https://net.test/news', $value( 'shop_3_options', 'home' ) );
+		$this->assertSame( 'storefront', $value( 'shop_4_options', 'template' ) );
+		$this->assertSame( 'twentytwentyfive', $value( 'shop_3_options', 'template' ) );
+		$this->assertSame( array( 'shop/shop.php', 'demo/demo.php' ), unserialize( $value( 'shop_4_options', 'active_plugins' ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test. Network-activated ones too.
+		$this->assertSame( 'a:0:{}', $value( 'shop_4_options', 'shop_4_user_roles' ) );
+		$this->assertSame( 'a:0:{}', $value( 'shop_3_options', 'shop_3_user_roles' ) );
+		$this->assertSame( $content . '/uploads/sites/4/cache', $value( 'shop_4_options', 'cache_dir' ) );
+		$this->assertSame( $content . '/uploads/sites/3/cache', $value( 'shop_3_options', 'cache_dir' ) );
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'shop\\_3\\_extra'" ) ); // The replaced site's other table went aside.
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'fmw%'" ) );
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'shop\\_blogs\\_%'" ) );
+
+		// Users: admin is the network's (login), the others are added with their own e-mail; roles on the new IDs only.
+		$this->assertSame( array( '1 netadmin root@net.test', '7 admin admin@net.test', '8 shopeditor se@shop.example', '9 mainonly mo@main.example' ), $db->column( "SELECT CONCAT(ID, ' ', user_login, ' ', user_email) FROM shop_users ORDER BY ID" ) );
+		$this->assertSame(
+			array( '7 shop_3_capabilities administrator', '7 shop_4_capabilities administrator', '8 shop_4_capabilities editor', '9 shop_3_capabilities subscriber' ),
+			$db->column( "SELECT CONCAT(user_id, ' ', meta_key, ' ', SUBSTRING_INDEX(SUBSTRING_INDEX(meta_value, '\"', 2), '\"', -1)) FROM shop_usermeta WHERE meta_key LIKE '%capabilities' ORDER BY user_id, meta_key" )
+		);
+		$this->assertSame( array( '8', '9' ), array( $db->column( 'SELECT post_author FROM shop_4_posts' )[0], $db->column( 'SELECT post_author FROM shop_3_posts' )[0] ) );
+		$this->assertSame(
+			'<img src="https://net.test/shop/wp-content/uploads/sites/4/2026/09/p.jpg"> https://net.test/shop/about, main https://net.test/news/, shop https://net.test/shop/, news https://neta.test/wp-content/uploads/sites/3/n.jpg',
+			$db->column( 'SELECT post_content FROM shop_4_posts' )[0]
+		); // Site 3 of the backup was not picked: its link stays.
+		$db->close();
+		$this->assertSame( 'photo of site 2', file_get_contents( $content . '/uploads/sites/4/2026/09/p.jpg' ) );
+		$this->assertSame( 'photo of site 1', file_get_contents( $content . '/uploads/sites/3/2026/09/p.jpg' ) );
+		$this->assertFileDoesNotExist( $content . '/uploads/2026/09/p.jpg' );
+		$this->assertSame( '<?php // shop', file_get_contents( $content . '/plugins/shop/shop.php' ) );
+		$this->assertStringContainsString( 'Views and triggers of the backup were left out', (string) file_get_contents( $this->tmp . '/jobs/' . $job->id . '/job.log' ) );
+	}
+
+	public function test_sites_left_in_a_picked_backup_bring_no_users(): void {
+		$options            = $this->picked_onto_network( array( 1, 2 ) );
+		$options['subsite'] = 'shop.neta.test=shop';
+		$job                = $this->run_job( $options );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$db = $this->connect( self::TARGET );
+		// mainonly had a role only on site 1, which stays in the backup.
+		$this->assertSame( array( '1 netadmin', '7 admin', '8 shopeditor' ), $db->column( "SELECT CONCAT(ID, ' ', user_login) FROM shop_users ORDER BY ID" ) );
+		$this->assertSame( array( '4' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE user_id = 8 AND meta_key = 'primary_blog'" ) );
+		$this->assertSame( array( 'old news' ), $db->column( 'SELECT post_content FROM shop_3_posts' ) ); // Site 3 untouched.
+		$this->assertSame( array( '1 net.test /', '3 net.test /news/', '4 net.test /shop/' ), $db->column( "SELECT CONCAT(blog_id, ' ', domain, ' ', path) FROM shop_blogs ORDER BY blog_id" ) );
+		$db->close();
+		$this->assertFileDoesNotExist( $this->tmp . '/target/wp-content/uploads/sites/3/2026/09/p.jpg' );
+
+		// A user with a role only on the second chosen site gets that site as primary; the main site's address decides e-mail domains.
+		$plan = SubsiteImport::picked_replace_plan(
+			array(
+				1 => array( 'HomeURL' => 'https://neta.test' ),
+				2 => array(
+					'HomeURL'   => 'https://shop.neta.test',
+					'WordPress' => array( 'UploadsURL' => 'https://neta.test/wp-content/uploads/sites/2/' ),
+				),
+			),
+			array(
+				'sites' => array(
+					array( 'from' => 2, 'blog_id' => 4, 'domain' => 'shop.net.test', 'path' => '/', 'new' => true ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+					array( 'from' => 1, 'blog_id' => 5, 'domain' => 'main.net.test', 'path' => '/', 'new' => true ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+				),
+			),
+			array( 'home_url' => 'https://net.test' ),
+			array(),
+			true
+		);
+		$this->assertSame( array( 'https://neta.test' => 'https://main.net.test', 'https://shop.neta.test' => 'https://shop.net.test' ), array_slice( $plan['urls'], 0, 2 ) ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
 	}
 
 	public function test_a_damaged_archive_is_refused_before_anything_changes(): void {

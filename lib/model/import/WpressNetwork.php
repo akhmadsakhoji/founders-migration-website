@@ -282,6 +282,43 @@ final class WpressNetwork {
 	}
 
 	/**
+	 * The Sites[] entries by BlogID.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function entries(): array {
+		$out = array();
+		foreach ( (array) $this->data['Sites'] as $site ) {
+			$out[ (int) $site['BlogID'] ] = $site;
+		}
+		return $out;
+	}
+
+	/**
+	 * What each chosen site of a backup of picked sites had active, under its new ID; network-activated plugins join each site's.
+	 *
+	 * @param array<int,array{from:int,blog_id:int}> $sites Chosen sites.
+	 * @return array{sites:array<int,array{plugins:string[],template:string,stylesheet:string}>,sitewide:null}
+	 */
+	public function import_activation( array $sites ): array {
+		$all = $this->activation();
+		$out = array();
+		foreach ( $sites as $site ) {
+			$from                          = $all['sites'][ (int) $site['from'] ] ?? array(
+				'plugins'    => array(),
+				'template'   => '',
+				'stylesheet' => '',
+			);
+			$from['plugins']               = array_values( array_unique( array_merge( $from['plugins'], $all['sitewide'] ) ) );
+			$out[ (int) $site['blog_id'] ] = $from;
+		}
+		return array(
+			'sites'    => $out,
+			'sitewide' => null,
+		);
+	}
+
+	/**
 	 * What each site had active, and the network-activated plugins, for WpressActivation.
 	 *
 	 * @return array{sites:array<int,array{plugins:string[],template:string,stylesheet:string}>,sitewide:string[]}

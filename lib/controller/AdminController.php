@@ -112,6 +112,10 @@ final class AdminController {
 				/* translators: 1: site address, 2: site ID. */
 				'restoreIntoDone'       => __( 'The backup is now site %2$d of this network: %1$s. Its users log in with their network accounts.', 'founders-migration-website' ),
 				'visitSite'             => __( 'Visit the site', 'founders-migration-website' ),
+				'restorePickedNote'     => __( 'This backup holds sites picked from another network. Each one you give an address becomes a site of this network: a new one at a new address, or it replaces the content of an existing site (its ID or full address; not the main site). Sites left empty stay in the backup. Their users join the network; people who already have an account here keep their password and profile.', 'founders-migration-website' ),
+				/* translators: %s: site of the backup (ID and address). */
+				'restorePickedSite'     => __( 'Site %s of the backup becomes (a new name such as shop, or an existing site)', 'founders-migration-website' ),
+				'restorePickedOptional' => __( 'Only for a backup of sites picked from a network: the site each becomes, as old=new pairs (2=shop,3=4)', 'founders-migration-website' ),
 				'restoreInto'           => __( 'Site of this network it becomes: a new address (a name such as shop, or a full address) or an existing site', 'founders-migration-website' ),
 				'restoreIntoOptional'   => __( 'Only for a backup of a single site: the site of this network it becomes (a new address such as shop, or an existing site)', 'founders-migration-website' ),
 				'restoreIntoNote'       => __( 'This is a backup of a single site. It becomes a site of this network: a new one at a new address, or it replaces the content of an existing site (not the main site). Its users join the network; people who already have an account here keep their password and profile. Its themes and plugins join the network\'s; its mu-plugins and drop-ins are left out.', 'founders-migration-website' ),

@@ -100,6 +100,59 @@ final class SubsiteImportTest extends TestCase {
 		$this->assertNull( SubsiteImport::file( 'cache/page.html', 'uploads', 5 ) );
 	}
 
+	public function test_picked_sites_each_become_a_site(): void {
+		$source = array(
+			'sites'   => array(
+				array( 'blog_id' => 1, 'domain' => 'old.example', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+				array( 'blog_id' => 5, 'domain' => 'shop.old.example', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+			),
+			'network' => array(
+				'domain' => 'old.example',
+				'path'   => '/',
+			),
+		);
+		$sites  = SubsiteImport::picked_choices( $source, $this->target( false ), ' 5=shop , old.example=4 ' );
+		$this->assertSame( array( array( 5, 0, '/shop/', true ), array( 1, 4, '/news/', false ) ), array_map( static function ( array $site ): array { return array( $site['from'], $site['blog_id'], $site['path'], $site['new'] ); }, $sites ) ); // phpcs:ignore Squiz.Functions.MultiLineFunctionDeclaration.ContentAfterBrace, Generic.Formatting.DisallowMultipleStatements.SameLine -- Test.
+
+		$one          = $source;
+		$one['sites'] = array( $source['sites'][1] );
+		$this->assertSame( 5, SubsiteImport::picked_choices( $one, $this->target( false ), 'shop' )[0]['from'] );
+		foreach ( array(
+			'give the site each becomes' => array( $source, 'shop' ),
+			'is given twice'             => array( $source, '5=shop,shop.old.example=blog2' ),
+			'would both become'          => array( $source, '5=shop,1=shop' ),
+			'has no site "9"'            => array( $source, '9=shop' ),
+			'main site'                  => array( $source, '5=1' ),
+			'is not <site of the backup>' => array( $source, '5=shop,news' ),
+			'choose the site each'       => array( $source, '' ),
+		) as $message => $case ) {
+			try {
+				SubsiteImport::picked_choices( $case[0], $this->target( false ), $case[1] );
+				$this->fail( "Accepted {$case[1]}" );
+			} catch ( JobException $e ) {
+				$this->assertStringContainsString( $message, $e->getMessage() );
+			}
+		}
+
+		$map = array(
+			array( 'from' => 1, 'blog_id' => 7 ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+			array( 'from' => 5, 'blog_id' => 8 ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		);
+		$this->assertSame( '7_posts', SubsiteImport::picked_table( 'SERVMASK_PREFIX_basesite_posts', $map ) );
+		$this->assertSame( '8_wc_orders', SubsiteImport::picked_table( 'SERVMASK_PREFIX_5_wc_orders', $map ) );
+		$this->assertSame( 'usermeta', SubsiteImport::picked_table( 'SERVMASK_PREFIX_mainsite_usermeta', $map ) );
+		$this->assertSame( 'blogs', SubsiteImport::picked_table( 'SERVMASK_PREFIX_mainsite_blogs', $map ) );
+		$this->assertNull( SubsiteImport::picked_table( 'SERVMASK_PREFIX_mainsite_sitemeta', $map ) );
+		$this->assertNull( SubsiteImport::picked_table( 'SERVMASK_PREFIX_6_posts', $map ) );
+		$this->assertSame( 'uploads/sites/8/2026/a.jpg', SubsiteImport::picked_file( 'uploads/sites/5/2026/a.jpg', 'uploads', $map ) );
+		$this->assertSame( 'uploads/sites/7/2026/main.jpg', SubsiteImport::picked_file( 'uploads/2026/main.jpg', 'uploads', $map ) );
+		$this->assertSame( 'uploads/sites/8/old.jpg', SubsiteImport::picked_file( 'blogs.dir/5/files/old.jpg', 'uploads', $map ) );
+		$this->assertNull( SubsiteImport::picked_file( 'uploads/sites/6/x.jpg', 'uploads', $map ) );
+		$this->assertNull( SubsiteImport::picked_file( 'uploads/2026/main.jpg', 'uploads', array( $map[1] ) ) ); // Main site not chosen.
+		$this->assertNull( SubsiteImport::picked_file( 'mu-plugins/x.php', 'uploads', $map ) );
+		$this->assertSame( 'themes/astra/style.css', SubsiteImport::picked_file( 'themes/astra/style.css', 'uploads', $map ) );
+	}
+
 	public function test_address_and_leftover_tables(): void {
 		$plan = array(
 			'blog_id' => 7,

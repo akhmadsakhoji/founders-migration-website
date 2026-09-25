@@ -17,6 +17,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Jobs;
 use Founders\Migration\Job\Runner;
+use Founders\Migration\Model\Import\SubsiteImport;
 use WP_CLI;
 
 /**
@@ -64,6 +65,14 @@ final class JobRunner {
 				delete_option( 'rewrite_rules' );
 				if ( 'reset' === $job->type ) {
 					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
+					return;
+				}
+				if ( ! empty( $job->data['import']['picked'] ) ) {
+					$list = array();
+					foreach ( SubsiteImport::sites( $job->data['import'] ) as $site ) {
+						$list[] = sprintf( '%s (site %d, was %d)', SubsiteImport::address( $site, (array) ( $job->data['network_target'] ?? $job->options['target'] ) )['home_url'], (int) $site['blog_id'], (int) $site['from'] );
+					}
+					WP_CLI::success( sprintf( 'Restore complete. These are sites of the network now: %s. Their users log in with the network\'s accounts.', implode( ', ', $list ) ) );
 					return;
 				}
 				if ( is_array( $job->data['import'] ?? null ) ) {

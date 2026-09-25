@@ -81,7 +81,7 @@ final class RestoreOptions {
 				'sites'          => is_multisite() ? self::sites() : array(),
 			),
 			'domain_map'          => NetworkMove::parse_map( is_string( $flags['map'] ?? null ) ? $flags['map'] : '' ),
-			'subsite'             => is_scalar( $flags['site'] ?? null ) && ! is_bool( $flags['site'] ) ? substr( trim( (string) $flags['site'], " \n\r\t\v\0" ), 0, 300 ) : '',
+			'subsite'             => is_scalar( $flags['site'] ?? null ) && ! is_bool( $flags['site'] ) ? self::site_choice( (string) $flags['site'] ) : '',
 			'protect_paths'       => $protect,
 			'email_replace'       => empty( $flags['exclude-email-replace'] ),
 			'keep_old_tables'     => ! empty( $flags['keep-old-tables'] ),
@@ -89,5 +89,20 @@ final class RestoreOptions {
 			'keep_active_plugin'  => FMWP_BASENAME,
 			'keep_active_network' => is_multisite() && isset( ( (array) get_site_option( 'active_sitewide_plugins', array() ) )[ FMWP_BASENAME ] ),
 		);
+	}
+
+	/**
+	 * The --site choice: one address, or old=new pairs for sites picked from a network (one per site, so it can be long).
+	 *
+	 * @param string $site Value.
+	 * @return string
+	 * @throws \InvalidArgumentException When it is too long to be a list of sites.
+	 */
+	private static function site_choice( string $site ): string {
+		$site = trim( $site, " \n\r\t\v\0" );
+		if ( strlen( $site ) > 20000 ) {
+			throw new \InvalidArgumentException( '--site is too long; restore the sites in a few runs.' );
+		}
+		return $site;
 	}
 }
