@@ -20,6 +20,23 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
 final class RestoreOptions {
 
 	/**
+	 * This network's sites (ID, domain, path), for choosing where a single site goes.
+	 *
+	 * @return array<int,array{blog_id:int,domain:string,path:string}>
+	 */
+	private static function sites(): array {
+		$sites = array();
+		foreach ( get_sites( array( 'number' => 0 ) ) as $blog ) {
+			$sites[] = array(
+				'blog_id' => (int) $blog->blog_id,
+				'domain'  => (string) $blog->domain,
+				'path'    => (string) $blog->path,
+			);
+		}
+		return $sites;
+	}
+
+	/**
 	 * Job options.
 	 *
 	 * @param string              $archive Archive path.
@@ -61,6 +78,7 @@ final class RestoreOptions {
 				'table_prefix'   => (string) $wpdb->base_prefix,
 				'multisite'      => is_multisite(),
 				'network'        => is_multisite() ? BackupOptions::network() : null,
+				'sites'          => is_multisite() ? self::sites() : array(),
 			),
 			'domain_map'          => NetworkMove::parse_map( is_string( $flags['map'] ?? null ) ? $flags['map'] : '' ),
 			'subsite'             => is_scalar( $flags['site'] ?? null ) && ! is_bool( $flags['site'] ) ? substr( trim( (string) $flags['site'], " \n\r\t\v\0" ), 0, 300 ) : '',

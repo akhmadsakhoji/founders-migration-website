@@ -186,9 +186,18 @@ final class WpressCheckStep implements Step {
 		new WpressDecoder( $key ? $key : null, $package->compression() ); // Fails early when a PHP extension is missing.
 		$network = isset( $info['multisite.json'] ) ? WpressNetwork::read( (string) $job->options['archive'], $key ? $key : null, $package->compression(), (int) $info['multisite.json']['offset'] ) : null;
 		self::check_kind( $network, $target, $info, $job );
+		$import = null;
+		if ( null === $network && ! empty( $target['multisite'] ) ) {
+			$import            = SubsiteImport::plan_for( $job, $context );
+			$import['uploads'] = 'uploads';
+			$target            = (array) $job->options['target'];
+		}
 
 		$has_db = isset( $info['database.sql'] ) && ! $package->no_database();
 		$db     = $has_db ? (int) $info['database.sql']['size'] : 0;
+		if ( null !== $import && ! $has_db ) {
+			throw new JobException( 'This backup has no database: a site of the network cannot be made from its files alone.' );
+		}
 		$files  = (int) $info['files_stored'];
 		$factor = 'none' === $package->compression() ? 1 : 3; // Compressed data grows when restored.
 
@@ -204,6 +213,9 @@ final class WpressCheckStep implements Step {
 			$restore->drop( $restore->tables( RestoreDatabase::TMP ) ); // Leftovers of an earlier, abandoned restore.
 			$restore->create_progress();
 			$restore->db()->close();
+		}
+		if ( null !== $import ) {
+			SubsiteImport::reserve( $import, (array) $job->data['network_target'] );
 		}
 
 		$home = (string) ( $package->data()['HomeURL'] ?? '' );
@@ -225,7 +237,8 @@ final class WpressCheckStep implements Step {
 		$job->data['compression'] = $package->compression();
 		$job->data['encrypted']   = $package->encrypted();
 		$job->data['replace']     = self::replace_plan( $package, $target, ! empty( $job->options['email_replace'] ) );
-		$job->data['activate']    = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package );
+		$job->data['activate']    = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package, null !== $import ? (int) $import['blog_id'] : 1 );
+		$job->data['import']      = $import;
 		$job->data['network']     = null !== $network ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
 
 		$context->log(
@@ -258,12 +271,12 @@ final class WpressCheckStep implements Step {
 	 */
 	private static function check_kind( ?WpressNetwork $network, array $target, array $info, Job $job ): void {
 		$here = ! empty( $target['multisite'] );
-		if ( '' !== (string) ( $job->options['subsite'] ?? '' ) ) {
-			throw new JobException( 'Choosing one site works with .fmw network backups for now; restoring one site of a .wpress network backup arrives later.' );
+		if ( '' !== (string) ( $job->options['subsite'] ?? '' ) && ( null !== $network || ! $here ) ) {
+			throw new JobException( 'With a .wpress backup, --site chooses the site a single-site backup becomes on a network; restoring one site of a .wpress network backup arrives later.' );
 		}
 		if ( null === $network ) {
 			if ( $here ) {
-				throw new JobException( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
+				return; // Becomes a site of the network (see SubsiteImport).
 			}
 			if ( ! empty( $job->options['domain_map'] ) ) {
 				throw new JobException( '--map is for restoring a multisite network onto a network.' );

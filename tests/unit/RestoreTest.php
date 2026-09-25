@@ -559,6 +559,115 @@ final class RestoreTest extends TestCase {
 		$this->assertFileExists( $content . '/themes/astra/style.css' );
 	}
 
+	public function test_a_single_site_becomes_a_new_site_of_a_network_and_then_replaces_it(): void {
+		$db = $this->connect( self::SOURCE );
+		$db->query( 'ALTER TABLE wp_posts ADD post_author bigint unsigned NOT NULL DEFAULT 1' );
+		$db->query( "ALTER TABLE wp_users ADD user_nicename varchar(50) NOT NULL DEFAULT ''" );
+		$db->query( "INSERT INTO wp_users (user_login, user_email, user_nicename) VALUES ('writer', 'writer@example.com', 'writer'), ('owner', 'ROOT@net.example', 'owner')" ); // IDs 2 and 3.
+		$db->query( "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (2, 'wp_capabilities', 'a:1:{s:6:\"author\";b:1;}'), (2, 'wp_user_level', '2'), (2, 'first_name', 'Wri')" );
+		$db->query( 'UPDATE wp_posts SET post_author = 2 WHERE ID = 2' );
+		$db->query( 'UPDATE wp_posts SET post_author = 3 WHERE ID = 4' );
+		$db->query( 'UPDATE wp_posts SET post_author = 9999 WHERE ID = 6' ); // A deleted user.
+		// Enough customers for several batches of the merge.
+		$db->query( "INSERT INTO wp_users (user_login, user_email, user_nicename) SELECT CONCAT('customer', seq), CONCAT('c', seq, '@shop.example'), CONCAT('customer', seq) FROM seq_1_to_450" );
+		$db->close();
+		$this->make_file( 'source/wp-content/mu-plugins/single-only.php', '<?php // stays out' );
+		$this->make_file( 'source/wp-content/object-cache.php', '<?php // stays out' );
+
+		$db = $this->connect( self::TARGET );
+		$db->query( 'CREATE TABLE shop_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL, registered datetime NOT NULL, last_updated datetime NOT NULL, public tinyint NOT NULL DEFAULT 1)' );
+		$db->query( "INSERT INTO shop_blogs (blog_id, site_id, domain, path, registered, last_updated) VALUES (1, 1, 'net.example', '/', NOW(), NOW()), (2, 1, 'net.example', '/old/', NOW(), NOW())" );
+		$db->query( 'CREATE TABLE shop_users (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_login varchar(60), user_pass varchar(255) NOT NULL DEFAULT \'\', user_email varchar(100), user_nicename varchar(50) NOT NULL DEFAULT \'\')' );
+		$db->query( "INSERT INTO shop_users (ID, user_login, user_pass, user_email, user_nicename) VALUES (1, 'netadmin', 'x', 'root@net.example', 'writer'), (7, 'admin', 'network-password', 'admin@net.example', 'admin')" );
+		$db->query( 'CREATE TABLE shop_usermeta (umeta_id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id bigint unsigned NOT NULL, meta_key varchar(255), meta_value longtext)' );
+		$db->query( "INSERT INTO shop_usermeta (user_id, meta_key, meta_value) VALUES (7, 'shop_capabilities', 'a:1:{s:10:\"subscriber\";b:1;}'), (7, 'first_name', 'Network')" );
+		$db->query( 'CREATE TABLE shop_2_posts (ID bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY, post_title text)' );
+		$db->query( "INSERT INTO shop_2_posts (post_title) VALUES ('old site 2')" );
+		$db->query( 'CREATE TABLE shop_2_extra (id int PRIMARY KEY)' );
+		$db->close();
+
+		$archive                          = $this->backup();
+		$options                          = $this->restore_options( $archive );
+		$options['target']['home_url']    = 'https://net.example';
+		$options['target']['site_url']    = 'https://net.example';
+		$options['target']['uploads_url'] = 'https://net.example/wp-content/uploads';
+		$options['target']['uploads_dir'] = $this->tmp . '/target/wp-content/uploads';
+		$options['target']['multisite']   = true;
+		$options['target']['network']     = array(
+			'id'        => 1,
+			'domain'    => 'net.example',
+			'path'      => '/',
+			'subdomain' => false,
+			'main_site' => 1,
+			'networks'  => 1,
+		);
+		$options['target']['sites']       = array(
+			array( 'blog_id' => 1, 'domain' => 'net.example', 'path' => '/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+			array( 'blog_id' => 2, 'domain' => 'net.example', 'path' => '/old/' ), // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		);
+		$options['subsite']               = 'shop';
+		$store                            = new JobStore( $this->tmp . '/restore-jobs' );
+		$other                            = false;
+		$job                              = $this->run_job(
+			$store,
+			'restore',
+			$options,
+			self::TARGET,
+			function ( Job $job ) use ( &$other ): void {
+				$db = $this->connect( self::TARGET );
+				// Site 3 is listed only once its tables are live.
+				if ( $db->column( 'SELECT blog_id FROM shop_blogs WHERE blog_id = 3' ) ) {
+					$this->assertTrue( array() !== $db->column( "SHOW TABLES LIKE 'shop\\_3\\_options'" ) );
+				}
+				// Someone adds a site while the restore runs: it gets the ID after the reserved one.
+				if ( ! $other && $job->step > 0 ) {
+					$db->query( "INSERT INTO shop_blogs (site_id, domain, path, registered, last_updated) VALUES (1, 'net.example', '/other/', NOW(), NOW())" );
+					$other = true;
+				}
+				$db->close();
+			}
+		);
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$this->assertTrue( $other );
+
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( array( '1 net.example /', '2 net.example /old/', '3 net.example /shop/', '4 net.example /other/' ), $db->column( "SELECT CONCAT(blog_id, ' ', domain, ' ', path) FROM shop_blogs ORDER BY blog_id" ) );
+		$this->assertSame( array( 'https://net.example/shop' ), $db->column( "SELECT option_value FROM shop_3_options WHERE option_name = 'home'" ) );
+		$this->assertSame( array( 'shop_3_user_roles' ), $db->column( "SELECT option_name FROM shop_3_options WHERE option_name LIKE '%user_roles'" ) );
+		$this->assertSame( array(), $db->column( "SELECT option_name FROM shop_3_options WHERE option_name = 'rewrite_rules'" ) );
+		// Users: admin is the network's (ID 7, password and profile kept), owner is netadmin by e-mail, writer is new (another author URL); authors follow.
+		$this->assertSame( array( '1 netadmin writer', '7 admin admin', '8 writer writer-2' ), $db->column( "SELECT CONCAT(ID, ' ', user_login, ' ', user_nicename) FROM shop_users WHERE ID < 9 ORDER BY ID" ) );
+		$this->assertSame( array( 'writer@example.com' ), $db->column( 'SELECT user_email FROM shop_users WHERE ID = 8' ) ); // Their own address, not one at the network's domain.
+		$this->assertSame( array( '450', 'c450@shop.example' ), array( $db->column( "SELECT COUNT(*) FROM shop_users WHERE user_login LIKE 'customer%'" )[0], $db->column( 'SELECT MAX(user_email) FROM shop_users WHERE user_login = \'customer450\'' )[0] ) );
+		$this->assertSame( array( 'network-password' ), $db->column( 'SELECT user_pass FROM shop_users WHERE ID = 7' ) );
+		$this->assertSame( array( 'a:1:{s:10:"subscriber";b:1;}' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE user_id = 7 AND meta_key = 'shop_capabilities'" ) ); // Main site role untouched.
+		$this->assertSame( array( 'a:1:{s:13:"administrator";b:1;}' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE user_id = 7 AND meta_key = 'shop_3_capabilities'" ) );
+		$this->assertSame( array( 'Network' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE user_id = 7 AND meta_key = 'first_name'" ) );
+		$this->assertSame( array( 'Wri', '3', 'a:1:{s:6:"author";b:1;}' ), $db->column( "SELECT meta_value FROM shop_usermeta WHERE user_id = 8 AND meta_key IN ('primary_blog', 'first_name', 'shop_3_capabilities') ORDER BY meta_key" ) );
+		$this->assertSame( array( '8', '7', '1', '0' ), $db->column( 'SELECT post_author FROM shop_3_posts WHERE ID IN (2, 3, 4, 6) ORDER BY ID' ) );
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'fmw%'" ) );
+		$this->assertSame( array( 'old site 2' ), $db->column( 'SELECT post_title FROM shop_2_posts' ) ); // Site 2 untouched.
+		$this->assertSame( 'See https://net.example/shop/page-5 and //net.example/shop/img-5.jpg', (string) $db->column( 'SELECT post_content FROM shop_3_posts WHERE ID = 5' )[0] );
+		$db->close();
+		$content = $this->tmp . '/target/wp-content';
+		$this->assertFileExists( $content . '/uploads/sites/3/2026/09/photo.jpg' );
+		$this->assertFileDoesNotExist( $content . '/uploads/2026/09/photo.jpg' );
+		$this->assertFileDoesNotExist( $content . '/mu-plugins/single-only.php' );
+		$this->assertFileDoesNotExist( $content . '/object-cache.php' );
+
+		// The same backup replaces site 2: its tables go, including one the backup does not have.
+		$options['subsite'] = 'net.example/old';
+		$job                = $this->run_job( $store, 'restore', $options, self::TARGET );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( array( 'https://net.example/old' ), $db->column( "SELECT option_value FROM shop_2_options WHERE option_name = 'home'" ) );
+		$this->assertSame( array(), $db->column( "SHOW TABLES LIKE 'shop\\_2\\_extra'" ) );
+		$this->assertSame( array( '453' ), $db->column( 'SELECT COUNT(*) FROM shop_users' ) ); // Nobody added twice.
+		$this->assertSame( array( '8' ), $db->column( 'SELECT post_author FROM shop_2_posts WHERE ID = 2' ) );
+		$this->assertSame( array( '4' ), $db->column( 'SELECT COUNT(*) FROM shop_blogs' ) );
+		$db->close();
+	}
+
 	public function test_a_damaged_archive_fails_before_the_live_site_changes(): void {
 		$archive = $this->backup();
 

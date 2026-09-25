@@ -48,7 +48,7 @@ final class FinalizeStep implements Step {
 			} else {
 				$context->log( sprintf( 'Previous tables kept as %s*; remove them with `wp fmw cleanup --tables`.', RestoreDatabase::OLD ) );
 			}
-			$restore->drop( array( RestoreDatabase::PROGRESS ) );
+			$restore->drop( array( RestoreDatabase::PROGRESS, SubsiteImport::USERMAP ) );
 			$restore->db()->close();
 		}
 		$context->log( 'reset' === $job->type ? 'Reset finished.' : 'Restore finished.' );

@@ -31,6 +31,7 @@ use Founders\Migration\Model\Import\NetworkMove;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\RestoreOptions;
 use Founders\Migration\Model\Import\SubsiteExtract;
+use Founders\Migration\Model\Import\SubsiteImport;
 use Founders\Migration\Model\Import\WpressNetwork;
 use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Requirements;
@@ -345,7 +346,7 @@ final class Command {
 	 * : Multisite: new domains for subsites with their own domain, as old=new pairs separated by commas. Other subsites follow the network.
 	 *
 	 * [--site=<site>]
-	 * : Restore one site of a network backup onto this single site: its ID or address (2, shop.example.com, example.com/shop).
+	 * : On a single site: the site of a network backup to restore (its ID or address: 2, shop.example.com, example.com/shop). On a network: the site a single-site backup becomes, new (shop, shop.example.com, example.com/shop) or existing (its ID or address).
 	 *
 	 * [--skip-space-check]
 	 * : Start even if the free disk space looks too small.
@@ -360,6 +361,7 @@ final class Command {
 	 *     wp fmw restore example-com-20260924-180000-abc123.wpress
 	 *     wp fmw restore network.fmw --map=brand.example=brand.staging.example
 	 *     wp fmw restore network.fmw --site=example.com/shop   # on a single site
+	 *     wp fmw restore site.wpress --site=shop               # on a network: a new site
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -394,9 +396,11 @@ final class Command {
 			WP_CLI::error( $e->getMessage() );
 			return;
 		}
-		if ( '' !== $options['subsite'] ) {
+		if ( empty( $site['multisite'] ) && is_multisite() ) {
+			$into = $this->into_network( $options );
+		} elseif ( '' !== $options['subsite'] ) {
 			if ( empty( $site['multisite'] ) || is_multisite() ) {
-				WP_CLI::error( '--site is for restoring one site of a network backup onto a single site.' );
+				WP_CLI::error( '--site chooses one site of a network backup (on a single site), or the site a single-site backup becomes (on a network).' );
 			}
 			try {
 				$chosen = SubsiteExtract::resolve( $site, $options['subsite'] );
@@ -407,8 +411,6 @@ final class Command {
 			WP_CLI::log( sprintf( 'Site %d (%s) of the network becomes this site, %s. Other sites and their media stay in the backup; users without a role, posts or comments on it are left out (super admins become administrators).', $chosen['blog_id'], SubsiteExtract::printable( $chosen['domain'] . $chosen['path'] ), home_url() ) );
 		} elseif ( ! empty( $site['multisite'] ) && ! is_multisite() ) {
 			WP_CLI::error( sprintf( 'This is a backup of a whole network and this is a single site: choose the site to restore with --site=<id or address>. Its sites: %s.', SubsiteExtract::listing( $site ) ) );
-		} elseif ( empty( $site['multisite'] ) && is_multisite() ) {
-			WP_CLI::error( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
 		}
 		if ( ! empty( $site['multisite'] ) && is_multisite() ) {
 			$this->network_preview( $site, $options );
@@ -421,8 +423,8 @@ final class Command {
 				basename( $args[0] ),
 				isset( $chosen ) ? 'site ' . $chosen['blog_id'] . ', ' . SubsiteExtract::printable( $chosen['domain'] . $chosen['path'] ) : (string) ( $site['home_url'] ?? '?' ),
 				(string) ( $manifest['created_at'] ?? '?' ),
-				home_url(),
-				is_multisite() ? 'network' : 'site'
+				$into ?? home_url(),
+				isset( $into ) ? 'network site' : ( is_multisite() ? 'network' : 'site' )
 			),
 			$assoc_args
 		);
@@ -433,6 +435,32 @@ final class Command {
 		}
 		$job = Jobs::store()->create( 'restore', $options );
 		$this->run_job( $job, ! WP_CLI\Utils\get_flag_value( $assoc_args, 'progress', true ) );
+	}
+
+	/**
+	 * Shows which site of this network a single-site backup becomes; stops when none is chosen or the choice is not usable.
+	 *
+	 * @param array<string,mixed> $options Restore job options.
+	 * @return string The site's address, for the confirmation.
+	 */
+	private function into_network( array $options ): string {
+		if ( '' === $options['subsite'] ) {
+			WP_CLI::error( 'This is a backup of a single site and this is a multisite network: choose the site it becomes with --site=<new address or existing site>, for example --site=shop (a new site) or --site=3 (replaces site 3).' );
+		}
+		try {
+			$plan = SubsiteImport::resolve( (array) $options['target'], $options['subsite'] );
+		} catch ( JobException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return '';
+		}
+		$address = SubsiteExtract::printable( $plan['domain'] . $plan['path'] );
+		WP_CLI::log(
+			$plan['new']
+				? sprintf( 'The backup becomes a new site of this network at %s (the next free site ID). Its users join the network: people with an account here (same login or e-mail) keep their password and profile and get a role on the new site.', $address )
+				: sprintf( 'The backup replaces site %d (%s) of this network. Its users join the network: people with an account here (same login or e-mail) keep their password and profile and get their role on this site.', $plan['blog_id'], $address )
+		);
+		WP_CLI::log( 'Themes and plugins in the backup join the network\'s; its mu-plugins and drop-ins are left out.' );
+		return $address;
 	}
 
 	/**
@@ -581,14 +609,17 @@ final class Command {
 			WP_CLI::error( $e->getMessage() );
 			return;
 		}
-		if ( '' !== $options['subsite'] ) {
-			WP_CLI::error( '--site works with .fmw network backups for now; restoring one site of a .wpress network backup arrives later.' );
+		if ( '' !== $options['subsite'] && ( null !== $network || ! is_multisite() ) ) {
+			WP_CLI::error( 'With a .wpress backup, --site chooses the site a single-site backup becomes on a network; restoring one site of a .wpress network backup arrives later.' );
+		}
+		if ( null === $network && is_multisite() ) {
+			$into = $this->into_network( $options );
 		}
 		if ( null !== $network && ! $network->is_network() ) {
 			WP_CLI::error( sprintf( 'This backup holds %d site(s) picked one by one from a network (not the whole network); restoring those arrives later in phase 3.', $network->count() ) );
 		}
-		if ( ( null !== $network ) !== is_multisite() ) {
-			WP_CLI::error( null !== $network ? 'This is a backup of a whole multisite network; restore it onto a multisite network of the same kind (subdomains or subdirectories).' : 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
+		if ( null !== $network && ! is_multisite() ) {
+			WP_CLI::error( 'This is a backup of a whole multisite network; restore it onto a multisite network of the same kind (subdomains or subdirectories).' );
 		}
 		if ( null !== $network ) {
 			$this->network_preview( $network->site( $package ), $options );
@@ -601,8 +632,8 @@ final class Command {
 				basename( $path ),
 				'' !== $package->plugin_version() ? $package->plugin_version() : '?',
 				(string) ( $data['HomeURL'] ?? '?' ),
-				home_url(),
-				is_multisite() ? 'network' : 'site'
+				$into ?? home_url(),
+				isset( $into ) ? 'network site' : ( is_multisite() ? 'network' : 'site' )
 			),
 			$assoc_args
 		);

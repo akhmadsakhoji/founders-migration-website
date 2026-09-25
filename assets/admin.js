@@ -308,6 +308,9 @@
 		} else if ( 'completed' === summary.status && 'reset' === summary.type ) {
 			modal.message( t.resetDone, 'success' );
 			modal.actions( [ closeButton( true ) ] );
+		} else if ( 'completed' === summary.status && summary.into ) {
+			modal.message( sprintf( t.restoreIntoDone, summary.into.url, summary.into.id ), 'success' );
+			modal.actions( [ el( 'a', { class: 'button button-primary', href: summary.into.url + '/', target: '_blank', rel: 'noopener', text: t.visitSite } ), closeButton( true ) ] );
 		} else if ( 'completed' === summary.status ) {
 			modal.message( t.restoreDone, 'success' );
 			modal.actions( [ el( 'a', { class: 'button button-primary', href: config.loginUrl, text: t.logIn } ) ] );
@@ -387,8 +390,11 @@
 			var body = [
 				el( 'p', {}, [ el( 'strong', { text: t.confirmRestore + ' ' } ), el( 'code', { text: info.name } ) ] ),
 				table,
-				el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: t.restoreWarning } ) ] ),
 			];
+			// A single-site backup on a network replaces one site, not the network (unknown until an encrypted .fmw is opened).
+			if ( ! config.multisite || info.network || ( info.encrypted && 'fmw' === info.format ) ) {
+				body.push( el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: t.restoreWarning } ) ] ) );
+			}
 			if ( info.encrypted ) {
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.password, el( 'br' ), password ] ) ] ) );
 			}
@@ -402,6 +408,15 @@
 			} else if ( ! config.multisite && info.encrypted && 'fmw' === info.format ) {
 				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false' } );
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSiteOptional, el( 'br' ), site ] ) ] ) );
+			} else if ( config.multisite && ! info.network ) {
+				// A single-site backup on a network: it becomes a new site, or replaces one.
+				var known = el( 'datalist', { id: 'fmw-target-sites' }, ( info.targets || [] ).map( function ( address ) {
+					return el( 'option', { value: address } );
+				} ) );
+				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false', list: 'fmw-target-sites', placeholder: 'shop' } );
+				site.dataset.required = info.encrypted && 'fmw' === info.format ? '' : '1';
+				body.push( el( 'div', { class: 'notice inline notice-info' }, [ el( 'p', { text: t.restoreIntoNote } ) ] ) );
+				body.push( el( 'p', {}, [ el( 'label', {}, [ info.encrypted && 'fmw' === info.format ? t.restoreIntoOptional : t.restoreInto, el( 'br' ), site ] ), known ] ) );
 			}
 			body.push( el( 'p', {}, [ el( 'label', {}, [ keepOld, ' ', t.keepOld ] ) ] ) );
 			body.push( el( 'p', {}, [ el( 'label', {}, [ noEmail, ' ', t.noEmailReplace ] ) ] ) );
@@ -418,7 +433,7 @@
 				if ( noEmail.checked ) {
 					flags[ 'exclude-email-replace' ] = true;
 				}
-				if ( site && 'SELECT' === site.tagName && ! site.value ) {
+				if ( site && ( 'SELECT' === site.tagName || '1' === site.dataset.required ) && ! site.value.trim() ) {
 					go.disabled       = false;
 					error.textContent = t.restoreSiteChoose;
 					site.focus();
@@ -434,6 +449,12 @@
 						go.disabled       = false;
 						error.textContent = e.message;
 						password.focus();
+						return;
+					}
+					if ( ! modal.root.hidden && 'fmw_invalid_site' === e.code && site ) {
+						go.disabled       = false;
+						error.textContent = e.message;
+						site.focus();
 						return;
 					}
 					modal.message( e.message, 'error' );

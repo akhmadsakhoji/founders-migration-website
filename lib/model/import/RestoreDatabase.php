@@ -158,7 +158,7 @@ final class RestoreDatabase {
 			array_filter(
 				$this->tables( self::TMP ),
 				static function ( string $table ): bool {
-					return self::PROGRESS !== $table;
+					return self::PROGRESS !== $table && SubsiteImport::USERMAP !== $table;
 				}
 			)
 		);

@@ -109,6 +109,12 @@ final class AdminController {
 				'confirmRestore'        => __( 'Restore this backup?', 'founders-migration-website' ),
 				'restoreSite'           => __( 'Site to restore', 'founders-migration-website' ),
 				'restoreSiteChoose'     => __( 'Choose the site to restore.', 'founders-migration-website' ),
+				/* translators: 1: site address, 2: site ID. */
+				'restoreIntoDone'       => __( 'The backup is now site %2$d of this network: %1$s. Its users log in with their network accounts.', 'founders-migration-website' ),
+				'visitSite'             => __( 'Visit the site', 'founders-migration-website' ),
+				'restoreInto'           => __( 'Site of this network it becomes: a new address (a name such as shop, or a full address) or an existing site', 'founders-migration-website' ),
+				'restoreIntoOptional'   => __( 'Only for a backup of a single site: the site of this network it becomes (a new address such as shop, or an existing site)', 'founders-migration-website' ),
+				'restoreIntoNote'       => __( 'This is a backup of a single site. It becomes a site of this network: a new one at a new address, or it replaces the content of an existing site (not the main site). Its users join the network; people who already have an account here keep their password and profile. Its themes and plugins join the network\'s; its mu-plugins and drop-ins are left out.', 'founders-migration-website' ),
 				'restoreSiteNote'       => __( 'This is a backup of a whole network. Only the chosen site is restored as this site: its content, its media and the users with a role, posts or comments on it (super admins become administrators). The other sites stay in the backup.', 'founders-migration-website' ),
 				'restoreSiteOptional'   => __( 'Only for a backup of a whole network: the site to restore (its ID or address, for example example.com/shop)', 'founders-migration-website' ),
 				'restoreWarning'        => is_multisite()

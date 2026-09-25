@@ -93,8 +93,10 @@ final class PartsStep implements Step {
 		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
 		while ( $cursor['p'] < $count && $context->should_continue() ) {
 			$part = $parts[ $cursor['p'] ];
-			if ( null !== $subsite && 'database' === $part['type'] && ! self::subsite_table( $job, $subsite, (string) ( $part['table'] ?? '' ) ) ) {
-				// Another site's table (or the network's views): it stays in the backup.
+			$skip = null !== $subsite && 'database' === $part['type'] && ! self::subsite_table( $job, $subsite, (string) ( $part['table'] ?? '' ) );
+			$skip = $skip || ( ! empty( $job->data['import'] ) && in_array( $part['table'] ?? '', array( 'views', 'triggers' ), true ) );
+			if ( $skip ) {
+				// Another site's table, or views and triggers that name tables of another layout: they stay in the backup.
 				$cursor = array(
 					'p'       => $cursor['p'] + 1,
 					'phase'   => 'copy',
@@ -342,7 +344,9 @@ final class PartsStep implements Step {
 		);
 
 		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
-		$uploads = (string) ( $subsite['uploads'] ?? 'uploads' );
+		$import  = is_array( $job->data['import'] ?? null ) ? $job->data['import'] : null;
+		$uploads = (string) ( $subsite['uploads'] ?? $import['uploads'] ?? 'uploads' );
+		$left    = 0;
 
 		$reader    = TarReader::open( $staged );
 		$extractor = new Extractor( $root );
@@ -368,6 +372,14 @@ final class PartsStep implements Step {
 					}
 					$relative    = $mapped;
 					$entry->name = $mapped;
+				} elseif ( null !== $import ) {
+					$mapped = SubsiteImport::file( $relative, $uploads, (int) $import['blog_id'] );
+					if ( null === $mapped ) {
+						++$left;
+						continue; // mu-plugins and drop-ins would change every site of the network.
+					}
+					$relative    = $mapped;
+					$entry->name = $mapped;
 				}
 				foreach ( $protected as $path ) {
 					if ( '' !== $path && ( $relative === $path || 0 === strpos( $relative, $path . '/' ) ) ) {
@@ -390,6 +402,9 @@ final class PartsStep implements Step {
 			foreach ( $extractor->warnings() as $warning ) {
 				$context->log( $warning );
 			}
+			if ( $left > 0 ) {
+				$job->data['import_left'] = (int) ( $job->data['import_left'] ?? 0 ) + $left;
+			}
 		}
 		return false;
 	}
@@ -409,13 +424,18 @@ final class PartsStep implements Step {
 		}
 		$prefix  = (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' );
 		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
-		$guard   = new SqlGuard(
-			$prefix,
-			RestoreDatabase::TMP,
-			null !== $subsite ? static function ( string $table ) use ( $prefix, $subsite ): ?string {
+		$import  = is_array( $job->data['import'] ?? null ) ? (int) $job->data['import']['blog_id'] : 0;
+		$rename  = null;
+		if ( null !== $subsite ) {
+			$rename = static function ( string $table ) use ( $prefix, $subsite ): ?string {
 				return SubsiteExtract::table( $table, $prefix, (int) $subsite['blog_id'], array_map( 'intval', (array) $subsite['site_ids'] ) );
-			} : null
-		);
+			};
+		} elseif ( $import > 0 ) {
+			$rename = static function ( string $table ) use ( $prefix, $import ): ?string {
+				return SubsiteImport::table( $table, $prefix, $import );
+			};
+		}
+		$guard = new SqlGuard( $prefix, RestoreDatabase::TMP, $rename );
 		return ( new SqlImporter( $this->restore ) )->import( 'sql:' . $part['path'], $staged, $guard, $context );
 	}
 

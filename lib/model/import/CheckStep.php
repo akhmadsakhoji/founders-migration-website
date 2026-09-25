@@ -63,19 +63,20 @@ final class CheckStep implements Step {
 		$site    = (array) ( $manifest['site'] ?? array() );
 		$network = null;
 		$subsite = null;
+		$import  = null;
 		$choice  = (string) ( $job->options['subsite'] ?? '' );
-		if ( '' !== $choice ) {
+		if ( empty( $site['multisite'] ) && ! empty( $target['multisite'] ) ) {
+			$import            = SubsiteImport::plan_for( $job, $context );
+			$import['uploads'] = self::uploads_folder( $site );
+		} elseif ( '' !== $choice ) {
 			if ( empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
-				throw new JobException( 'Choosing a site (--site) is for restoring one site of a network backup onto a single site.' );
+				throw new JobException( '--site chooses one site of a network backup (restored onto a single site), or the site a single-site backup becomes (restored onto a network).' );
 			}
 			$subsite            = SubsiteExtract::resolve( $site, $choice );
 			$subsite['uploads'] = self::uploads_folder( $site );
 		} elseif ( ! empty( $site['multisite'] ) || ! empty( $target['multisite'] ) ) {
 			if ( ! empty( $site['multisite'] ) && empty( $target['multisite'] ) ) {
 				throw new JobException( sprintf( 'This is a backup of a whole network and this is a single site: choose the site to restore (wp fmw restore <file> --site=<id or address>). Its sites: %s.', SubsiteExtract::listing( $site ) ) );
-			}
-			if ( empty( $site['multisite'] ) ) {
-				throw new JobException( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
 			}
 			$network = NetworkMove::plan( $site, $target, (array) ( $job->options['domain_map'] ?? array() ) );
 		}
@@ -109,6 +110,10 @@ final class CheckStep implements Step {
 			}
 		}
 
+		if ( null !== $import && ! $has_db ) {
+			throw new JobException( 'This backup has no database: a site of the network cannot be made from its files alone.' );
+		}
+
 		// Staging one part (twice when it is decrypted) + the extracted files + the database twice (live and imported), plus 10%.
 		$needed = (int) ( ( ( $encrypted ? 2 : 1 ) * $largest + $raw_files + 2 * $raw_db ) * 1.1 );
 		$free   = @disk_free_space( (string) ( $target['content_dir'] ?? '.' ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Not available on every host; treated as unknown.
@@ -122,6 +127,9 @@ final class CheckStep implements Step {
 			$restore->create_progress();
 			$restore->db()->close();
 		}
+		if ( null !== $import ) {
+			SubsiteImport::reserve( $import, (array) $job->data['network_target'] );
+		}
 
 		$job->data['manifest']  = array(
 			'site'    => $site,
@@ -131,6 +139,7 @@ final class CheckStep implements Step {
 		);
 		$job->data['network']   = $network;
 		$job->data['subsite']   = $subsite;
+		$job->data['import']    = $import;
 		$job->data['has_db']    = $has_db;
 		$job->data['encrypted'] = $encrypted;
 		if ( $encrypted ) {
@@ -143,7 +152,7 @@ final class CheckStep implements Step {
 				(string) ( $site['home_url'] ?? '?' ),
 				(string) ( $manifest['created_at'] ?? '?' ),
 				(string) ( $manifest['generator'] ?? '?' ),
-				(string) ( $target['home_url'] ?? '?' ),
+				(string) ( $job->options['target']['home_url'] ?? '?' ),
 				count( (array) $manifest['parts'] ),
 				(int) ( $manifest['totals']['files'] ?? 0 ),
 				(int) ( $manifest['totals']['tables'] ?? 0 )

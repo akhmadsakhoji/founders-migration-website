@@ -66,6 +66,10 @@ final class JobRunner {
 					WP_CLI::success( sprintf( 'Reset complete: %s.', implode( ', ', (array) ( $job->options['reset'] ?? array() ) ) ) );
 					return;
 				}
+				if ( is_array( $job->data['import'] ?? null ) ) {
+					WP_CLI::success( sprintf( 'Restore complete. %s is site %d of the network now; its users log in with the network\'s accounts.', (string) ( $job->options['target']['home_url'] ?? '' ), (int) $job->data['import']['blog_id'] ) );
+					return;
+				}
 				WP_CLI::success( sprintf( 'Restore complete. %s now runs the restored %s; log in with its accounts.', home_url(), is_multisite() ? 'network' : 'site' ) );
 				return;
 			}
