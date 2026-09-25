@@ -19,7 +19,7 @@ use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Checks every part of a download-only pull against its SHA-256, part by

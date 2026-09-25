@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Remote;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * A remote storage request failed.

@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Storage;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * HTTP Range header for downloads (one range; anything else gets the whole file).

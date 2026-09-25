@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Cli;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Archive\ArchiveException;
 use Founders\Migration\Archive\FmwArchive;
@@ -264,9 +264,6 @@ final class Command {
 	 * [--delete-local]
 	 * : With --storage: delete the copy on this server once the upload is complete and checked.
 	 *
-	 * [--sites=<ids>]
-	 * : Back up selected subsites only. Planned for phase 3.
-	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp fmw backup
@@ -282,9 +279,6 @@ final class Command {
 	public function backup( $args, $assoc_args ) {
 		if ( isset( $assoc_args['password'] ) ) {
 			$assoc_args['password'] = $this->password( $assoc_args, true );
-		}
-		if ( isset( $assoc_args['sites'] ) ) {
-			$this->planned( 'backup --sites', 3 );
 		}
 
 		try {
@@ -322,16 +316,18 @@ final class Command {
 	 * (shop.old.example -> shop.new.example, old.example/shop/ ->
 	 * new.example/shop/). The whole network is replaced, including sites that
 	 * are not in the backup. On a single site, --site restores one site of a
-	 * .fmw network backup as this site (its tables, media, users with a role
-	 * on it, and the network-activated plugins).
+	 * network backup (.fmw or .wpress) as this site (its tables, media, users
+	 * with a role on it, and the network-activated plugins). On a network,
+	 * --site restores a single-site backup, or sites picked from a .wpress
+	 * network backup, as sites of this network.
 	 *
 	 * ## OPTIONS
 	 *
 	 * <file>
 	 * : Backup file name (in the fmw-backups or ai1wm-backups folder) or path.
 	 *
-	 * [--password=<password>]
-	 * : Password of an encrypted .wpress backup. Asked for when missing.
+	 * [--password[=<password>]]
+	 * : Password of an encrypted backup (.fmw or .wpress). Asked for when missing or given without a value.
 	 *
 	 * [--yes]
 	 * : Skip the confirmation prompt.
@@ -684,7 +680,7 @@ final class Command {
 	/**
 	 * Resets parts of this site to a fresh WordPress: database, media, plugins and/or themes.
 	 *
-	 * Same as the Reset Hub of All-in-One WP Migration, with more safety:
+	 * Safety first:
 	 *
 	 * - A backup of the whole site is made first (skip with --skip-backup), so
 	 *   a reset can be undone with `wp fmw restore <backup>`.
@@ -1433,16 +1429,5 @@ final class Command {
 	 */
 	private function run_job( Job $job, bool $no_progress, bool $porcelain = false ): void {
 		JobRunner::run( $job, $no_progress, $porcelain );
-	}
-
-	/**
-	 * Stops with a clear message for commands that are not built yet.
-	 *
-	 * @param string $command Subcommand.
-	 * @param int    $phase   Roadmap phase.
-	 * @return void
-	 */
-	private function planned( string $command, int $phase ): void {
-		WP_CLI::error( sprintf( '`wp fmw %s` is planned for phase %d and is not available in %s yet.', $command, $phase, FMWP_VERSION ) );
 	}
 }

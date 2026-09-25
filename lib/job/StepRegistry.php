@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Job;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Maps job types to their ordered steps.

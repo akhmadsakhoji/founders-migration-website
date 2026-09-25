@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Database;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Raised for connection and query failures.

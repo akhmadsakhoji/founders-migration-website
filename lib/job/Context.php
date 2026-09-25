@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Job;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * What a step gets from the Runner for one slice of work.

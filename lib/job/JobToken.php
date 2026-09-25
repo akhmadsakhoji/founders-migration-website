@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Job;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Job files are written with native calls.
 

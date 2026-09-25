@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Archive;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Reads a .fmw container: header, manifest and part integrity.

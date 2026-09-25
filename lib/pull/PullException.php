@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Pull;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * A pull that failed, with the HTTP status and a code for the API.

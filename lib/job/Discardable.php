@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Job;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * A step that writes outside the job folder and cleans up when the job is cancelled.

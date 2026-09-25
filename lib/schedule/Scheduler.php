@@ -26,7 +26,7 @@ use Founders\Migration\Remote\Storages;
 use Founders\Migration\Storage\Backups;
 use Founders\Migration\Storage\Paths;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Runs scheduled backups: starts them when due, keeps them going, records
@@ -69,7 +69,7 @@ final class Scheduler {
 		add_action(
 			'init',
 			static function (): void {
-				if ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+				if ( ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) && is_main_site() ) {
 					self::sync_event();
 				}
 			}
@@ -97,6 +97,12 @@ final class Scheduler {
 	 * @return void
 	 */
 	public static function sync_event(): void {
+		if ( ! is_main_site() ) {
+			switch_to_blog( get_main_site_id() ); // Schedules belong to the whole install: on a network, the main site runs them.
+			self::sync_event();
+			restore_current_blog();
+			return;
+		}
 		$needed = false;
 		foreach ( self::store()->all() as $schedule ) {
 			if ( ! empty( $schedule['enabled'] ) || 'running' === ( $schedule['state']['last_status'] ?? '' ) ) {
@@ -118,6 +124,10 @@ final class Scheduler {
 	 * @return void
 	 */
 	public static function cron(): void {
+		if ( ! is_main_site() ) {
+			wp_clear_scheduled_hook( self::HOOK ); // Left on a subsite by a development version.
+			return;
+		}
 		$job = self::tick( time(), 'wp-cron' );
 		if ( null === $job ) {
 			return;

@@ -19,7 +19,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Job files are handled with native calls, like the archive library.
 // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Identifiers are backtick-quoted and values escaped by Connection.

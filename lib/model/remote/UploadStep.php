@@ -19,7 +19,7 @@ use Founders\Migration\Remote\RemoteException;
 use Founders\Migration\Remote\StorageOptions;
 use Founders\Migration\Remote\Storages;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Uploads a backup to cloud storage, resumably, through the storage's driver.

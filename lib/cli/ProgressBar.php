@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Cli;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Writes to the terminal stream.
 

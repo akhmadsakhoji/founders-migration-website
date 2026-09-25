@@ -17,13 +17,14 @@ composer install
 composer check
 ```
 
-`composer check` runs the PHP linter, PHP_CodeSniffer (WordPress Coding Standards), PHPStan (level 6) and PHPUnit. CI runs the same checks on PHP 7.4 to 8.4.
+`composer check` runs the PHP linter, PHP_CodeSniffer (WordPress Coding Standards), PHPStan (level 6) and PHPUnit. CI runs the linter on PHP 7.4 to 8.4, PHPUnit on PHP 7.4, 8.1, 8.3 and 8.4 (against MySQL 8), PHPCS and PHPStan on PHP 8.3, and WordPress.org's Plugin Check on the built plugin.
 
 ## Code rules
 
 - **PHP 7.4 syntax.** No `match`, union types, named arguments, `readonly`, enums or `str_contains()` without a polyfill. PHPCompatibility enforces this.
 - **WordPress Coding Standards.** Tabs, `snake_case` functions and variables, Yoda conditions, escaped output.
-- **Prefixes.** Globals use `fmwp_` and `FMWP_`. Classes live in the `Founders\Migration` namespace, one class per file: `Founders\Migration\Archive\TarWriter` → `lib/archive/TarWriter.php`.
+- **Direct access.** Every PHP file in `lib/` starts with `defined( 'ABSPATH' ) || exit;` (the test bootstrap defines `ABSPATH`).
+- **Prefixes.** Globals, hooks, script handles and `admin-post` actions use `fmwp_`, `FMWP_` or `fmwp-`. Classes live in the `Founders\Migration` namespace, one class per file: `Founders\Migration\Archive\TarWriter` → `lib/archive/TarWriter.php`.
 - **Plain PHP only.** No `exec()`, `shell_exec()`, `proc_open()` or system binaries in plugin code.
 - **Archive input is untrusted.** Never call `unserialize()` on archive data. Validate every path with `PathGuard`.
 - **Library code stays WordPress-free.** `lib/archive/` must not call WordPress functions, so it can be tested in isolation.
@@ -46,6 +47,7 @@ composer check
 - Keep pull requests focused on one change.
 - Write commit messages in English, imperative mood: `Add PAX size header for files above 8 GiB`.
 - Update `CHANGELOG.md` under **Unreleased**.
+- New or changed translatable strings: regenerate the template with `wp i18n make-pot . languages/founders-migration-website.pot --exclude=tests,tools,vendor,docs,build`.
 
 ### Developer Certificate of Origin
 
@@ -56,6 +58,11 @@ git commit -s -m "Fix symlink check on Windows paths"
 ```
 
 This adds a line such as `Signed-off-by: Your Name <you@example.com>` to the commit. Pull requests with unsigned commits cannot be merged.
+
+## Releases
+
+1. Set the version in `founders-migration-website.php` (header), `constants.php` (`FMWP_VERSION`) and `readme.txt` (`Stable tag`), move **Unreleased** in `CHANGELOG.md` to the new version, add it to the changelog in `readme.txt`, update the version line near the top of `README.md` and regenerate the translation template.
+2. Merge to `main`, then push a tag `vX.Y.Z`. The release workflow checks the versions, builds `founders-migration-website.zip` with `git archive` and attaches it to a GitHub release.
 
 ## License
 

@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Controller;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Jobs;

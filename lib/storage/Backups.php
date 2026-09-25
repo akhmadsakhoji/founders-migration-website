@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Storage;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Backups stored in the backups folder.

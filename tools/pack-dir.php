@@ -35,6 +35,7 @@ if ( 'cli' !== PHP_SAPI ) {
 }
 
 define( 'FMWP_TESTS', true );
+defined( 'ABSPATH' ) || define( 'ABSPATH', sys_get_temp_dir() . '/fmw-no-wordpress/' ); // The library files refuse to load without it.
 require dirname( __DIR__ ) . '/loader.php';
 
 $options = getopt( '', array( 'src:', 'jobs:', 'part-size:', 'level:', 'resume:' ) );

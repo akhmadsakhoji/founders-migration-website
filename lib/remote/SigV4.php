@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Remote;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * AWS Signature Version 4 for S3 and S3-compatible services.

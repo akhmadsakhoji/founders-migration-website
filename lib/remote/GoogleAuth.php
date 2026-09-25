@@ -12,7 +12,7 @@ namespace Founders\Migration\Remote;
 
 use Founders\Migration\Job\Secrets;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Google sign-in (OAuth 2.0 with PKCE) for a Google Drive storage.
@@ -30,7 +30,7 @@ final class GoogleAuth {
 	const AUTH_URL  = 'https://accounts.google.com/o/oauth2/v2/auth';
 	const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 	const SCOPE     = 'https://www.googleapis.com/auth/drive.file';
-	const ACTION    = 'fmw_gdrive_callback';
+	const ACTION    = 'fmwp_gdrive_callback';
 	const STATE_TTL = 1200;
 
 	/**

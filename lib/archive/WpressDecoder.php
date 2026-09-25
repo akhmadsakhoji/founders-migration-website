@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Archive;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Turns the stored data of a .wpress entry back into the original file.

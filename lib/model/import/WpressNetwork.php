@@ -16,7 +16,7 @@ use Founders\Migration\Archive\WpressPackage;
 use Founders\Migration\Archive\WpressReader;
 use Founders\Migration\Job\JobException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * The multisite.json of a .wpress network backup (All-in-One WP Migration Multisite Extension).

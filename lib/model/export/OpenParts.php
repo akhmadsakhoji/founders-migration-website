@@ -16,7 +16,7 @@ use Founders\Migration\Archive\GzipFileSink;
 use Founders\Migration\Archive\PlainFileSink;
 use Founders\Migration\Archive\TarWriter;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * The currently open .tar.gz and .tar parts of a FilesStep slice.

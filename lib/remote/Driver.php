@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Remote;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * One kind of cloud storage (S3-compatible, Google Drive, ...), as the upload and download jobs see it.

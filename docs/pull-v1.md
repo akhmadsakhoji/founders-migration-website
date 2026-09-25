@@ -1,6 +1,6 @@
 # FMW pull protocol, version 1
 
-Status: draft, frozen at the first 1.0.0 release of the plugin.
+Status: stable since version 1.0.0 of the plugin. Changes are backward compatible; anything that is not gets a new protocol version.
 License of this document: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 A pull copies a WordPress site (the **source**) onto another one (the **target**) over HTTPS. The target makes the source create a backup, downloads it in byte ranges, and restores it. The source needs nothing but Founders Migration Website and a **pull key**: no SSH, FTP, WordPress login or WP-CLI, and no WP-Cron, because the target drives the backup.
@@ -14,6 +14,7 @@ The key words MUST, SHOULD and MAY are used as in RFC 2119.
 | Format | `fmwpk_<id>_<secret>`: `<id>` 8 lowercase hex characters, `<secret>` 32 random bytes in URL-safe base64 without padding (43 characters) |
 | Stored on the source | Only `sha256(<secret>)` (hex), in `fmw-storage/pull-keys.json`, outside the database |
 | Lifetime | 1 minute to 30 days (default 24 hours); expired keys are deleted a day later |
+| Number | At most 50 keys per site (FMW) |
 | Address limit | Optional list of IPv4/IPv6 addresses and CIDR ranges, checked against `REMOTE_ADDR` (a site behind a trusted proxy can change the address with the `fmwp_pull_client_ip` filter) |
 | Scope | Only the routes below. A key can list and download only backups it made, unless it was created with `allow_existing`; it can delete only backups it made |
 | Revocation | Deleting the record; the next request fails |
@@ -49,7 +50,7 @@ A job summary is `id`, `status` (`running`, `completed`, `failed`, `cancelled`),
 
 ## 4. Flow on the target
 
-1. `GET /pull`: refuse a different `protocol`, the target's own address, a network onto a single site or the reverse, and a network the target cannot take (subdomains onto subdirectories or the reverse, a different main site ID, more than one network; see `NetworkMove::incompatible()`). A network's sites move to the target network's address during the restore, as with `wp fmw restore`. A network source without `network` runs an older version that cannot be pulled from: ask for an update there. Download-only pulls skip the network checks; they apply when the backup is restored.
+1. `GET /pull`: refuse a different `protocol`, the target's own address, a network onto a single site or the reverse, and a network the target cannot take (subdomains onto subdirectories or the reverse, a main site with a different ID, or an install of either side with more than one network). A network's sites move to the target network's address during the restore, as with `wp fmw restore`. A network source without `network` runs an older version that cannot be pulled from: ask for an update there. Download-only pulls skip the network checks; they apply when the backup is restored.
 2. `POST /pull/backups`, sent once (a retry could start a second backup). Checkpoint the job id.
 3. `POST /pull/jobs/<id>/run` until `completed`. `failed` stops (a later resume runs the same job again); `cancelled` or `404` forgets the job, so a resume starts a new backup.
 4. `GET /pull/backups/<name>`, reserve a local file, checkpoint, then download ranges with `If-Match`, sizing them from the measured speed. A restart truncates the file to the last checkpoint, or to the file's real size when a crash lost writes (never fill a gap). `412` means the file changed: download it again.

@@ -15,7 +15,7 @@ use Founders\Migration\Database\SqlReader;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\JobException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Imports an SQL file statement by statement through SqlGuard, exactly once across resumes.

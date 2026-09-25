@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Model\Reset;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Deletes the contents of a folder, in time slices, except the paths to keep.

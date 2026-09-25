@@ -14,7 +14,7 @@ use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Removes the previous tables (unless kept) and the restore's bookkeeping.

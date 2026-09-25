@@ -18,7 +18,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Writes the site files of a .wpress archive, one entry at a time, resumably.

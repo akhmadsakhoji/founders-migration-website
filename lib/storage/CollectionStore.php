@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Storage;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- The store uses native file calls and flock().
 

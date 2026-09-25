@@ -16,7 +16,7 @@ use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 use Founders\Migration\Pull\PullException;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Deletes the backup the pull made on the source, once the copy here is

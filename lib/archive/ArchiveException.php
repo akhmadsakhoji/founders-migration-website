@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Archive;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Raised for malformed archives and I/O failures while reading or writing them.

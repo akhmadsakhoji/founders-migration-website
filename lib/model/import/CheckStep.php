@@ -19,7 +19,7 @@ use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Secrets;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * Reads the archive's manifest and refuses restores that cannot succeed, before anything changes.

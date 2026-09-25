@@ -66,7 +66,20 @@ jobs:
           php-version: '8.3'
           coverage: none
       - uses: ramsey/composer-install@v3
+      - name: Versions agree (header, FMWP_VERSION, readme.txt, CHANGELOG.md)
+        run: sh tools/check-version.sh
       - name: PHP_CodeSniffer (WordPress Coding Standards + PHPCompatibility)
         run: vendor/bin/phpcs
       - name: PHPStan
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+  plugin-check:
+    name: Plugin Check (WordPress.org rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the plugin as released
+        run: mkdir -p build && git archive --format=tar --prefix=founders-migration-website/ HEAD | tar -x -C build
+      - uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: build/founders-migration-website

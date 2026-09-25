@@ -17,7 +17,7 @@ use Founders\Migration\Job\Job;
 use Founders\Migration\Job\JobException;
 use Founders\Migration\Job\Step;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Identifiers are backtick-quoted and values escaped by Connection.
 // phpcs:disable WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Internal progress records; runs outside WordPress in tests.

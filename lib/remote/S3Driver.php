@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Remote;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * S3-compatible storages: small files in one PUT, larger ones as multipart

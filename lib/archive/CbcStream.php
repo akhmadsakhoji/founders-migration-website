@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Archive;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 /**
  * AES-256-CBC over a stream of chunks, with PKCS#7 padding at the end.

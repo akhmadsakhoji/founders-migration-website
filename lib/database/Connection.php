@@ -10,7 +10,7 @@
 
 namespace Founders\Migration\Database;
 
-defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
+defined( 'ABSPATH' ) || exit;
 
 // phpcs:disable WordPress.DB.RestrictedClasses.mysql__mysqli, WordPress.DB.RestrictedFunctions -- Dumps need their own connection: a consistent-snapshot transaction and row-by-row reads that $wpdb cannot provide.
 

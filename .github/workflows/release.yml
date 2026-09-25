@@ -1,0 +1,32 @@
+name: Release
+
+# Push a tag like v1.0.0 (matching the plugin's version) to publish
+# founders-migration-website.zip on a GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions match the tag
+        run: sh tools/check-version.sh "$GITHUB_REF_NAME"
+      - name: Build the zip
+        run: |
+          mkdir -p build
+          git archive --format=zip --prefix=founders-migration-website/ -o build/founders-migration-website.zip "$GITHUB_REF_NAME"
+          cd build && sha256sum founders-migration-website.zip > SHA256SUMS
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v h="## [$version] - " 'index($0, h) == 1 {on=1; next} on && (/^## \[/ || /^\[[^]]*\]: /) {exit} on' CHANGELOG.md > build/notes.md
+          test -s build/notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/founders-migration-website.zip build/SHA256SUMS --title "Founders Migration Website ${GITHUB_REF_NAME#v}" --notes-file build/notes.md --verify-tag

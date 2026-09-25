@@ -1,0 +1,1689 @@
+# Copyright (C) 2026 PT Founder Media Partner
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Founders Migration Website 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/akhmadsakhoji/founders-migration-website/issues\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-09-25T18:45:14+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: founders-migration-website\n"
+
+#. Plugin Name of the plugin
+#: founders-migration-website.php
+#: lib/view/admin/layout.php:33
+msgid "Founders Migration Website"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: founders-migration-website.php
+msgid "https://github.com/akhmadsakhoji/founders-migration-website"
+msgstr ""
+
+#. Description of the plugin
+#: founders-migration-website.php
+msgid "Backup, restore, and migrate WordPress sites up to 100 GB and beyond, using open and standard archive formats (TAR, gzip, SQL)."
+msgstr ""
+
+#. Author of the plugin
+#: founders-migration-website.php
+msgid "PT Founder Media Partner"
+msgstr ""
+
+#. Author URI of the plugin
+#: founders-migration-website.php
+msgid "https://founders.co.id"
+msgstr ""
+
+#: founders-migration-website.php:39
+msgid "Founders Migration Website requires 64-bit PHP 7.4 or newer. The plugin has not been loaded."
+msgstr ""
+
+#: lib/controller/AdminController.php:87
+#: lib/controller/AdminController.php:258
+#: lib/view/admin/layout.php:22
+msgid "Export"
+msgstr ""
+
+#: lib/controller/AdminController.php:88
+#: lib/view/admin/backups.php:70
+msgid "Restore"
+msgstr ""
+
+#: lib/controller/AdminController.php:89
+msgid "Backup"
+msgstr ""
+
+#: lib/controller/AdminController.php:90
+msgid "Uploading"
+msgstr ""
+
+#: lib/controller/AdminController.php:91
+msgid "Preparing…"
+msgstr ""
+
+#. translators: 1: step number, 2: number of steps, 3: step name.
+#: lib/controller/AdminController.php:92
+#, php-format
+msgid "Step %1$d of %2$d: %3$s"
+msgstr ""
+
+#. translators: %s: remaining time.
+#: lib/controller/AdminController.php:93
+#, php-format
+msgid "about %s left"
+msgstr ""
+
+#. translators: %s: remaining time.
+#: lib/controller/AdminController.php:94
+#: lib/view/admin/remote.php:184
+#: lib/view/admin/schedules.php:172
+msgid "Cancel"
+msgstr ""
+
+#: lib/controller/AdminController.php:95
+msgid "Close"
+msgstr ""
+
+#: lib/controller/AdminController.php:96
+#: lib/controller/AdminController.php:221
+#: lib/view/admin/backups.php:69
+msgid "Download"
+msgstr ""
+
+#: lib/controller/AdminController.php:97
+msgid "Try again"
+msgstr ""
+
+#: lib/controller/AdminController.php:98
+msgid "Log in"
+msgstr ""
+
+#: lib/controller/AdminController.php:99
+msgid "Continue"
+msgstr ""
+
+#. translators: 1: file name, 2: size.
+#: lib/controller/AdminController.php:100
+#, php-format
+msgid "Backup %1$s (%2$s) is ready."
+msgstr ""
+
+#: lib/controller/AdminController.php:102
+msgid "The network has been restored. Log in again with the accounts of the restored network."
+msgstr ""
+
+#: lib/controller/AdminController.php:103
+msgid "The site has been restored. Log in again with the accounts of the restored site."
+msgstr ""
+
+#: lib/controller/AdminController.php:104
+msgid "The job was cancelled. Nothing more will be changed."
+msgstr ""
+
+#: lib/controller/AdminController.php:105
+msgid "The job stopped with an error:"
+msgstr ""
+
+#: lib/controller/AdminController.php:106
+msgid "Fix the cause, then continue the job from the Backups page (or wp fmw resume)."
+msgstr ""
+
+#: lib/controller/AdminController.php:107
+msgid "Cancel this job?"
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:108
+#, php-format
+msgid "Delete %s? This cannot be undone."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:109
+msgid "Restore this backup?"
+msgstr ""
+
+#: lib/controller/AdminController.php:110
+msgid "Site to restore"
+msgstr ""
+
+#: lib/controller/AdminController.php:111
+msgid "Choose the site to restore."
+msgstr ""
+
+#. translators: 1: site address, 2: site ID.
+#: lib/controller/AdminController.php:113
+#, php-format
+msgid "The backup is now site %2$d of this network: %1$s. Its users log in with their network accounts."
+msgstr ""
+
+#: lib/controller/AdminController.php:114
+msgid "Visit the site"
+msgstr ""
+
+#: lib/controller/AdminController.php:115
+msgid "This backup holds sites picked from another network. Each one you give an address becomes a site of this network: a new one at a new address, or it replaces the content of an existing site (its ID or full address; not the main site). Sites left empty stay in the backup. Their users join the network; people who already have an account here keep their password and profile."
+msgstr ""
+
+#. translators: %s: site of the backup (ID and address).
+#: lib/controller/AdminController.php:117
+#, php-format
+msgid "Site %s of the backup becomes (a new name such as shop, or an existing site)"
+msgstr ""
+
+#: lib/controller/AdminController.php:118
+msgid "Only for a backup of sites picked from a network: the site each becomes, as old=new pairs (2=shop,3=4)"
+msgstr ""
+
+#: lib/controller/AdminController.php:119
+msgid "Site of this network it becomes: a new address (a name such as shop, or a full address) or an existing site"
+msgstr ""
+
+#: lib/controller/AdminController.php:120
+msgid "Only for a backup of a single site: the site of this network it becomes (a new address such as shop, or an existing site)"
+msgstr ""
+
+#: lib/controller/AdminController.php:121
+msgid "This is a backup of a single site. It becomes a site of this network: a new one at a new address, or it replaces the content of an existing site (not the main site). Its users join the network; people who already have an account here keep their password and profile. Its themes and plugins join the network's; its mu-plugins and drop-ins are left out."
+msgstr ""
+
+#: lib/controller/AdminController.php:122
+msgid "This is a backup of a network (or of sites picked from one). Only the chosen site is restored as this site: its content, its media and the users with a role, posts or comments on it (super admins become administrators). The other sites stay in the backup."
+msgstr ""
+
+#: lib/controller/AdminController.php:123
+msgid "Only for a network backup: the site to restore (its ID or address, for example example.com/shop; not needed when it holds one picked site)"
+msgstr ""
+
+#: lib/controller/AdminController.php:125
+msgid "This replaces the files and database of the whole network, including sites that are not in the backup. The main site and its subsites move to this network's address; subsites with their own domain keep it (give them a new one with wp fmw restore --map). The database is switched in one step at the end, so the network stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored network."
+msgstr ""
+
+#: lib/controller/AdminController.php:126
+msgid "This replaces the files and database of this site. The database is switched in one step at the end, so the site stays as it is if the restore fails before that. You will need to log in again with the accounts of the restored site."
+msgstr ""
+
+#: lib/controller/AdminController.php:127
+msgid "Site"
+msgstr ""
+
+#: lib/controller/AdminController.php:128
+msgid "Created by"
+msgstr ""
+
+#: lib/controller/AdminController.php:129
+#: lib/view/admin/backups.php:52
+#: lib/view/admin/remote.php:68
+msgid "Date"
+msgstr ""
+
+#: lib/controller/AdminController.php:130
+#: lib/view/admin/backups.php:53
+#: lib/view/admin/remote.php:69
+msgid "Size"
+msgstr ""
+
+#: lib/controller/AdminController.php:131
+msgid "Password protected"
+msgstr ""
+
+#: lib/controller/AdminController.php:132
+msgid "yes"
+msgstr ""
+
+#: lib/controller/AdminController.php:133
+msgid "no"
+msgstr ""
+
+#: lib/controller/AdminController.php:134
+msgid "Password of this backup"
+msgstr ""
+
+#: lib/controller/AdminController.php:135
+msgid "Keep the current database tables as fmwold_* (remove them later with wp fmw cleanup --tables)"
+msgstr ""
+
+#: lib/controller/AdminController.php:136
+#: lib/view/admin/pull.php:61
+msgid "Do not change e-mail addresses at the old domain"
+msgstr ""
+
+#: lib/controller/AdminController.php:137
+msgid "Only .fmw and .wpress backups can be imported."
+msgstr ""
+
+#: lib/controller/AdminController.php:138
+#: lib/controller/PullAdminRestController.php:206
+msgid "The password must be at least 8 characters long."
+msgstr ""
+
+#: lib/controller/AdminController.php:139
+msgid "The passwords do not match."
+msgstr ""
+
+#. translators: %s: percentage.
+#: lib/controller/AdminController.php:140
+#, php-format
+msgid "Continuing the earlier upload of this file at %s."
+msgstr ""
+
+#. translators: %s: percentage.
+#: lib/controller/AdminController.php:141
+msgid "Checking the uploaded file…"
+msgstr ""
+
+#. translators: %d: seconds.
+#: lib/controller/AdminController.php:142
+#, php-format
+msgid "Connection problem. Trying again in %d s…"
+msgstr ""
+
+#. translators: %d: seconds.
+#: lib/controller/AdminController.php:143
+msgid "A backup, upload or restore is running. Leaving pauses it; you can continue later from the Backups page."
+msgstr ""
+
+#: lib/controller/AdminController.php:144
+#: lib/controller/AdminController.php:264
+#: lib/view/admin/layout.php:28
+#: lib/view/admin/reset.php:103
+msgid "Reset"
+msgstr ""
+
+#: lib/controller/AdminController.php:145
+msgid "The reset is complete."
+msgstr ""
+
+#: lib/controller/AdminController.php:146
+msgid "Choose what to reset."
+msgstr ""
+
+#: lib/controller/AdminController.php:147
+msgid "The text does not match the site's domain."
+msgstr ""
+
+#: lib/controller/AdminController.php:148
+msgid "Safety backup before the reset"
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:149
+#, php-format
+msgid "Safety backup: %s. Restore it from the Backups page to undo the reset."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:150
+msgid "Run now"
+msgstr ""
+
+#: lib/controller/AdminController.php:151
+msgid "Edit"
+msgstr ""
+
+#: lib/controller/AdminController.php:152
+msgid "Enable"
+msgstr ""
+
+#: lib/controller/AdminController.php:153
+msgid "Disable"
+msgstr ""
+
+#: lib/controller/AdminController.php:154
+#: lib/view/admin/backups.php:75
+msgid "Delete"
+msgstr ""
+
+#: lib/controller/AdminController.php:155
+msgid "disabled"
+msgstr ""
+
+#: lib/controller/AdminController.php:156
+msgid "all"
+msgstr ""
+
+#: lib/controller/AdminController.php:157
+msgid "No schedules yet. Add one below."
+msgstr ""
+
+#. translators: %s: schedule name.
+#: lib/controller/AdminController.php:158
+#, php-format
+msgid "Delete the schedule \"%s\"? The backups it made are kept."
+msgstr ""
+
+#. translators: 1: storage name, 2: object key.
+#: lib/controller/AdminController.php:159
+#, php-format
+msgid "Uploaded to \"%1$s\" as %2$s."
+msgstr ""
+
+#. translators: 1: storage name, 2: object key.
+#: lib/controller/AdminController.php:160
+msgid "The copy on this server was deleted after the upload, as asked."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:161
+#, php-format
+msgid "%s is now in the backups folder of this server."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:162
+msgid "Upload to cloud storage"
+msgstr ""
+
+#: lib/controller/AdminController.php:163
+#: lib/controller/AdminController.php:220
+#: lib/view/admin/backups.php:72
+msgid "Upload"
+msgstr ""
+
+#: lib/controller/AdminController.php:164
+msgid "Download from cloud storage"
+msgstr ""
+
+#: lib/controller/AdminController.php:165
+msgid "Download to this server"
+msgstr ""
+
+#: lib/controller/AdminController.php:166
+#: lib/controller/AdminController.php:260
+#: lib/view/admin/backups.php:36
+#: lib/view/admin/import.php:33
+#: lib/view/admin/layout.php:24
+#: lib/view/admin/layout.php:66
+msgid "Backups"
+msgstr ""
+
+#: lib/controller/AdminController.php:167
+msgid "Test"
+msgstr ""
+
+#: lib/controller/AdminController.php:168
+msgid "Checking the connection…"
+msgstr ""
+
+#. translators: %s: what was checked.
+#: lib/controller/AdminController.php:169
+#, php-format
+msgid "Connection works: %s."
+msgstr ""
+
+#. translators: %s: what was checked.
+#: lib/controller/AdminController.php:170
+msgid "No cloud storage yet. Add one below."
+msgstr ""
+
+#: lib/controller/AdminController.php:171
+msgid "No backups in this storage yet."
+msgstr ""
+
+#: lib/controller/AdminController.php:172
+msgid "also on this server"
+msgstr ""
+
+#. translators: %s: storage name.
+#: lib/controller/AdminController.php:173
+#, php-format
+msgid "Remove \"%s\" from this site? The backups in it are not deleted."
+msgstr ""
+
+#. translators: 1: file name, 2: storage name.
+#: lib/controller/AdminController.php:174
+#, php-format
+msgid "Delete %1$s from \"%2$s\"? This cannot be undone."
+msgstr ""
+
+#. translators: 1: file name, 2: storage name.
+#: lib/controller/AdminController.php:175
+msgid "Saved. Leave empty to keep it."
+msgstr ""
+
+#: lib/controller/AdminController.php:176
+#: lib/view/admin/remote.php:56
+#: lib/view/admin/schedules.php:56
+msgid "Loading…"
+msgstr ""
+
+#: lib/controller/AdminController.php:177
+msgid "Connect"
+msgstr ""
+
+#: lib/controller/AdminController.php:178
+msgid "Opening Google sign-in…"
+msgstr ""
+
+#: lib/controller/AdminController.php:179
+msgid "Disconnect"
+msgstr ""
+
+#: lib/controller/AdminController.php:180
+msgid "not connected"
+msgstr ""
+
+#. translators: %s: storage name.
+#: lib/controller/AdminController.php:181
+#, php-format
+msgid "Sign \"%s\" out of Google? The backups in Drive stay; uploads stop until you connect again."
+msgstr ""
+
+#. translators: %s: storage name.
+#: lib/controller/AdminController.php:182
+#: lib/controller/AdminController.php:222
+#: lib/controller/AdminController.php:263
+#: lib/view/admin/layout.php:27
+msgid "Pull"
+msgstr ""
+
+#: lib/controller/AdminController.php:183
+#: lib/view/admin/pull.php:77
+msgid "Pull and restore"
+msgstr ""
+
+#: lib/controller/AdminController.php:184
+msgid "Contacting the source site…"
+msgstr ""
+
+#: lib/controller/AdminController.php:185
+#: lib/view/admin/pull.php:76
+msgid "Check"
+msgstr ""
+
+#: lib/controller/AdminController.php:186
+msgid "Enter the source site's address and its pull key."
+msgstr ""
+
+#. translators: 1: source address, 2: this site's address.
+#: lib/controller/AdminController.php:187
+#, php-format
+msgid "Copy %1$s onto %2$s?"
+msgstr ""
+
+#. translators: %s: source address.
+#: lib/controller/AdminController.php:188
+#, php-format
+msgid "Download a backup of %s into this site's backups folder?"
+msgstr ""
+
+#: lib/controller/AdminController.php:190
+msgid "This replaces the files and database of the whole network with those of the source network, including sites that the source does not have. The main site and its subsites move to this network's address; subsites with their own domain keep it (give them a new one with wp fmw pull --map). The database is switched in one step at the end, so this network stays as it is if the pull fails before that. You will need to log in again with the accounts of the source network."
+msgstr ""
+
+#: lib/controller/AdminController.php:191
+msgid "This replaces the files and database of this site with those of the source. The database is switched in one step at the end, so this site stays as it is if the pull fails before that. You will need to log in again with the accounts of the source site."
+msgstr ""
+
+#. translators: 1: FMW version on the source, 2: FMW version here.
+#: lib/controller/AdminController.php:192
+#, php-format
+msgid "The source runs Founders Migration Website %1$s, this site %2$s. Use the same version on both sites if the pull fails."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:193
+#, php-format
+msgid "%s was pulled into the backups folder of this site."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/controller/AdminController.php:194
+msgid "Source site"
+msgstr ""
+
+#: lib/controller/AdminController.php:195
+msgid "Title"
+msgstr ""
+
+#: lib/controller/AdminController.php:196
+msgid "Versions"
+msgstr ""
+
+#: lib/controller/AdminController.php:197
+msgid "Key valid until"
+msgstr ""
+
+#: lib/controller/AdminController.php:198
+msgid "Network"
+msgstr ""
+
+#. translators: 1: number of sites (2 or more), 2: "subdomains" or "subdirectories".
+#: lib/controller/AdminController.php:199
+#, php-format
+msgid "%1$d sites, %2$s"
+msgstr ""
+
+#. translators: %s: "subdomains" or "subdirectories".
+#: lib/controller/AdminController.php:200
+#, php-format
+msgid "1 site, %s"
+msgstr ""
+
+#. translators: %s: "subdomains" or "subdirectories".
+#: lib/controller/AdminController.php:201
+msgid "subdomains"
+msgstr ""
+
+#: lib/controller/AdminController.php:202
+msgid "subdirectories"
+msgstr ""
+
+#: lib/controller/AdminController.php:203
+msgid "A new backup (recommended)"
+msgstr ""
+
+#: lib/controller/AdminController.php:204
+msgid "Pull key created"
+msgstr ""
+
+#: lib/controller/AdminController.php:206
+msgid "Copy the key now: it is shown only once. On the network that should receive the copy, open Network Admin › Founders Migration › Pull and enter this network's address and the key, or run:"
+msgstr ""
+
+#: lib/controller/AdminController.php:207
+msgid "Copy the key now: it is shown only once. On the site that should receive the copy, open Founders Migration › Pull and enter this site's address and the key, or run:"
+msgstr ""
+
+#: lib/controller/AdminController.php:208
+msgid "Anyone with the key can copy this site until it expires. Send it over a private channel, and revoke it when the move is done."
+msgstr ""
+
+#: lib/controller/AdminController.php:209
+msgid "Copy"
+msgstr ""
+
+#: lib/controller/AdminController.php:210
+msgid "Copied"
+msgstr ""
+
+#: lib/controller/AdminController.php:211
+msgid "Revoke"
+msgstr ""
+
+#. translators: %s: key name.
+#: lib/controller/AdminController.php:212
+#, php-format
+msgid "Revoke the pull key \"%s\"? Pulls with it stop working."
+msgstr ""
+
+#. translators: %s: key name.
+#: lib/controller/AdminController.php:213
+msgid "No pull keys. Create one below when another site should copy this one."
+msgstr ""
+
+#: lib/controller/AdminController.php:214
+msgid "expired"
+msgstr ""
+
+#: lib/controller/AdminController.php:215
+msgid "any"
+msgstr ""
+
+#: lib/controller/AdminController.php:216
+#: lib/view/admin/schedules.php:65
+msgid "never"
+msgstr ""
+
+#: lib/controller/AdminController.php:217
+msgid "Address of this site"
+msgstr ""
+
+#: lib/controller/AdminController.php:218
+msgid "existing backups allowed"
+msgstr ""
+
+#: lib/controller/AdminController.php:225
+#: lib/controller/AdminController.php:231
+msgid "Running"
+msgstr ""
+
+#: lib/controller/AdminController.php:226
+msgid "Completed"
+msgstr ""
+
+#: lib/controller/AdminController.php:227
+#: lib/controller/AdminController.php:235
+msgid "Failed"
+msgstr ""
+
+#: lib/controller/AdminController.php:228
+msgid "Cancelled"
+msgstr ""
+
+#: lib/controller/AdminController.php:232
+msgid "Interrupted"
+msgstr ""
+
+#: lib/controller/AdminController.php:233
+msgid "Paused"
+msgstr ""
+
+#: lib/controller/AdminController.php:234
+msgid "Not started"
+msgstr ""
+
+#: lib/controller/AdminController.php:250
+#: lib/controller/AdminController.php:251
+msgid "Founders Migration"
+msgstr ""
+
+#: lib/controller/AdminController.php:259
+#: lib/view/admin/layout.php:23
+msgid "Import"
+msgstr ""
+
+#: lib/controller/AdminController.php:261
+#: lib/view/admin/layout.php:25
+msgid "Schedules"
+msgstr ""
+
+#: lib/controller/AdminController.php:262
+#: lib/view/admin/export.php:67
+#: lib/view/admin/layout.php:26
+#: lib/view/admin/remote.php:16
+msgid "Cloud storage"
+msgstr ""
+
+#: lib/controller/AdminController.php:301
+msgid "Do not export spam comments"
+msgstr ""
+
+#: lib/controller/AdminController.php:302
+msgid "Do not export post revisions"
+msgstr ""
+
+#: lib/controller/AdminController.php:303
+msgid "Do not export transients (temporary cached data)"
+msgstr ""
+
+#: lib/controller/AdminController.php:304
+msgid "Do not export media library (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:305
+msgid "Do not export themes (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:306
+msgid "Do not export inactive themes (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:307
+msgid "Do not export must-use plugins (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:308
+msgid "Do not export plugins (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:309
+msgid "Do not export inactive plugins (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:310
+msgid "Do not export cache (files)"
+msgstr ""
+
+#: lib/controller/AdminController.php:311
+msgid "Do not export database (SQL)"
+msgstr ""
+
+#: lib/controller/AdminController.php:427
+msgid "You do not have permission to access this page."
+msgstr ""
+
+#: lib/controller/DownloadController.php:64
+msgid "You do not have permission to download backups."
+msgstr ""
+
+#: lib/controller/DownloadController.php:70
+#: lib/controller/RestController.php:184
+#: lib/controller/RestController.php:204
+#: lib/controller/RestController.php:500
+msgid "Backup not found."
+msgstr ""
+
+#: lib/controller/DownloadController.php:84
+msgid "The backup could not be read."
+msgstr ""
+
+#: lib/controller/GoogleController.php:43
+msgid "You do not have permission to connect cloud storage."
+msgstr ""
+
+#: lib/controller/PullAdminRestController.php:106
+msgid "Pulls are switched off on this site (FMWP_DISABLE_PULL)."
+msgstr ""
+
+#: lib/controller/PullAdminRestController.php:143
+msgid "Pull key not found."
+msgstr ""
+
+#: lib/controller/RemoteRestController.php:217
+msgid "Unknown backup."
+msgstr ""
+
+#: lib/controller/RemoteRestController.php:330
+msgid "Cloud storage or backup not found."
+msgstr ""
+
+#: lib/controller/RestController.php:187
+msgid "This backup belongs to All-in-One WP Migration; delete it there."
+msgstr ""
+
+#: lib/controller/RestController.php:190
+msgid "The backup could not be deleted."
+msgstr ""
+
+#: lib/controller/RestController.php:356
+msgid "Not enough free disk space for this file."
+msgstr ""
+
+#: lib/controller/RestController.php:374
+#: lib/controller/RestController.php:398
+msgid "Unknown upload."
+msgstr ""
+
+#: lib/controller/RestController.php:413
+msgid "The upload could not be moved into the backups folder."
+msgstr ""
+
+#: lib/controller/RestController.php:536
+#: lib/controller/RestController.php:560
+msgid "This backup is protected with a password."
+msgstr ""
+
+#. translators: %s: site host name, or a network site's address.
+#: lib/controller/RestController.php:552
+#, php-format
+msgid "Type %s to confirm the reset."
+msgstr ""
+
+#: lib/controller/RestController.php:557
+msgid "Unknown job type."
+msgstr ""
+
+#: lib/controller/RestController.php:560
+msgid "Wrong password for this backup."
+msgstr ""
+
+#: lib/controller/RestController.php:585
+#: lib/controller/RestController.php:601
+#: lib/controller/RestController.php:653
+#: lib/controller/RestController.php:680
+msgid "Job not found."
+msgstr ""
+
+#: lib/controller/RestController.php:710
+msgid "Another backup or restore is running. Wait for it to finish, or cancel it on the Backups page."
+msgstr ""
+
+#: lib/controller/ScheduleRestController.php:194
+msgid "That cloud storage does not exist any more."
+msgstr ""
+
+#: lib/controller/ScheduleRestController.php:250
+msgid "Schedule not found."
+msgstr ""
+
+#: lib/Plugin.php:50
+msgid "Founders Migration Website is inactive:"
+msgstr ""
+
+#: lib/Plugin.php:90
+msgid "Founders Migration Website cannot be activated on this server:"
+msgstr ""
+
+#: lib/Plugin.php:91
+msgid "Plugin activation failed"
+msgstr ""
+
+#: lib/Requirements.php:34
+msgid "PHP is running in 32-bit mode, which cannot handle files larger than 2 GB. 64-bit PHP is required."
+msgstr ""
+
+#. translators: %s: PHP extension name.
+#: lib/Requirements.php:40
+#, php-format
+msgid "The PHP extension \"%s\" is required."
+msgstr ""
+
+#: lib/Requirements.php:45
+msgid "The PHP zlib extension is missing incremental compression support (deflate_init)."
+msgstr ""
+
+#. translators: %s: minimum WordPress version.
+#: lib/Requirements.php:50
+#, php-format
+msgid "WordPress %s or newer is required."
+msgstr ""
+
+#. translators: 1: current PHP version, 2: recommended PHP version.
+#: lib/Requirements.php:66
+#, php-format
+msgid "PHP %1$s works, but PHP %2$s or newer is recommended."
+msgstr ""
+
+#: lib/Requirements.php:70
+msgid "The PHP extension \"openssl\" is needed for password-protected backups, cloud storage, schedules with a password and pulls."
+msgstr ""
+
+#: lib/Requirements.php:74
+msgid "The PHP extension \"curl\" is needed for cloud storage and pulls from another site."
+msgstr ""
+
+#: lib/Requirements.php:78
+msgid "The PHP extension \"bz2\" is needed to restore bzip2-compressed .wpress backups."
+msgstr ""
+
+#: lib/Requirements.php:82
+msgid "The PHP extension \"pcntl\" lets WP-CLI jobs stop cleanly on Ctrl+C."
+msgstr ""
+
+#: lib/schedule/Scheduler.php:89
+msgid "Every 5 minutes (Founders Migration Website)"
+msgstr ""
+
+#. translators: 1: site name, 2: schedule name.
+#: lib/schedule/Scheduler.php:654
+#, php-format
+msgid "[%1$s] Scheduled backup FAILED: %2$s"
+msgstr ""
+
+#. translators: 1: site name, 2: schedule name.
+#: lib/schedule/Scheduler.php:656
+#, php-format
+msgid "[%1$s] Scheduled backup completed: %2$s"
+msgstr ""
+
+#. translators: %s: site URL.
+#: lib/schedule/Scheduler.php:660
+#, php-format
+msgid "Site: %s"
+msgstr ""
+
+#. translators: %s: schedule name.
+#: lib/schedule/Scheduler.php:662
+#, php-format
+msgid "Schedule: %s"
+msgstr ""
+
+#. translators: %s: job ID.
+#: lib/schedule/Scheduler.php:664
+#, php-format
+msgid "Job: %s"
+msgstr ""
+
+#. translators: %s: error message.
+#: lib/schedule/Scheduler.php:668
+#, php-format
+msgid "Error: %s"
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/schedule/Scheduler.php:671
+#, php-format
+msgid "The backup itself was created and is kept on this server (%s); only the upload failed. The next run is at its usual time."
+msgstr ""
+
+#: lib/schedule/Scheduler.php:672
+msgid "The partial backup was deleted. The next run is at its usual time; see the job log with: wp fmw log <job>"
+msgstr ""
+
+#. translators: 1: file name, 2: size.
+#: lib/schedule/Scheduler.php:675
+#, php-format
+msgid "Backup: %1$s (%2$s)"
+msgstr ""
+
+#. translators: %s: storage name and object key.
+#: lib/schedule/Scheduler.php:678
+#, php-format
+msgid "Uploaded to %s"
+msgstr ""
+
+#: lib/schedule/Scheduler.php:680
+msgid "The copy on the server was deleted after the upload, as the schedule asks."
+msgstr ""
+
+#. translators: %s: file name.
+#: lib/schedule/Scheduler.php:685
+#, php-format
+msgid "Deleted by retention: %s"
+msgstr ""
+
+#. translators: %s: minute (two digits).
+#: lib/schedule/Scheduler.php:706
+#, php-format
+msgid "Every hour at minute %s"
+msgstr ""
+
+#. translators: 1: day of the week, 2: time.
+#: lib/schedule/Scheduler.php:710
+#, php-format
+msgid "Every %1$s at %2$s"
+msgstr ""
+
+#. translators: 1: day of the month, 2: time.
+#: lib/schedule/Scheduler.php:713
+#, php-format
+msgid "Monthly on day %1$d at %2$s"
+msgstr ""
+
+#. translators: %s: time.
+#: lib/schedule/Scheduler.php:716
+#, php-format
+msgid "Every day at %s"
+msgstr ""
+
+#: lib/view/admin/backups.php:20
+msgid "Unfinished jobs"
+msgstr ""
+
+#: lib/view/admin/backups.php:21
+msgid "These stopped before the end (closed page, timeout or error). Continue them where they stopped, or cancel them."
+msgstr ""
+
+#: lib/view/admin/backups.php:25
+msgid "Job"
+msgstr ""
+
+#: lib/view/admin/backups.php:26
+#: lib/view/admin/schedules.php:166
+msgid "Status"
+msgstr ""
+
+#: lib/view/admin/backups.php:27
+msgid "Progress"
+msgstr ""
+
+#: lib/view/admin/backups.php:28
+#: lib/view/admin/backups.php:54
+#: lib/view/admin/remote.php:52
+#: lib/view/admin/remote.php:70
+#: lib/view/admin/schedules.php:52
+msgid "Actions"
+msgstr ""
+
+#. translators: %s: backups folder path.
+#: lib/view/admin/backups.php:40
+#, php-format
+msgid "Stored in %s"
+msgstr ""
+
+#: lib/view/admin/backups.php:46
+msgid "No backups yet. Create one on the Export page, or upload one on the Import page."
+msgstr ""
+
+#: lib/view/admin/backups.php:51
+#: lib/view/admin/pull.php:96
+#: lib/view/admin/pull.php:111
+#: lib/view/admin/remote.php:49
+#: lib/view/admin/remote.php:67
+#: lib/view/admin/remote.php:162
+#: lib/view/admin/schedules.php:47
+#: lib/view/admin/schedules.php:78
+msgid "Name"
+msgstr ""
+
+#: lib/view/admin/backups.php:63
+msgid "All-in-One WP Migration"
+msgstr ""
+
+#: lib/view/admin/export.php:16
+msgid "Export site"
+msgstr ""
+
+#: lib/view/admin/export.php:17
+msgid "Creates a .fmw backup of this site's files and database in the backups folder. Large sites are fine: the export runs in short steps and continues where it stopped if the page is closed."
+msgstr ""
+
+#: lib/view/admin/export.php:20
+msgid "Advanced options"
+msgstr ""
+
+#: lib/view/admin/export.php:20
+#: lib/view/admin/pull.php:48
+msgid "(click to expand)"
+msgstr ""
+
+#: lib/view/admin/export.php:34
+msgid "Protect this backup with a password"
+msgstr ""
+
+#: lib/view/admin/export.php:38
+#: lib/view/admin/schedules.php:158
+msgid "Password (at least 8 characters)"
+msgstr ""
+
+#: lib/view/admin/export.php:42
+#: lib/view/admin/schedules.php:159
+msgid "Repeat the password"
+msgstr ""
+
+#: lib/view/admin/export.php:45
+msgid "Files, database and the list of what the backup contains are encrypted with AES-256. Keep the password safe: without it the backup cannot be restored, not even by us."
+msgstr ""
+
+#: lib/view/admin/export.php:52
+msgid "Then upload to"
+msgstr ""
+
+#: lib/view/admin/export.php:54
+msgid "Nowhere (keep it on this server)"
+msgstr ""
+
+#: lib/view/admin/export.php:60
+msgid "Delete the copy on this server once the upload is complete"
+msgstr ""
+
+#. translators: %s: link to the Cloud storage page.
+#: lib/view/admin/export.php:66
+#, php-format
+msgid "Keep a copy off this server: add Amazon S3, Cloudflare R2, Wasabi or another S3-compatible storage on the %s page."
+msgstr ""
+
+#: lib/view/admin/export.php:75
+msgid "Export to file"
+msgstr ""
+
+#: lib/view/admin/export.php:77
+msgid "Same as: wp fmw backup"
+msgstr ""
+
+#: lib/view/admin/import.php:14
+msgid "Import site"
+msgstr ""
+
+#: lib/view/admin/import.php:15
+msgid "Restore a .fmw backup, or a .wpress backup from All-in-One WP Migration. The file is uploaded in chunks with no size limit; if the connection drops, choose the same file again and the upload continues where it stopped."
+msgstr ""
+
+#: lib/view/admin/import.php:19
+msgid "Drag & drop a backup here"
+msgstr ""
+
+#: lib/view/admin/import.php:20
+msgid "or"
+msgstr ""
+
+#: lib/view/admin/import.php:22
+msgid "Import from file"
+msgstr ""
+
+#: lib/view/admin/import.php:25
+msgid "Accepted: .fmw and .wpress"
+msgstr ""
+
+#. translators: %s: link to the Backups page.
+#: lib/view/admin/import.php:32
+#, php-format
+msgid "Backups already on the server (including All-in-One WP Migration's ai1wm-backups folder) can be restored from the %s page."
+msgstr ""
+
+#: lib/view/admin/layout.php:43
+msgid "Your backups folder can be downloaded by anyone on the internet."
+msgstr ""
+
+#: lib/view/admin/layout.php:44
+msgid "This web server ignores .htaccess (common on Nginx and OpenLiteSpeed). Move the folder outside the web root with FMWP_BACKUPS_PATH in wp-config.php, or block it in the server configuration:"
+msgstr ""
+
+#. translators: %s: link to the Backups page.
+#: lib/view/admin/layout.php:65
+#, php-format
+msgid "A backup or restore stopped before the end. Continue or cancel it on the %s page."
+msgstr ""
+
+#: lib/view/admin/pull.php:17
+msgid "1 hour"
+msgstr ""
+
+#: lib/view/admin/pull.php:18
+msgid "6 hours"
+msgstr ""
+
+#: lib/view/admin/pull.php:19
+msgid "24 hours"
+msgstr ""
+
+#: lib/view/admin/pull.php:20
+msgid "3 days"
+msgstr ""
+
+#: lib/view/admin/pull.php:21
+msgid "7 days"
+msgstr ""
+
+#: lib/view/admin/pull.php:22
+msgid "30 days"
+msgstr ""
+
+#: lib/view/admin/pull.php:26
+msgid "Copy another site onto this one"
+msgstr ""
+
+#: lib/view/admin/pull.php:27
+msgid "The other site makes a backup, this site downloads it and restores it: no downloading and uploading by hand. Create a pull key on the other site first (on its Pull page, the section below). Large sites are fine: the pull runs in short steps and continues where it stopped."
+msgstr ""
+
+#: lib/view/admin/pull.php:30
+msgid "This is a network: the source must be a network of the same kind (subdomains or subdirectories), and it replaces this whole network. Give the source network's main address."
+msgstr ""
+
+#: lib/view/admin/pull.php:35
+msgid "Source site address"
+msgstr ""
+
+#: lib/view/admin/pull.php:39
+msgid "Pull key"
+msgstr ""
+
+#: lib/view/admin/pull.php:42
+msgid "From the source site's Pull page (or wp fmw pull-key create there). It is kept encrypted while the pull runs and removed afterwards."
+msgstr ""
+
+#: lib/view/admin/pull.php:48
+msgid "Options"
+msgstr ""
+
+#: lib/view/admin/pull.php:58
+msgid "Only download the backup into the backups folder (restore it later from the Backups page)"
+msgstr ""
+
+#: lib/view/admin/pull.php:59
+msgid "Keep the backup on the source site afterwards"
+msgstr ""
+
+#: lib/view/admin/pull.php:60
+msgid "Keep the current database tables as fmwold_*"
+msgstr ""
+
+#: lib/view/admin/pull.php:62
+msgid "Allow a plain http:// address (only on a trusted network: the key and the backup would travel unencrypted)"
+msgstr ""
+
+#: lib/view/admin/pull.php:66
+msgid "Password (optional, at least 8 characters)"
+msgstr ""
+
+#: lib/view/admin/pull.php:69
+msgid "Encrypts the backup while it waits on the source site. For an existing encrypted backup, its password."
+msgstr ""
+
+#: lib/view/admin/pull.php:79
+msgid "Same as: wp fmw pull <address> --key=<key>"
+msgstr ""
+
+#: lib/view/admin/pull.php:84
+msgid "Let another site copy this one"
+msgstr ""
+
+#: lib/view/admin/pull.php:85
+msgid "A pull key lets another site with Founders Migration Website make a backup of this site and download it, and nothing else: no login, no other access. It expires, can be limited to the other server's address, and can be revoked at any time. Only a fingerprint of it is stored here."
+msgstr ""
+
+#: lib/view/admin/pull.php:88
+msgid "Pulls from this site are switched off (FMWP_DISABLE_PULL in wp-config.php)."
+msgstr ""
+
+#: lib/view/admin/pull.php:91
+msgid "On a network, a pull key lets another network copy this whole network, with all its sites."
+msgstr ""
+
+#: lib/view/admin/pull.php:97
+msgid "Valid until"
+msgstr ""
+
+#: lib/view/admin/pull.php:98
+msgid "Addresses"
+msgstr ""
+
+#: lib/view/admin/pull.php:99
+msgid "Last used"
+msgstr ""
+
+#: lib/view/admin/pull.php:100
+msgid "Sent"
+msgstr ""
+
+#: lib/view/admin/pull.php:108
+msgid "Create a pull key"
+msgstr ""
+
+#: lib/view/admin/pull.php:112
+msgid "for example: new server"
+msgstr ""
+
+#: lib/view/admin/pull.php:115
+msgid "Valid for"
+msgstr ""
+
+#: lib/view/admin/pull.php:122
+msgid "Long enough for the whole copy: very large sites on slow connections may need a few days."
+msgstr ""
+
+#: lib/view/admin/pull.php:126
+msgid "Only from these addresses"
+msgstr ""
+
+#: lib/view/admin/pull.php:129
+msgid "Optional: the other server's outgoing IP addresses or ranges. Behind Cloudflare or another proxy this site sees the proxy's address; leave it empty there."
+msgstr ""
+
+#: lib/view/admin/pull.php:133
+msgid "Existing backups"
+msgstr ""
+
+#: lib/view/admin/pull.php:134
+msgid "Also allow downloading the .fmw backups already on this site"
+msgstr ""
+
+#: lib/view/admin/pull.php:138
+msgid "Create pull key"
+msgstr ""
+
+#: lib/view/admin/pull.php:139
+msgid "Same as: wp fmw pull-key create"
+msgstr ""
+
+#: lib/view/admin/remote.php:17
+msgid "Keep copies of your backups off this server: Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, MinIO or any S3-compatible storage. Uploads and downloads of any size run in short steps and continue where they stopped."
+msgstr ""
+
+#. translators: %s: Google account e-mail.
+#: lib/view/admin/remote.php:29
+#, php-format
+msgid "Google Drive is connected (%s). Backups can now go there."
+msgstr ""
+
+#. translators: %s: Google account e-mail.
+#: lib/view/admin/remote.php:29
+msgid "account unknown"
+msgstr ""
+
+#: lib/view/admin/remote.php:33
+msgid "Google Drive was not connected: access was not allowed."
+msgstr ""
+
+#: lib/view/admin/remote.php:39
+msgid "Google Drive could not be connected:"
+msgstr ""
+
+#: lib/view/admin/remote.php:43
+msgid "PHP's curl extension is not installed on this server; cloud storage needs it. Ask your host to enable it."
+msgstr ""
+
+#: lib/view/admin/remote.php:50
+#: lib/view/admin/remote.php:84
+msgid "Service"
+msgstr ""
+
+#: lib/view/admin/remote.php:51
+msgid "Bucket / folder"
+msgstr ""
+
+#: lib/view/admin/remote.php:75
+msgid "Download a backup to this server, then restore it from the Backups page (or right away from the download dialog)."
+msgstr ""
+
+#: lib/view/admin/remote.php:79
+msgid "Add cloud storage"
+msgstr ""
+
+#: lib/view/admin/remote.php:79
+msgid "Edit cloud storage"
+msgstr ""
+
+#: lib/view/admin/remote.php:94
+msgid "Set up"
+msgstr ""
+
+#. translators: %s: link to the Google Cloud Console.
+#: lib/view/admin/remote.php:101
+#, php-format
+msgid "In the %s, create a project (or pick one) and enable the Google Drive API."
+msgstr ""
+
+#: lib/view/admin/remote.php:106
+msgid "Configure the OAuth consent screen (External; add your Google account as a test user, or publish the app so the sign-in does not expire after 7 days)."
+msgstr ""
+
+#: lib/view/admin/remote.php:107
+msgid "Create credentials: OAuth client ID, type \"Web application\", with this authorized redirect URI:"
+msgstr ""
+
+#: lib/view/admin/remote.php:110
+msgid "Paste the client ID and client secret below, save, then click Connect and allow access. The plugin can only see the files it creates in your Drive."
+msgstr ""
+
+#: lib/view/admin/remote.php:115
+msgid "Client ID"
+msgstr ""
+
+#: lib/view/admin/remote.php:119
+msgid "Client secret"
+msgstr ""
+
+#: lib/view/admin/remote.php:122
+msgid "Stored encrypted with this site's keys, outside the database, like the Google sign-in."
+msgstr ""
+
+#: lib/view/admin/remote.php:126
+msgid "Region"
+msgstr ""
+
+#: lib/view/admin/remote.php:129
+msgid "For example ap-southeast-3 (Amazon S3 Jakarta), ap-southeast-1 (Singapore), auto (Cloudflare R2), sgp1 (DigitalOcean)."
+msgstr ""
+
+#: lib/view/admin/remote.php:133
+msgid "Endpoint"
+msgstr ""
+
+#: lib/view/admin/remote.php:140
+msgid "Bucket"
+msgstr ""
+
+#: lib/view/admin/remote.php:144
+msgid "Folder"
+msgstr ""
+
+#: lib/view/admin/remote.php:147
+msgid "Optional folder inside the bucket, useful when several sites share one bucket."
+msgstr ""
+
+#: lib/view/admin/remote.php:151
+msgid "Access key"
+msgstr ""
+
+#: lib/view/admin/remote.php:155
+msgid "Secret key"
+msgstr ""
+
+#: lib/view/admin/remote.php:158
+msgid "Stored encrypted with this site's keys, outside the database. Use a key limited to this bucket (list, read, write, delete)."
+msgstr ""
+
+#: lib/view/admin/remote.php:166
+msgid "Advanced"
+msgstr ""
+
+#: lib/view/admin/remote.php:168
+msgid "Path-style addressing (endpoint/bucket/…); needed for MinIO and most other services"
+msgstr ""
+
+#: lib/view/admin/remote.php:170
+msgid "Storage class"
+msgstr ""
+
+#: lib/view/admin/remote.php:172
+msgid "Default (Standard)"
+msgstr ""
+
+#: lib/view/admin/remote.php:183
+msgid "Test and save"
+msgstr ""
+
+#: lib/view/admin/remote.php:188
+msgid "Same as: wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=… --access-key=… --secret-key=…"
+msgstr ""
+
+#: lib/view/admin/reset.php:17
+msgid "Database"
+msgstr ""
+
+#: lib/view/admin/reset.php:18
+msgid "All posts, pages, comments, settings, plugin data and users, except you. The site keeps its address, title, language and time zone; you stay logged in as administrator."
+msgstr ""
+
+#: lib/view/admin/reset.php:21
+msgid "Media"
+msgstr ""
+
+#: lib/view/admin/reset.php:22
+msgid "Everything in the uploads folder, and the media library."
+msgstr ""
+
+#: lib/view/admin/reset.php:27
+msgid "One site: all its posts, pages, comments, settings and plugin data; it keeps its address, title, language and time zone, you become its administrator and other users lose their role on it. The whole network: every site but the main one, all content, users except you (a super admin afterwards) and network settings; the network keeps its address, name and language."
+msgstr ""
+
+#: lib/view/admin/reset.php:28
+msgid "One site: its uploads folder (uploads/sites/<id>) and media library. The whole network: the whole uploads folder."
+msgstr ""
+
+#: lib/view/admin/reset.php:32
+msgid "Plugins"
+msgstr ""
+
+#: lib/view/admin/reset.php:33
+msgid "All plugins except Founders Migration Website. Must-use plugins stay."
+msgstr ""
+
+#: lib/view/admin/reset.php:36
+msgid "Themes"
+msgstr ""
+
+#. translators: %s: active theme name.
+#: lib/view/admin/reset.php:38
+#, php-format
+msgid "All themes except the active one (%s)."
+msgstr ""
+
+#: lib/view/admin/reset.php:43
+msgid "Reset site"
+msgstr ""
+
+#: lib/view/admin/reset.php:44
+msgid "Brings parts of this site back to a fresh WordPress install, for example before importing another site or to start over."
+msgstr ""
+
+#: lib/view/admin/reset.php:47
+msgid "Nothing here can be reset: this install has several networks (or a main site other than site 1) and no site besides the main one."
+msgstr ""
+
+#: lib/view/admin/reset.php:52
+msgid "What to reset: one site (its tables and media; the main site only with the whole network), or the whole network:"
+msgstr ""
+
+#: lib/view/admin/reset.php:58
+msgid "The whole network: only the main site stays, fresh; every other site, user and setting is deleted"
+msgstr ""
+
+#: lib/view/admin/reset.php:80
+msgid "Make a backup of the whole network first (recommended: the reset can then be undone from the Backups page)"
+msgstr ""
+
+#: lib/view/admin/reset.php:80
+msgid "Make a backup of the whole site first (recommended: the reset can then be undone from the Backups page)"
+msgstr ""
+
+#: lib/view/admin/reset.php:85
+msgid "What is reset is deleted. The database is switched in one step, so it stays as it is if the reset fails before that."
+msgstr ""
+
+#. translators: %s: site domain.
+#: lib/view/admin/reset.php:93
+#, php-format
+msgid "Type %s to confirm:"
+msgstr ""
+
+#: lib/view/admin/reset.php:105
+msgid "Same as: wp fmw reset --site=<id> --database --media, or wp fmw reset --network --all"
+msgstr ""
+
+#: lib/view/admin/reset.php:105
+msgid "Same as: wp fmw reset --database --media --plugins --themes"
+msgstr ""
+
+#: lib/view/admin/schedules.php:20
+msgid "Scheduled backups"
+msgstr ""
+
+#: lib/view/admin/schedules.php:21
+msgid "Backs up this site automatically and keeps only the newest backups of each schedule. Scheduled backups run in the background in short steps, like an export, and continue by themselves if they are interrupted."
+msgstr ""
+
+#: lib/view/admin/schedules.php:25
+msgid "Scheduled backups are waiting: a restore or reset stopped before the end. Continue or cancel it on the Backups page; a backup of a half-restored site could otherwise replace your good backups."
+msgstr ""
+
+#: lib/view/admin/schedules.php:31
+msgid "The scheduler has not run for over 30 minutes."
+msgstr ""
+
+#: lib/view/admin/schedules.php:35
+msgid "WP-Cron is disabled on this site (DISABLE_WP_CRON). Add this line to the server's crontab:"
+msgstr ""
+
+#: lib/view/admin/schedules.php:36
+msgid "WP-Cron only runs when the site has visitors. For reliable schedules, add this line to the server's crontab:"
+msgstr ""
+
+#: lib/view/admin/schedules.php:48
+msgid "When"
+msgstr ""
+
+#: lib/view/admin/schedules.php:49
+msgid "Next run"
+msgstr ""
+
+#: lib/view/admin/schedules.php:50
+msgid "Last run"
+msgstr ""
+
+#: lib/view/admin/schedules.php:51
+#: lib/view/admin/schedules.php:107
+#: lib/view/admin/schedules.php:124
+msgid "Keep"
+msgstr ""
+
+#. translators: 1: time zone, 2: time of the last check, 3: WP-Cron or a system cron.
+#: lib/view/admin/schedules.php:63
+#, php-format
+msgid "Times are in the site time zone (%1$s). Last scheduler check: %2$s %3$s"
+msgstr ""
+
+#: lib/view/admin/schedules.php:73
+msgid "Add a schedule"
+msgstr ""
+
+#: lib/view/admin/schedules.php:73
+msgid "Edit schedule"
+msgstr ""
+
+#: lib/view/admin/schedules.php:79
+msgid "Daily backup"
+msgstr ""
+
+#: lib/view/admin/schedules.php:82
+msgid "Frequency"
+msgstr ""
+
+#: lib/view/admin/schedules.php:85
+msgid "Every hour"
+msgstr ""
+
+#: lib/view/admin/schedules.php:86
+msgid "Every day"
+msgstr ""
+
+#: lib/view/admin/schedules.php:87
+msgid "Every week"
+msgstr ""
+
+#: lib/view/admin/schedules.php:88
+msgid "Every month"
+msgstr ""
+
+#: lib/view/admin/schedules.php:90
+msgid "on"
+msgstr ""
+
+#: lib/view/admin/schedules.php:97
+msgid "on day"
+msgstr ""
+
+#: lib/view/admin/schedules.php:100
+msgid "at"
+msgstr ""
+
+#: lib/view/admin/schedules.php:103
+msgid "Pick a quiet hour. Hourly schedules use only the minutes."
+msgstr ""
+
+#: lib/view/admin/schedules.php:110
+msgid "newest backups of this schedule (0 = keep all). Older ones are deleted; backups made by hand are never touched."
+msgstr ""
+
+#: lib/view/admin/schedules.php:114
+msgid "Upload to"
+msgstr ""
+
+#: lib/view/admin/schedules.php:117
+msgid "Nowhere (keep on this server only)"
+msgstr ""
+
+#: lib/view/admin/schedules.php:126
+msgid "newest uploads of this schedule in the storage (0 = keep all)."
+msgstr ""
+
+#: lib/view/admin/schedules.php:128
+msgid "Also keep the copies on this server (with the limit above)"
+msgstr ""
+
+#: lib/view/admin/schedules.php:133
+msgid "E-mail"
+msgstr ""
+
+#: lib/view/admin/schedules.php:136
+msgid "Only when a backup fails"
+msgstr ""
+
+#: lib/view/admin/schedules.php:137
+msgid "After every backup"
+msgstr ""
+
+#: lib/view/admin/schedules.php:138
+msgid "Never"
+msgstr ""
+
+#: lib/view/admin/schedules.php:144
+msgid "Leave out"
+msgstr ""
+
+#: lib/view/admin/schedules.php:154
+msgid "Password"
+msgstr ""
+
+#: lib/view/admin/schedules.php:156
+msgid "Protect these backups with a password"
+msgstr ""
+
+#: lib/view/admin/schedules.php:160
+msgid "A password is saved. Leave the fields empty to keep it."
+msgstr ""
+
+#: lib/view/admin/schedules.php:161
+msgid "The password is stored encrypted with this site's keys so backups can run unattended. Keep a copy: without it the backups cannot be restored."
+msgstr ""
+
+#: lib/view/admin/schedules.php:167
+msgid "Enabled"
+msgstr ""
+
+#: lib/view/admin/schedules.php:171
+msgid "Save schedule"
+msgstr ""
+
+#: lib/view/admin/schedules.php:176
+msgid "Same as: wp fmw schedule add --frequency=daily --time=02:00 --keep=7"
+msgstr ""

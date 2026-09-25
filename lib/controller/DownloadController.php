@@ -18,7 +18,7 @@ defined( 'ABSPATH' ) || exit;
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Multi-GB files are streamed with native file calls.
 
 /**
- * Streams a backup to the browser: admin-post.php?action=fmw_download&name=…&_wpnonce=….
+ * Streams a backup to the browser: admin-post.php?action=fmwp_download&name=…&_wpnonce=….
  *
  * The backups folder is not reachable from the web (it must not be), so
  * downloads go through PHP. Byte ranges are supported, so browsers and
@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class DownloadController {
 
-	const ACTION = 'fmw_download';
+	const ACTION = 'fmwp_download';
 
 	/**
 	 * Registers hooks.
