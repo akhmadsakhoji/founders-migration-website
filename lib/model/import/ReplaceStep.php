@@ -83,7 +83,10 @@ final class ReplaceStep implements Step {
 				);
 			};
 			$people   = new Replacer( $no_email( self::pairs( $job ) ), $no_email( self::plain_pairs( $job ) ) );
-			SubsiteImport::prepare( $this->restore, (int) $job->data['import']['blog_id'], (string) ( $site['table_prefix'] ?? 'wp_' ) );
+			foreach ( SubsiteImport::sites( $job->data['import'] ) as $into ) {
+				SubsiteImport::prepare( $this->restore, (int) $into['blog_id'], (string) ( $site['table_prefix'] ?? 'wp_' ), (int) $into['from'] );
+			}
+			$this->restore->drop( array( RestoreDatabase::TMP . 'blogs' ) ); // The backup network's sites (picked sites): read, not restored.
 		}
 		if ( is_array( $job->data['subsite'] ?? null ) ) {
 			if ( 'done' !== $this->restore->progress( 'subsite' ) ) {
@@ -215,6 +218,11 @@ final class ReplaceStep implements Step {
 			$paths      = $subsite['paths'];
 			$keep       = $subsite['keep'];
 			$keep_email = $subsite['keep_email'];
+		}
+		if ( ! empty( $job->data['import']['picked'] ) ) {
+			$kept       = SubsiteImport::picked_keep( $job->data['import'] );
+			$keep       = $kept['keep'];
+			$keep_email = $kept['keep_email'];
 		}
 		if ( is_array( $job->data['network'] ?? null ) ) {
 			$urls = self::network_urls( $job->data['network'], $urls );

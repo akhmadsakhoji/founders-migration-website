@@ -205,20 +205,20 @@ final class SubsiteExtract {
 	 * @return void
 	 */
 	public static function unpick( RestoreDatabase $restore ): void {
-		$db     = $restore->db();
-		$mask   = WpressPackage::SQL_PREFIX;
-		$tables = array_flip( $restore->imported_tables() );
-		foreach ( array(
-			'usermeta' => 'meta_key',
-			'options'  => 'option_name',
-		) as $name => $column ) {
-			if ( ! isset( $tables[ RestoreDatabase::TMP . $name ] ) ) {
+		$db   = $restore->db();
+		$mask = WpressPackage::SQL_PREFIX;
+		foreach ( $restore->imported_tables() as $table ) {
+			if ( RestoreDatabase::TMP . 'usermeta' === $table ) {
+				$column = 'meta_key';
+			} elseif ( 1 === preg_match( '/^' . RestoreDatabase::TMP . '([0-9]+_)?options$/D', $table ) ) {
+				$column = 'option_name'; // wp_options of a single site, wp_<id>_options of sites restored into a network.
+			} else {
 				continue;
 			}
 			$col = Connection::identifier( $column );
 			foreach ( array( 'basesite_', 'mainsite_' ) as $kind ) {
 				$like = $db->escape( addcslashes( $mask . $kind, '\\%_' ) ) . '%';
-				$db->query( 'UPDATE ' . Connection::identifier( RestoreDatabase::TMP . $name ) . " SET {$col} = CONCAT(" . $db->quote( $mask ) . ", SUBSTRING({$col}, " . ( strlen( $mask . $kind ) + 1 ) . ")) WHERE {$col} LIKE BINARY '{$like}'" );
+				$db->query( 'UPDATE ' . Connection::identifier( $table ) . " SET {$col} = CONCAT(" . $db->quote( $mask ) . ", SUBSTRING({$col}, " . ( strlen( $mask . $kind ) + 1 ) . ")) WHERE {$col} LIKE BINARY '{$like}'" );
 			}
 		}
 	}

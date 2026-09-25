@@ -309,8 +309,13 @@
 			modal.message( t.resetDone, 'success' );
 			modal.actions( [ closeButton( true ) ] );
 		} else if ( 'completed' === summary.status && summary.into ) {
-			modal.message( sprintf( t.restoreIntoDone, summary.into.url, summary.into.id ), 'success' );
-			modal.actions( [ el( 'a', { class: 'button button-primary', href: summary.into.url + '/', target: '_blank', rel: 'noopener', text: t.visitSite } ), closeButton( true ) ] );
+			var intos = summary.intos && summary.intos.length ? summary.intos : [ summary.into ];
+			modal.message( intos.map( function ( into ) {
+				return sprintf( t.restoreIntoDone, into.url, into.id );
+			} ).join( ' ' ), 'success' );
+			modal.actions( intos.slice( 0, 5 ).map( function ( into ) {
+				return el( 'a', { class: 'button button-primary', href: into.url + '/', target: '_blank', rel: 'noopener', text: intos.length > 1 ? t.visitSite + ' ' + into.id : t.visitSite } );
+			} ).concat( [ closeButton( true ) ] ) );
 		} else if ( 'completed' === summary.status ) {
 			modal.message( t.restoreDone, 'success' );
 			modal.actions( [ el( 'a', { class: 'button button-primary', href: config.loginUrl, text: t.logIn } ) ] );
@@ -392,13 +397,14 @@
 				table,
 			];
 			// A single-site backup on a network replaces one site, not the network (unknown until an encrypted .fmw is opened).
-			if ( ! config.multisite || info.network || ( info.encrypted && 'fmw' === info.format ) ) {
+			if ( ! config.multisite || ( info.network && ! info.picked ) || ( info.encrypted && 'fmw' === info.format ) ) {
 				body.push( el( 'div', { class: 'notice inline notice-warning' }, [ el( 'p', { text: t.restoreWarning } ) ] ) );
 			}
 			if ( info.encrypted ) {
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.password, el( 'br' ), password ] ) ] ) );
 			}
-			var site = null; // One site of a network backup, restored onto this single site.
+			var site   = null; // One site of a network backup, restored onto this single site.
+			var picked = null; // Sites of a backup of picked sites and the site of this network each becomes.
 			if ( ! config.multisite && info.sites && info.sites.length ) {
 				site = el( 'select', { required: 'required' }, [ el( 'option', { value: '', text: t.restoreSiteChoose } ) ].concat( info.sites.map( function ( blog ) {
 					return el( 'option', { value: String( blog.id ), text: blog.id + ' · ' + blog.address } );
@@ -411,6 +417,22 @@
 			} else if ( ! config.multisite && info.encrypted && ( 'fmw' === info.format || info.network ) ) {
 				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false' } );
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSiteOptional, el( 'br' ), site ] ) ] ) );
+			} else if ( config.multisite && info.picked && info.sites && info.sites.length ) {
+				// Sites picked from another network: each becomes a new site here, or replaces one; left empty, it stays in the backup.
+				body.push( el( 'div', { class: 'notice inline notice-info' }, [ el( 'p', { text: t.restorePickedNote } ) ] ) );
+				body.push( el( 'datalist', { id: 'fmw-target-sites' }, ( info.targets || [] ).map( function ( address ) {
+					return el( 'option', { value: address } );
+				} ) ) );
+				picked = info.sites.map( function ( blog ) {
+					var input = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false', list: 'fmw-target-sites', placeholder: 'shop' } );
+					body.push( el( 'p', {}, [ el( 'label', {}, [ sprintf( t.restorePickedSite, blog.id + ' · ' + blog.address ), el( 'br' ), input ] ) ] ) );
+					return { id: blog.id, input: input };
+				} );
+				site = el( 'input', { type: 'hidden' } );
+				site.dataset.required = '1';
+			} else if ( config.multisite && info.network && info.encrypted ) {
+				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false', placeholder: '2=shop,3=4' } );
+				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restorePickedOptional, el( 'br' ), site ] ) ] ) );
 			} else if ( config.multisite && ! info.network ) {
 				// A single-site backup on a network: it becomes a new site, or replaces one.
 				var known = el( 'datalist', { id: 'fmw-target-sites' }, ( info.targets || [] ).map( function ( address ) {
@@ -436,10 +458,17 @@
 				if ( noEmail.checked ) {
 					flags[ 'exclude-email-replace' ] = true;
 				}
+				if ( picked ) {
+					site.value = picked.filter( function ( one ) {
+						return one.input.value.trim();
+					} ).map( function ( one ) {
+						return one.id + '=' + one.input.value.trim().replace( /[,=]/g, '' );
+					} ).join( ',' );
+				}
 				if ( site && ( 'SELECT' === site.tagName || '1' === site.dataset.required ) && ! site.value.trim() ) {
 					go.disabled       = false;
 					error.textContent = t.restoreSiteChoose;
-					site.focus();
+					( picked ? picked[ 0 ].input : site ).focus();
 					return;
 				}
 				if ( site && site.value.trim() ) {
@@ -457,7 +486,7 @@
 					if ( ! modal.root.hidden && 'fmw_invalid_site' === e.code && site ) {
 						go.disabled       = false;
 						error.textContent = e.message;
-						site.focus();
+						( picked ? picked[ 0 ].input : site ).focus();
 						return;
 					}
 					modal.message( e.message, 'error' );

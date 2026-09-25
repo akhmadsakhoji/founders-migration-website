@@ -79,7 +79,9 @@ final class WpressFilesStep implements Step {
 					continue;
 				}
 				if ( is_array( $job->data['import'] ?? null ) ) {
-					$relative = SubsiteImport::file( $relative, 'uploads', (int) $job->data['import']['blog_id'] );
+					$relative = empty( $job->data['import']['picked'] )
+						? SubsiteImport::file( $relative, 'uploads', (int) $job->data['import']['blog_id'] )
+						: SubsiteImport::picked_file( $relative, 'uploads', (array) $job->data['import']['sites'] );
 					if ( null === $relative ) {
 						$job->data['import_left'] = (int) ( $job->data['import_left'] ?? 0 ) + 1; // mu-plugins and drop-ins would change every site.
 						self::advance( $cursor, $entry->data_offset() + $entry->size );

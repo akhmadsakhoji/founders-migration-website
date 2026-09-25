@@ -232,12 +232,39 @@ final class SubsiteImport {
 	 * @return void
 	 */
 	public static function reserve( array $plan, array $target ): void {
-		if ( empty( $plan['new'] ) ) {
+		$last = 0;
+		foreach ( self::sites( $plan ) as $site ) {
+			if ( ! empty( $site['new'] ) ) {
+				$last = max( $last, (int) $site['blog_id'] );
+			}
+		}
+		if ( 0 === $last ) {
 			return;
 		}
 		$restore = new RestoreDatabase();
-		$restore->db()->query( 'ALTER TABLE ' . Connection::identifier( (string) ( $target['table_prefix'] ?? 'wp_' ) . 'blogs' ) . ' AUTO_INCREMENT = ' . ( (int) $plan['blog_id'] + 1 ) );
+		$restore->db()->query( 'ALTER TABLE ' . Connection::identifier( (string) ( $target['table_prefix'] ?? 'wp_' ) . 'blogs' ) . ' AUTO_INCREMENT = ' . ( $last + 1 ) );
 		$restore->db()->close();
+	}
+
+	/**
+	 * The sites of an import plan: the list of a backup of picked sites, or the one site of a single-site backup (from 0).
+	 *
+	 * @param array<string,mixed> $plan Import plan.
+	 * @return array<int,array{from:int,blog_id:int,domain:string,path:string,new:bool}>
+	 */
+	public static function sites( array $plan ): array {
+		if ( isset( $plan['sites'] ) && is_array( $plan['sites'] ) && $plan['sites'] ) {
+			return array_values( $plan['sites'] );
+		}
+		return array(
+			array(
+				'from'    => 0,
+				'blog_id' => (int) ( $plan['blog_id'] ?? 0 ),
+				'domain'  => (string) ( $plan['domain'] ?? '' ),
+				'path'    => (string) ( $plan['path'] ?? '/' ),
+				'new'     => ! empty( $plan['new'] ),
+			),
+		);
 	}
 
 	/**
@@ -274,18 +301,280 @@ final class SubsiteImport {
 	}
 
 	/**
+	 * The sites of a backup of picked sites and the site of this network each becomes, from --site:
+	 * "shop" when the backup holds one site, else "2=shop,3=4" (old ID or address = new address or existing site).
+	 * Sites left out of the list stay in the backup.
+	 *
+	 * @param array<string,mixed> $source The backup's network (WpressNetwork::site()).
+	 * @param array<string,mixed> $target Restore target of this network (network, sites).
+	 * @param string              $choice The --site value.
+	 * @return array<int,array{from:int,blog_id:int,domain:string,path:string,new:bool}> New sites have blog_id 0.
+	 * @throws JobException When the choice is missing, unclear or not usable.
+	 */
+	public static function picked_choices( array $source, array $target, string $choice ): array {
+		$ids    = array_map( 'intval', array_column( (array) ( $source['sites'] ?? array() ), 'blog_id' ) );
+		$choice = trim( $choice, " \t\n\r\0\x0B" );
+		$how    = sprintf( '--site=<site of the backup>=<new address or existing site>[,...], for example --site=%d=shop (a new site) or --site=%d=3 (replaces site 3). Its sites: %s.', $ids[0] ?? 2, $ids[0] ?? 2, SubsiteExtract::listing( $source ) );
+		if ( '' === $choice ) {
+			throw new JobException( sprintf( 'This backup holds %d site(s) picked from a network and this is a multisite network: choose the site each becomes with %s', count( $ids ), $how ) );
+		}
+		$pairs = array();
+		if ( false === strpos( $choice, '=' ) ) {
+			if ( 1 !== count( $ids ) ) {
+				throw new JobException( sprintf( 'This backup holds %d sites: give the site each becomes with %s', count( $ids ), $how ) );
+			}
+			$pairs[] = array( (string) $ids[0], $choice );
+		} else {
+			foreach ( explode( ',', $choice ) as $item ) {
+				$item = trim( $item, " \t\n\r\0\x0B" );
+				$eq   = strpos( $item, '=' );
+				if ( '' === $item ) {
+					continue;
+				}
+				if ( false === $eq ) {
+					throw new JobException( sprintf( '"%s" is not <site of the backup>=<new address or existing site>; use %s', SubsiteExtract::printable( $item ), $how ) );
+				}
+				$pairs[] = array( substr( $item, 0, $eq ), substr( $item, $eq + 1 ) );
+			}
+		}
+		$sites = array();
+		$from  = array();
+		$into  = array();
+		foreach ( $pairs as $pair ) {
+			$old = (int) SubsiteExtract::resolve( $source, $pair[0] )['blog_id'];
+			if ( isset( $from[ $old ] ) ) {
+				throw new JobException( sprintf( 'Site %d of the backup is given twice.', $old ) );
+			}
+			$plan = self::resolve( $target, $pair[1] );
+			$key  = $plan['new'] ? $plan['domain'] . $plan['path'] : (string) $plan['blog_id'];
+			if ( isset( $into[ $key ] ) ) {
+				throw new JobException( sprintf( 'Sites %d and %d of the backup would both become %s.', $into[ $key ], $old, SubsiteExtract::printable( $plan['domain'] . $plan['path'] ) ) );
+			}
+			$from[ $old ] = true;
+			$into[ $key ] = $old;
+			$sites[]      = array( 'from' => $old ) + $plan;
+		}
+		if ( ! $sites ) {
+			throw new JobException( 'No site of the backup is chosen; use ' . $how );
+		}
+		return $sites;
+	}
+
+	/**
+	 * Plans the restore of a backup of picked sites into this network: each chosen site becomes a new site or replaces one.
+	 *
+	 * Job options target stays the network's; the network's target is also kept in job data (network_target).
+	 *
+	 * @param \Founders\Migration\Job\Job $job     Job (options target of the network, subsite choice).
+	 * @param array<string,mixed>         $source  The backup's network (WpressNetwork::site()).
+	 * @param Context                     $context Context.
+	 * @return array<string,mixed> Import plan with sites.
+	 * @throws JobException When the choice is not usable.
+	 */
+	public static function plan_picked( \Founders\Migration\Job\Job $job, array $source, Context $context ): array {
+		$target = is_array( $job->data['network_target'] ?? null ) ? $job->data['network_target'] : (array) ( $job->options['target'] ?? array() );
+		$sites  = self::picked_choices( $source, $target, (string) ( $job->options['subsite'] ?? '' ) );
+		if ( array_filter( array_column( $sites, 'new' ) ) ) {
+			$restore = new RestoreDatabase();
+			$next    = self::next_id( $restore->db(), (string) ( $target['table_prefix'] ?? 'wp_' ) );
+			$restore->db()->close();
+			foreach ( $sites as $i => $site ) {
+				if ( $site['new'] ) {
+					$sites[ $i ]['blog_id'] = $next++;
+				}
+			}
+		}
+		$job->data['network_target'] = $target;
+		foreach ( $sites as $site ) {
+			$context->log(
+				sprintf(
+					$site['new'] ? 'Site %d of the backup becomes a new site of the network: site %d at %s.' : 'Site %d of the backup replaces site %d of the network, at %s.',
+					$site['from'],
+					$site['blog_id'],
+					SubsiteExtract::printable( $site['domain'] . $site['path'] )
+				)
+			);
+		}
+		$network = (array) ( $source['network'] ?? array() );
+		return array(
+			'blog_id'        => $sites[0]['blog_id'],
+			'domain'         => $sites[0]['domain'],
+			'path'           => $sites[0]['path'],
+			'new'            => $sites[0]['new'],
+			'sites'          => $sites,
+			'picked'         => true,
+			'uploads'        => 'uploads',
+			'source_ids'     => array_values( array_unique( array_merge( array( 1 ), array_map( 'intval', array_column( (array) ( $source['sites'] ?? array() ), 'blog_id' ) ) ) ) ),
+			'network_domain' => strtolower( (string) ( $network['domain'] ?? '' ) ),
+			'network_path'   => (string) ( $network['path'] ?? '/' ),
+		);
+	}
+
+	/**
+	 * Name (after the prefix) a table of a backup of picked sites gets: <new id>_posts, or users / usermeta to be merged,
+	 * or blogs (the backup's network, read for its addresses, then dropped); null when it stays in the backup.
+	 *
+	 * @param string                                 $table Source table.
+	 * @param array<int,array{from:int,blog_id:int}> $sites Chosen sites.
+	 * @return string|null
+	 */
+	public static function picked_table( string $table, array $sites ): ?string {
+		$mask = \Founders\Migration\Archive\WpressPackage::SQL_PREFIX;
+		if ( 0 !== strpos( $table, $mask ) ) {
+			return null;
+		}
+		$map  = array_column( $sites, 'blog_id', 'from' );
+		$rest = substr( $table, strlen( $mask ) );
+		if ( 0 === strpos( $rest, 'mainsite_' ) ) {
+			$rest = substr( $rest, 9 );
+			return in_array( $rest, array( 'users', 'usermeta', 'blogs' ), true ) ? $rest : null;
+		}
+		if ( 0 === strpos( $rest, 'basesite_' ) ) {
+			return isset( $map[1] ) && strlen( $rest ) > 9 ? (int) $map[1] . '_' . substr( $rest, 9 ) : null;
+		}
+		if ( 1 === preg_match( '/^([1-9][0-9]*)_(.+)$/', $rest, $m ) && isset( $map[ (int) $m[1] ] ) ) {
+			return (int) $map[ (int) $m[1] ] . '_' . $m[2];
+		}
+		return null;
+	}
+
+	/**
+	 * Where a file of a backup of picked sites goes (relative to wp-content), or null when it stays out.
+	 *
+	 * Media in uploads/sites/<old id>/ (blogs.dir/<old id>/files/ on old networks) moves
+	 * to uploads/sites/<new id>/; the main site's media in uploads/ itself goes there
+	 * too when the main site is chosen; themes, plugins and languages join the network's.
+	 *
+	 * @param string                                 $relative Path in wp-content.
+	 * @param string                                 $uploads  Uploads folder relative to wp-content ("uploads").
+	 * @param array<int,array{from:int,blog_id:int}> $sites    Chosen sites.
+	 * @return string|null
+	 */
+	public static function picked_file( string $relative, string $uploads, array $sites ): ?string {
+		$map     = array_column( $sites, 'blog_id', 'from' );
+		$uploads = trim( $uploads, '/' );
+		if ( 1 === preg_match( '#^blogs\.dir/([1-9][0-9]*)/files(/.*)?$#D', $relative, $m ) ) {
+			return isset( $map[ (int) $m[1] ] ) && '' !== $uploads ? $uploads . '/sites/' . (int) $map[ (int) $m[1] ] . ( $m[2] ?? '' ) : null;
+		}
+		if ( '' !== $uploads && ( $relative === $uploads || 0 === strpos( $relative, $uploads . '/' ) ) ) {
+			$rest = substr( $relative, strlen( $uploads ) );
+			if ( 1 === preg_match( '#^/sites/([1-9][0-9]*)(/.*)?$#D', $rest, $m ) ) {
+				return isset( $map[ (int) $m[1] ] ) ? $uploads . '/sites/' . (int) $map[ (int) $m[1] ] . ( $m[2] ?? '' ) : null;
+			}
+			if ( '/sites' === $rest || '' === $rest ) {
+				return null;
+			}
+			return isset( $map[1] ) ? $uploads . '/sites/' . (int) $map[1] . $rest : null; // The main site's media.
+		}
+		$top = explode( '/', $relative, 2 )[0];
+		return in_array( $top, array( 'plugins', 'themes', 'languages' ), true ) && $top !== $relative ? $relative : null;
+	}
+
+	/**
+	 * URL, path and value pairs for the replace step of a backup of picked sites: each chosen site's
+	 * address, uploads URL and uploads folder become its new ones.
+	 *
+	 * @param array<int,array<string,mixed>> $entries  multisite.json Sites[] by old ID (WpressNetwork::entries()).
+	 * @param array<string,mixed>            $plan     Import plan.
+	 * @param array<string,mixed>            $target   Restore target of the network.
+	 * @param array<string,mixed>            $package  package.json WordPress Content and Absolute, and its find/replace pairs under raw.
+	 * @param bool                           $email    Replace e-mail domains.
+	 * @return array{urls:array<string,string>,paths:array<string,string>,raw:array<string,string>,email:bool}
+	 */
+	public static function picked_replace_plan( array $entries, array $plan, array $target, array $package, bool $email ): array {
+		$urls  = array();
+		$paths = array();
+		$sites = self::sites( $plan );
+		usort(
+			$sites,
+			static function ( array $a, array $b ): int {
+				return ( 1 === (int) $a['from'] ? 0 : 1 ) - ( 1 === (int) $b['from'] ? 0 : 1 );
+			}
+		);
+		// Addresses first, the main site's before the others: the first URL of a host decides where its e-mail domain goes.
+		foreach ( $sites as $site ) {
+			$entry   = (array) ( $entries[ (int) $site['from'] ] ?? array() );
+			$address = self::address( $site, $target );
+			foreach ( array( 'HomeURL', 'SiteURL' ) as $key ) {
+				if ( is_string( $entry[ $key ] ?? null ) && '' !== $entry[ $key ] ) {
+					$urls += array( rtrim( $entry[ $key ], '/' ) => $address['home_url'] );
+				}
+			}
+		}
+		foreach ( $sites as $site ) {
+			$entry   = (array) ( $entries[ (int) $site['from'] ] ?? array() );
+			$address = self::address( $site, $target );
+			$home    = rtrim( (string) ( $entry['HomeURL'] ?? '' ), '/' );
+			if ( is_string( $entry['WordPress']['UploadsURL'] ?? null ) && '' !== $entry['WordPress']['UploadsURL'] ) {
+				$urls[ rtrim( $entry['WordPress']['UploadsURL'], '/' ) ] = $address['uploads_url'];
+			}
+			if ( '' !== $home ) {
+				// The site's media under its own address too; old networks used /files/.
+				$urls[ $home . '/wp-content/uploads' . ( (int) $site['from'] > 1 ? '/sites/' . (int) $site['from'] : '' ) ] = $address['uploads_url'];
+				if ( (int) $site['from'] > 1 ) {
+					$urls[ $home . '/files' ] = $address['uploads_url'];
+				}
+			}
+			if ( is_string( $entry['WordPress']['Uploads'] ?? null ) && '' !== $entry['WordPress']['Uploads'] ) {
+				$paths[ rtrim( $entry['WordPress']['Uploads'], '/' ) ] = $address['uploads_dir'];
+			}
+		}
+		foreach ( array(
+			'Content'  => 'content_dir',
+			'Absolute' => 'abspath',
+		) as $key => $name ) {
+			if ( '' !== (string) ( $package[ $key ] ?? '' ) && ! empty( $target[ $name ] ) ) {
+				$paths += array( rtrim( (string) $package[ $key ], '/' ) => rtrim( (string) $target[ $name ], '/' ) );
+			}
+		}
+		return array(
+			'urls'  => $urls,
+			'paths' => $paths,
+			'raw'   => (array) ( $package['raw'] ?? array() ),
+			'email' => $email,
+		);
+	}
+
+	/**
+	 * Addresses the replace step keeps for a backup of picked sites: the backup network's other sites
+	 * (picked or not) and their media under the network's address; the network's e-mail domain unless its main site moves.
+	 *
+	 * @param array<string,mixed> $plan Import plan (network_sites noted by WpressDatabaseStep).
+	 * @return array{keep:string[],keep_email:string[]}
+	 */
+	public static function picked_keep( array $plan ): array {
+		$moved = array_map( 'intval', array_column( self::sites( $plan ), 'from' ) );
+		$main  = (string) ( $plan['network_domain'] ?? '' ) . rtrim( (string) ( $plan['network_path'] ?? '/' ), '/' );
+		$keep  = array();
+		foreach ( (array) ( $plan['network_sites'] ?? array() ) as $other ) {
+			$id = (int) ( $other['blog_id'] ?? 0 );
+			if ( $id > 0 && ! in_array( $id, $moved, true ) ) {
+				$keep[] = '//' . strtolower( (string) ( $other['domain'] ?? '' ) ) . (string) ( $other['path'] ?? '/' );
+				if ( '' !== $main && 1 !== $id ) {
+					$keep[] = '//' . $main . '/wp-content/uploads/sites/' . $id;
+				}
+			}
+		}
+		return array(
+			'keep'       => $keep,
+			'keep_email' => in_array( 1, $moved, true ) || '' === (string) ( $plan['network_domain'] ?? '' ) ? array() : array( (string) preg_replace( '/:\d+$/', '', (string) $plan['network_domain'] ) ),
+		);
+	}
+
+	/**
 	 * Prepares the imported site tables (before the replace): the roles option gets the site's prefix. Idempotent.
 	 *
 	 * @param RestoreDatabase $restore Database helper.
 	 * @param int             $blog    Site ID.
 	 * @param string          $prefix  Source prefix.
+	 * @param int             $from    The site's ID in the backup's network (0 or 1: bare prefix).
 	 * @return void
 	 */
-	public static function prepare( RestoreDatabase $restore, int $blog, string $prefix ): void {
+	public static function prepare( RestoreDatabase $restore, int $blog, string $prefix, int $from = 0 ): void {
 		$db      = $restore->db();
 		$options = RestoreDatabase::TMP . $blog . '_options';
 		if ( in_array( $options, $restore->imported_tables(), true ) ) {
-			$db->query( 'UPDATE ' . Connection::identifier( $options ) . ' SET `option_name` = ' . $db->quote( $prefix . $blog . '_user_roles' ) . ' WHERE `option_name` = ' . $db->quote( $prefix . 'user_roles' ) );
+			$db->query( 'UPDATE ' . Connection::identifier( $options ) . ' SET `option_name` = ' . $db->quote( $prefix . $blog . '_user_roles' ) . ' WHERE `option_name` = ' . $db->quote( $prefix . ( $from > 1 ? $from . '_' : '' ) . 'user_roles' ) );
 		}
 	}
 
@@ -299,18 +588,23 @@ final class SubsiteImport {
 	 * @throws JobException When the ID or address is taken.
 	 */
 	public static function check_site( RestoreDatabase $restore, array $plan, array $target ): void {
-		if ( empty( $plan['new'] ) || 'done' === $restore->progress( 'site-row' ) ) {
+		if ( 'done' === $restore->progress( 'site-row' ) ) {
 			return;
 		}
 		$db    = $restore->db();
 		$blogs = Connection::identifier( (string) ( $target['table_prefix'] ?? 'wp_' ) . 'blogs' );
-		$blog  = (int) $plan['blog_id'];
-		if ( $db->column( "SELECT `blog_id` FROM {$blogs} WHERE `blog_id` = {$blog}" ) ) {
-			throw new JobException( sprintf( 'Site ID %d was taken by another site while the restore ran; start the restore again.', $blog ) );
-		}
-		$taken = $db->column( "SELECT `blog_id` FROM {$blogs} WHERE `domain` = " . $db->quote( (string) $plan['domain'] ) . ' AND `path` = ' . $db->quote( (string) $plan['path'] ) );
-		if ( isset( $taken[0] ) ) {
-			throw new JobException( sprintf( 'Another site (%d) now has the address %s%s; start the restore again.', (int) $taken[0], SubsiteExtract::printable( (string) $plan['domain'] ), SubsiteExtract::printable( (string) $plan['path'] ) ) );
+		foreach ( self::sites( $plan ) as $site ) {
+			if ( empty( $site['new'] ) ) {
+				continue;
+			}
+			$blog = (int) $site['blog_id'];
+			if ( $db->column( "SELECT `blog_id` FROM {$blogs} WHERE `blog_id` = {$blog}" ) ) {
+				throw new JobException( sprintf( 'Site ID %d was taken by another site while the restore ran; start the restore again.', $blog ) );
+			}
+			$taken = $db->column( "SELECT `blog_id` FROM {$blogs} WHERE `domain` = " . $db->quote( (string) $site['domain'] ) . ' AND `path` = ' . $db->quote( (string) $site['path'] ) );
+			if ( isset( $taken[0] ) ) {
+				throw new JobException( sprintf( 'Another site (%d) now has the address %s%s; start the restore again.', (int) $taken[0], SubsiteExtract::printable( (string) $site['domain'] ), SubsiteExtract::printable( (string) $site['path'] ) ) );
+			}
 		}
 	}
 
@@ -331,7 +625,8 @@ final class SubsiteImport {
 	 */
 	public static function merge_users( RestoreDatabase $restore, array $plan, array $target, Context $context ): bool {
 		$db     = $restore->db();
-		$blog   = (int) $plan['blog_id'];
+		$sites  = self::sites( $plan );
+		$blog   = (int) $sites[0]['blog_id']; // New users' primary site.
 		$to     = (string) ( $target['table_prefix'] ?? 'wp_' );
 		$tables = array_flip( $restore->imported_tables() );
 		$tmp    = static function ( string $name ): string {
@@ -345,9 +640,11 @@ final class SubsiteImport {
 		$db->query( "CREATE TABLE IF NOT EXISTS {$map} (`old_id` bigint unsigned NOT NULL PRIMARY KEY, `new_id` bigint unsigned NOT NULL) ENGINE=InnoDB" );
 		$users_done = in_array( $restore->progress( 'site-users' ), array( 'done', 'none' ), true );
 		if ( ! $users_done ) {
-			foreach ( array( 'posts', 'comments', 'links' ) as $name ) {
-				if ( isset( $tables[ RestoreDatabase::TMP . $blog . '_' . $name ] ) ) {
-					self::innodb( $db, RestoreDatabase::TMP . $blog . '_' . $name, $context );
+			foreach ( $sites as $site ) {
+				foreach ( array( 'posts', 'comments', 'links' ) as $name ) {
+					if ( isset( $tables[ RestoreDatabase::TMP . (int) $site['blog_id'] . '_' . $name ] ) ) {
+						self::innodb( $db, RestoreDatabase::TMP . (int) $site['blog_id'] . '_' . $name, $context );
+					}
 				}
 			}
 		}
@@ -359,22 +656,33 @@ final class SubsiteImport {
 			foreach ( $db->rows( 'SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ' . $db->quote( $to . 'users' ) ) as $column ) {
 				$columns[] = (string) $column['name'];
 			}
-			$copy  = array_values( array_intersect( array( 'user_login', 'user_pass', 'user_nicename', 'user_email', 'user_url', 'user_registered', 'user_activation_key', 'user_status', 'display_name' ), $columns ) );
+			$copy = array_values( array_intersect( array( 'user_login', 'user_pass', 'user_nicename', 'user_email', 'user_url', 'user_registered', 'user_activation_key', 'user_status', 'display_name' ), $columns ) );
+			// Keys of any site of the backup's network (wp_3_capabilities) would give a role on this network's site 3: never copied as they are.
+			$foreign = '';
+			foreach ( array_unique( array_map( 'intval', (array) ( $plan['source_ids'] ?? array() ) ) ) as $id ) {
+				$foreign .= ' AND `meta_key` NOT LIKE ' . $db->quote( addcslashes( $to . $id . '_', '\\%_' ) . '%' );
+			}
 			$state = json_decode( (string) $restore->progress( 'site-users' ), true );
-			$state = is_array( $state ) ? $state + array( 'after' => 0, 'found' => 0, 'added' => 0 ) : array( 'after' => 0, 'found' => 0, 'added' => 0 ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Short state.
+			$state = ( is_array( $state ) ? $state : array() ) + array( 'after' => 0, 'found' => 0, 'added' => 0, 'left' => 0 ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Short state.
 
 			do {
 				if ( ! $context->should_continue() ) {
 					return false;
 				}
 				$users = $db->rows( 'SELECT * FROM ' . $tmp( 'users' ) . ' WHERE `ID` > ' . (int) $state['after'] . ' ORDER BY `ID` LIMIT ' . self::USER_BATCH );
+				$roles = $users && ! empty( $plan['picked'] ) ? self::chosen_roles( $db, $sites, $to, array_map( 'intval', array_column( $users, 'ID' ) ), $tables ) : array();
 				$db->query( 'START TRANSACTION' );
 				try {
 					foreach ( $users as $user ) {
 						$state['after'] = (int) $user['ID'];
-						$login          = (string) $user['user_login'];
-						$email          = trim( (string) ( $user['user_email'] ?? '' ), " \t\n\r\0\x0B" );
-						$existing       = $db->column( 'SELECT `ID` FROM ' . $live( 'users' ) . ' WHERE `user_login` = ' . $db->quote( $login ) );
+						if ( ! empty( $plan['picked'] ) && ! isset( $roles[ (int) $user['ID'] ] ) ) {
+							++$state['left']; // Only on sites left in the backup: not a user of this network.
+							continue;
+						}
+						$primary  = $sites[ $roles[ (int) $user['ID'] ] ?? 0 ];
+						$login    = (string) $user['user_login'];
+						$email    = trim( (string) ( $user['user_email'] ?? '' ), " \t\n\r\0\x0B" );
+						$existing = $db->column( 'SELECT `ID` FROM ' . $live( 'users' ) . ' WHERE `user_login` = ' . $db->quote( $login ) );
 						if ( ! isset( $existing[0] ) && '' !== $email && in_array( 'user_email', $columns, true ) ) {
 							// Same person under another login: one account per e-mail address, as WordPress expects.
 							$existing = $db->column( 'SELECT `ID` FROM ' . $live( 'users' ) . ' WHERE `user_email` = ' . $db->quote( $email ) . ' ORDER BY `ID` LIMIT 1' );
@@ -400,24 +708,28 @@ final class SubsiteImport {
 							// A new user's profile comes along; per-site keys are handled below.
 							$db->query(
 								'INSERT INTO ' . $live( 'usermeta' ) . ' (`user_id`, `meta_key`, `meta_value`) SELECT ' . $id . ', `meta_key`, `meta_value` FROM ' . $tmp( 'usermeta' )
-								. ' WHERE `user_id` = ' . (int) $user['ID'] . ' AND `meta_key` NOT IN (' . self::site_keys( $db, $to ) . ", 'primary_blog', 'source_domain')"
+								. ' WHERE `user_id` = ' . (int) $user['ID'] . ' AND `meta_key` NOT IN (' . self::site_keys( $db, $to ) . ", 'primary_blog', 'source_domain')" . $foreign
 							);
-							$db->query( 'INSERT INTO ' . $live( 'usermeta' ) . " (`user_id`, `meta_key`, `meta_value`) VALUES ({$id}, 'primary_blog', '{$blog}'), ({$id}, 'source_domain', " . $db->quote( (string) $plan['domain'] ) . ')' );
+							$db->query( 'INSERT INTO ' . $live( 'usermeta' ) . " (`user_id`, `meta_key`, `meta_value`) VALUES ({$id}, 'primary_blog', '" . (int) $primary['blog_id'] . "'), ({$id}, 'source_domain', " . $db->quote( (string) $primary['domain'] ) . ')' );
 						}
 						$db->query( "REPLACE INTO {$map} (`old_id`, `new_id`) VALUES (" . (int) $user['ID'] . ", {$id})" );
 
-						// Their role on this site: the backup's per-site keys with the site's prefix.
-						$keys = array();
-						$case = '';
-						foreach ( self::SITE_USER_KEYS as $key ) {
-							$keys[] = $db->quote( $to . $blog . '_' . $key );
-							$case  .= ' WHEN ' . $db->quote( $to . $key ) . ' THEN ' . $db->quote( $to . $blog . '_' . $key );
+						// Their role on each site: the backup's per-site keys (wp_capabilities, or wp_<old id>_capabilities) with the site's prefix.
+						foreach ( $sites as $site ) {
+							$from = $site['from'] > 1 ? $to . $site['from'] . '_' : $to;
+							$into = $to . (int) $site['blog_id'] . '_';
+							$keys = array();
+							$case = '';
+							foreach ( self::SITE_USER_KEYS as $key ) {
+								$keys[] = $db->quote( $into . $key );
+								$case  .= ' WHEN ' . $db->quote( $from . $key ) . ' THEN ' . $db->quote( $into . $key );
+							}
+							$db->query( 'DELETE FROM ' . $live( 'usermeta' ) . " WHERE `user_id` = {$id} AND `meta_key` IN (" . implode( ', ', $keys ) . ')' );
+							$db->query(
+								'INSERT INTO ' . $live( 'usermeta' ) . " (`user_id`, `meta_key`, `meta_value`) SELECT {$id}, CASE `meta_key`{$case} END, `meta_value` FROM " . $tmp( 'usermeta' )
+								. ' WHERE `user_id` = ' . (int) $user['ID'] . ' AND `meta_key` IN (' . self::site_keys( $db, $from ) . ')'
+							);
 						}
-						$db->query( 'DELETE FROM ' . $live( 'usermeta' ) . " WHERE `user_id` = {$id} AND `meta_key` IN (" . implode( ', ', $keys ) . ')' );
-						$db->query(
-							'INSERT INTO ' . $live( 'usermeta' ) . " (`user_id`, `meta_key`, `meta_value`) SELECT {$id}, CASE `meta_key`{$case} END, `meta_value` FROM " . $tmp( 'usermeta' )
-							. ' WHERE `user_id` = ' . (int) $user['ID'] . ' AND `meta_key` IN (' . self::site_keys( $db, $to ) . ')'
-						);
 					}
 					$restore->set_progress( 'site-users', $users ? (string) json_encode( $state ) : 'done' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Internal progress record.
 					$db->query( 'COMMIT' );
@@ -426,17 +738,23 @@ final class SubsiteImport {
 					throw $e;
 				}
 			} while ( $users );
-			$context->log( sprintf( 'Merged the backup\'s users into the network: %d already here with the same login or e-mail (kept as they are), %d added; all have their role on site %d.', (int) $state['found'], (int) $state['added'], $blog ) );
+			$context->log( sprintf( 'Merged the backup\'s users into the network: %d already here with the same login or e-mail (kept as they are), %d added; all have their role on site %s.%s', (int) $state['found'], (int) $state['added'], implode( ', ', array_column( $sites, 'blog_id' ) ), $state['left'] ? sprintf( ' %d user(s) of sites left in the backup were not added.', (int) $state['left'] ) : '' ) );
 		}
 
 		// Authors, comment users and link owners follow the new IDs, a range of rows per transaction.
 		// Someone who is not in the backup's users (deleted, or no users table) is nobody here, not whoever has that ID.
-		foreach ( array(
-			'posts'    => array( 'post_author', 'ID' ),
-			'comments' => array( 'user_id', 'comment_ID' ),
-			'links'    => array( 'link_owner', 'link_id' ),
-		) as $name => $columns ) {
-			$table = RestoreDatabase::TMP . $blog . '_' . $name;
+		$remap = array();
+		foreach ( $sites as $site ) {
+			foreach ( array(
+				'posts'    => array( 'post_author', 'ID' ),
+				'comments' => array( 'user_id', 'comment_ID' ),
+				'links'    => array( 'link_owner', 'link_id' ),
+			) as $name => $columns ) {
+				$remap[ (int) $site['blog_id'] . '_' . $name ] = $columns;
+			}
+		}
+		foreach ( $remap as $name => $columns ) {
+			$table = RestoreDatabase::TMP . $name;
 			$mark  = 'site-remap:' . $name;
 			if ( ! isset( $tables[ $table ] ) || 'done' === $restore->progress( $mark ) ) {
 				continue;
@@ -483,24 +801,70 @@ final class SubsiteImport {
 	 * @throws \Throwable After rolling back, when the insert fails.
 	 */
 	public static function register( RestoreDatabase $restore, array $plan, array $target, Context $context ): void {
-		if ( empty( $plan['new'] ) || 'done' === $restore->progress( 'site-row' ) ) {
+		$new = array_values(
+			array_filter(
+				self::sites( $plan ),
+				static function ( array $site ): bool {
+					return ! empty( $site['new'] );
+				}
+			)
+		);
+		if ( ! $new || 'done' === $restore->progress( 'site-row' ) ) {
 			return;
 		}
 		$db  = $restore->db();
 		$now = gmdate( 'Y-m-d H:i:s' );
 		$db->query( 'START TRANSACTION' );
 		try {
-			$db->query(
-				'INSERT IGNORE INTO ' . Connection::identifier( (string) ( $target['table_prefix'] ?? 'wp_' ) . 'blogs' ) . ' (`blog_id`, `site_id`, `domain`, `path`, `registered`, `last_updated`, `public`) VALUES ('
-				. (int) $plan['blog_id'] . ', ' . max( 1, (int) ( $target['network']['id'] ?? 1 ) ) . ', ' . $db->quote( (string) $plan['domain'] ) . ', ' . $db->quote( (string) $plan['path'] ) . ", '{$now}', '{$now}', 1)"
-			);
+			foreach ( $new as $site ) {
+				$db->query(
+					'INSERT IGNORE INTO ' . Connection::identifier( (string) ( $target['table_prefix'] ?? 'wp_' ) . 'blogs' ) . ' (`blog_id`, `site_id`, `domain`, `path`, `registered`, `last_updated`, `public`) VALUES ('
+					. (int) $site['blog_id'] . ', ' . max( 1, (int) ( $target['network']['id'] ?? 1 ) ) . ', ' . $db->quote( (string) $site['domain'] ) . ', ' . $db->quote( (string) $site['path'] ) . ", '{$now}', '{$now}', 1)"
+				);
+			}
 			$restore->set_progress( 'site-row', 'done' );
 			$db->query( 'COMMIT' );
 		} catch ( \Throwable $e ) {
 			$db->query( 'ROLLBACK' );
 			throw $e;
 		}
-		$context->log( sprintf( 'Added site %d at %s%s to the network.', (int) $plan['blog_id'], SubsiteExtract::printable( (string) $plan['domain'] ), SubsiteExtract::printable( (string) $plan['path'] ) ) );
+		foreach ( $new as $site ) {
+			$context->log( sprintf( 'Added site %d at %s%s to the network.', (int) $site['blog_id'], SubsiteExtract::printable( (string) $site['domain'] ), SubsiteExtract::printable( (string) $site['path'] ) ) );
+		}
+	}
+
+	/**
+	 * For each backup user of this batch with a role on a chosen site, or posts, comments or links on it: the index of the first such site.
+	 *
+	 * @param Connection                             $db     Connection.
+	 * @param array<int,array{from:int,blog_id:int}> $sites  Chosen sites.
+	 * @param string                                 $to     Network prefix (the keys have it by now).
+	 * @param int[]                                  $ids    Backup user IDs.
+	 * @param array<string,int>                      $tables Imported tables (flipped).
+	 * @return array<int,int> Backup user ID => index in $sites.
+	 */
+	private static function chosen_roles( Connection $db, array $sites, string $to, array $ids, array $tables ): array {
+		$list  = implode( ', ', array_map( 'intval', $ids ) );
+		$found = array();
+		foreach ( $sites as $index => $site ) {
+			$from  = (int) $site['from'] > 1 ? $to . (int) $site['from'] . '_' : $to;
+			$users = $db->column( 'SELECT DISTINCT `user_id` FROM ' . Connection::identifier( RestoreDatabase::TMP . 'usermeta' ) . " WHERE `user_id` IN ({$list}) AND `meta_key` = " . $db->quote( $from . 'capabilities' ) );
+			foreach ( array(
+				'posts'    => 'post_author',
+				'comments' => 'user_id',
+				'links'    => 'link_owner',
+			) as $name => $column ) {
+				$table = RestoreDatabase::TMP . (int) $site['blog_id'] . '_' . $name;
+				$has   = isset( $tables[ $table ] ) ? $db->column( 'SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ' . $db->quote( $table ) . ' AND COLUMN_NAME = ' . $db->quote( $column ) ) : array( 0 );
+				if ( (int) ( $has[0] ?? 0 ) > 0 ) {
+					$users = array_merge( $users, $db->column( 'SELECT DISTINCT ' . Connection::identifier( $column ) . ' FROM ' . Connection::identifier( $table ) . ' WHERE ' . Connection::identifier( $column ) . " IN ({$list})" ) );
+				}
+			}
+			foreach ( $users as $user ) {
+				$found += array( (int) $user => $index );
+			}
+		}
+		return $found;
 	}
 
 	/**

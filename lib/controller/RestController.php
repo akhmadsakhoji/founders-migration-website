@@ -209,7 +209,7 @@ final class RestController {
 				new WpressDecoder( null, $package->compression() );
 				$data    = $package->data();
 				$present = WpressNetwork::present( $backup['path'] );
-				$network = $present && ! $package->encrypted() && ! is_multisite() ? WpressNetwork::read( $backup['path'], null, $package->compression() ) : null;
+				$network = $present && ! $package->encrypted() ? WpressNetwork::read( $backup['path'], null, $package->compression() ) : null;
 				return new WP_REST_Response(
 					array(
 						'name'      => $backup['name'],
@@ -220,7 +220,8 @@ final class RestController {
 						'encrypted' => $package->encrypted(),
 						'size'      => $backup['size'],
 						'network'   => $present,
-						'sites'     => null !== $network ? self::network_sites( $network->site( $package ) ) : array(),
+						'sites'     => null !== $network && ( ! is_multisite() || ! $network->is_network() ) ? self::network_sites( $network->site( $package ) ) : array(),
+						'picked'    => null !== $network && ! $network->is_network(),
 						'targets'   => self::target_sites(),
 					)
 				);
@@ -262,15 +263,16 @@ final class RestController {
 	}
 
 	/**
-	 * Refuses a .wpress network backup that cannot go here, before a job exists: picked sites onto
-	 * a network, or an unknown or missing site on a single site. Null when it can go (or cannot be read yet).
+	 * Refuses a .wpress network backup whose --site choice cannot work here, before a job exists: on a
+	 * network, the sites picked sites become; on a single site, the site restored. Null when it can go (or cannot be read yet).
 	 *
-	 * @param string $path     Archive.
-	 * @param string $password Password of an encrypted archive.
-	 * @param string $choice   The --site choice.
+	 * @param string              $path     Archive.
+	 * @param string              $password Password of an encrypted archive.
+	 * @param string              $choice   The --site choice.
+	 * @param array<string,mixed> $target   Restore target.
 	 * @return WP_Error|null
 	 */
-	private static function check_wpress_network( string $path, string $password, string $choice ): ?WP_Error {
+	private static function check_wpress_network( string $path, string $password, string $choice, array $target ): ?WP_Error {
 		try {
 			$package = WpressPackage::read( $path );
 			$key     = $package->encrypted() && '' !== $password ? $package->key_for( $password ) : null;
@@ -282,8 +284,7 @@ final class RestController {
 				return null;
 			}
 			if ( is_multisite() && ! $network->is_network() ) {
-				/* translators: %d: number of sites. */
-				return new WP_Error( 'fmw_invalid_backup', sprintf( __( 'This backup holds %d site(s) picked one by one from a network; restoring them onto a network arrives in the next update. On a single site, one of them can be restored.', 'founders-migration-website' ), $network->count() ), array( 'status' => 400 ) );
+				SubsiteImport::picked_choices( $network->site( $package ), $target, $choice );
 			}
 			if ( ! is_multisite() ) {
 				$network->extract( $package, $choice );
@@ -514,7 +515,7 @@ final class RestController {
 					$single = ! WpressNetwork::present( $backup['path'] );
 				}
 				if ( 'wpress' === $backup['type'] && ! $single ) {
-					$refused = self::check_wpress_network( $backup['path'], (string) $request['password'], $options['subsite'] );
+					$refused = self::check_wpress_network( $backup['path'], (string) $request['password'], $options['subsite'], (array) $options['target'] );
 					if ( null !== $refused ) {
 						return $refused;
 					}
@@ -743,10 +744,15 @@ final class RestController {
 			);
 		}
 		if ( Jobs::is_restore( $job->type ) && is_array( $job->data['import'] ?? null ) ) {
-			$summary['into'] = array(
-				'id'  => (int) $job->data['import']['blog_id'],
-				'url' => esc_url_raw( (string) ( $job->options['target']['home_url'] ?? '' ) ),
-			);
+			$sites = array();
+			foreach ( SubsiteImport::sites( $job->data['import'] ) as $site ) {
+				$sites[] = array(
+					'id'  => (int) $site['blog_id'],
+					'url' => esc_url_raw( empty( $job->data['import']['picked'] ) ? (string) ( $job->options['target']['home_url'] ?? '' ) : SubsiteImport::address( $site, (array) ( $job->data['network_target'] ?? $job->options['target'] ) )['home_url'] ),
+				);
+			}
+			$summary['into']  = $sites[0];
+			$summary['intos'] = $sites;
 		}
 		if ( Jobs::is_restore( $job->type ) ) {
 			$summary['archive'] = basename( (string) ( $job->options['archive'] ?? '' ) );

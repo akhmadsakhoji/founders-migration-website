@@ -73,8 +73,8 @@ final class SwapStep implements Step {
 			$imported = $restore->imported_tables();
 			if ( null !== $import ) {
 				SubsiteImport::check_site( $restore, $import, $network );
-				// Merged into the network's users, never switched in.
-				$imported = array_values( array_diff( $imported, array( RestoreDatabase::TMP . 'users', RestoreDatabase::TMP . 'usermeta' ) ) );
+				// Merged into the network's users, never switched in (nor the backup network's blogs table).
+				$imported = array_values( array_diff( $imported, array( RestoreDatabase::TMP . 'users', RestoreDatabase::TMP . 'usermeta', RestoreDatabase::TMP . 'blogs' ) ) );
 			}
 			if ( $imported ) {
 				$live    = array_flip( $restore->tables( $to ) );
@@ -130,7 +130,11 @@ final class SwapStep implements Step {
 						$replaced[] = $to . substr( $table, strlen( RestoreDatabase::TMP ) );
 					}
 					// The site's tables that the backup does not have (an overwritten site's plugin tables) go aside too.
-					foreach ( SubsiteImport::leftovers( array_keys( $live ), $replaced, $to, (int) $job->data['import']['blog_id'] ) as $table ) {
+					$aside = array();
+					foreach ( SubsiteImport::sites( $job->data['import'] ) as $into ) {
+						$aside = array_merge( $aside, SubsiteImport::leftovers( array_keys( $live ), $replaced, $to, (int) $into['blog_id'] ) );
+					}
+					foreach ( $aside as $table ) {
 						$base = substr( $table, strlen( $to ) );
 						if ( strlen( RestoreDatabase::OLD . $base ) > 64 ) {
 							throw new JobException( sprintf( 'Table name for %s would be longer than 64 characters.', $base ) );
@@ -162,7 +166,7 @@ final class SwapStep implements Step {
 				if ( ! $imported && function_exists( 'wp_cache_flush' ) ) {
 					wp_cache_flush(); // Resumed after the switch: the flush above did not run.
 				}
-				if ( ! empty( $import['new'] ) && function_exists( 'wp_update_network_site_counts' ) ) {
+				if ( array_filter( array_column( SubsiteImport::sites( $import ), 'new' ) ) && function_exists( 'wp_update_network_site_counts' ) ) {
 					wp_update_network_site_counts();
 				}
 			}
@@ -193,10 +197,12 @@ final class SwapStep implements Step {
 		if ( ! empty( $job->data['subsite'] ) ) {
 			$this->keep_plugin_active( $job, $db, $to );
 		} elseif ( ! empty( $job->data['import'] ) ) {
-			// The site's rewrite rules name its old address: WordPress builds them again on the next visit.
-			$options = $to . (int) $job->data['import']['blog_id'] . '_options';
-			if ( $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $options, '\\%_' ) ) ) ) {
-				$db->query( 'DELETE FROM ' . Connection::identifier( $options ) . " WHERE `option_name` = 'rewrite_rules'" );
+			// The sites' rewrite rules name their old address: WordPress builds them again on the next visit.
+			foreach ( SubsiteImport::sites( $job->data['import'] ) as $into ) {
+				$options = $to . (int) $into['blog_id'] . '_options';
+				if ( $db->column( 'SHOW TABLES LIKE ' . $db->quote( addcslashes( $options, '\\%_' ) ) ) ) {
+					$db->query( 'DELETE FROM ' . Connection::identifier( $options ) . " WHERE `option_name` = 'rewrite_rules'" );
+				}
 			}
 		}
 		if ( ! empty( $job->options['keep_active_network'] ) ) {

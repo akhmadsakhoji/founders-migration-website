@@ -105,6 +105,15 @@ final class WpressDatabaseStep implements Step {
 			SubsiteExtract::unpick( $restore );
 			$job->data['subsite']['network_sites'] = SubsiteExtract::note_sites( $restore );
 		}
+		if ( ! empty( $job->data['import']['picked'] ) ) {
+			SubsiteExtract::unpick( $restore );
+			// The backup's network, for the links to its other sites; dropped by ReplaceStep, never switched in.
+			$noted = SubsiteExtract::note_sites( $restore );
+			if ( $noted ) {
+				$job->data['import']['network_sites'] = $noted;
+				$job->data['import']['source_ids']    = array_values( array_unique( array_merge( (array) $job->data['import']['source_ids'], array_column( $noted, 'blog_id' ) ) ) );
+			}
+		}
 		$this->unmask( $restore, (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ) );
 		if ( is_array( $job->data['activate'] ?? null ) ) {
 			$https = 'https' === strtolower( (string) parse_url( (string) ( $job->options['target']['home_url'] ?? '' ), PHP_URL_SCHEME ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Runs outside WordPress in tests.
@@ -122,6 +131,12 @@ final class WpressDatabaseStep implements Step {
 	 * @return callable|null
 	 */
 	private static function rename( Job $job ): ?callable {
+		if ( ! empty( $job->data['import']['picked'] ) ) {
+			$sites = (array) $job->data['import']['sites'];
+			return static function ( string $table ) use ( $sites ): ?string {
+				return SubsiteImport::picked_table( $table, $sites );
+			};
+		}
 		$import = is_array( $job->data['import'] ?? null ) ? (int) $job->data['import']['blog_id'] : 0;
 		if ( $import > 0 ) {
 			return static function ( string $table ) use ( $import ): ?string {

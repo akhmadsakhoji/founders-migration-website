@@ -346,7 +346,7 @@ final class Command {
 	 * : Multisite: new domains for subsites with their own domain, as old=new pairs separated by commas. Other subsites follow the network.
 	 *
 	 * [--site=<site>]
-	 * : On a single site: the site of a network backup (.fmw, or .wpress of a whole network or of sites picked one by one) to restore, by its ID or address (2, shop.example.com, example.com/shop); not needed for a .wpress of one picked site. On a network: the site a single-site backup becomes, new (shop, shop.example.com, example.com/shop) or existing (its ID or address).
+	 * : On a single site: the site of a network backup (.fmw, or .wpress of a whole network or of sites picked one by one) to restore, by its ID or address (2, shop.example.com, example.com/shop); not needed for a .wpress of one picked site. On a network, for a .wpress of sites picked one by one: the site each becomes, as old=new pairs separated by commas (2=shop,3=4; sites left out stay in the backup), or just the new site when it holds one. On a network, for a single-site backup: the site a single-site backup becomes, new (shop, shop.example.com, example.com/shop) or existing (its ID or address).
 	 *
 	 * [--skip-space-check]
 	 * : Start even if the free disk space looks too small.
@@ -363,6 +363,7 @@ final class Command {
 	 *     wp fmw restore network.fmw --site=example.com/shop   # on a single site
 	 *     wp fmw restore site.wpress --site=shop               # on a network: a new site
 	 *     wp fmw restore network.wpress --site=2               # on a single site: site 2 of a .wpress network backup
+	 *     wp fmw restore picked.wpress --site=2=shop,3=4       # on a network: picked site 2 becomes a new site, 3 replaces site 4
 	 *
 	 * @param string[]             $args       Positional arguments.
 	 * @param array<string,string> $assoc_args Flags.
@@ -462,6 +463,34 @@ final class Command {
 		);
 		WP_CLI::log( 'Themes and plugins in the backup join the network\'s; its mu-plugins and drop-ins are left out.' );
 		return $address;
+	}
+
+	/**
+	 * Shows which site of this network each chosen site of a backup of picked sites becomes; stops when the choice is not usable.
+	 *
+	 * @param array<string,mixed> $source  The backup's network (WpressNetwork::site()).
+	 * @param array<string,mixed> $options Restore job options.
+	 * @return string The sites' addresses, for the confirmation.
+	 */
+	private function picked_into_network( array $source, array $options ): string {
+		try {
+			$sites = SubsiteImport::picked_choices( $source, (array) $options['target'], $options['subsite'] );
+		} catch ( JobException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return '';
+		}
+		$addresses = array();
+		foreach ( $sites as $site ) {
+			$address     = SubsiteExtract::printable( $site['domain'] . $site['path'] );
+			$addresses[] = $address;
+			WP_CLI::log(
+				$site['new']
+					? sprintf( 'Site %d of the backup becomes a new site of this network at %s.', $site['from'], $address )
+					: sprintf( 'Site %d of the backup replaces site %d (%s) of this network.', $site['from'], $site['blog_id'], $address )
+			);
+		}
+		WP_CLI::log( 'Their users join the network: people with an account here (same login or e-mail) keep their password and profile and get their role on these sites. Themes and plugins in the backup join the network\'s; mu-plugins and drop-ins are left out.' );
+		return implode( ', ', $addresses );
 	}
 
 	/**
@@ -623,11 +652,11 @@ final class Command {
 			}
 			WP_CLI::log( sprintf( 'Site %d (%s) of the network becomes this site, %s. Other sites and their media stay in the backup; users without a role, posts or comments on it are left out (super admins become administrators).', $chosen['blog_id'], SubsiteExtract::printable( $chosen['domain'] . $chosen['path'] ), home_url() ) );
 		} elseif ( null !== $network && ! $network->is_network() ) {
-			WP_CLI::error( sprintf( 'This backup holds %d site(s) picked one by one from a network; restoring them onto a network arrives in the next update. On a single site, one of them can be restored.', $network->count() ) );
+			$into = $this->picked_into_network( $network->site( $package ), $options );
 		} elseif ( null !== $network && '' !== $options['subsite'] ) {
 			WP_CLI::error( 'This is a backup of a whole network: on a network it restores as a whole, without --site.' );
 		}
-		if ( null !== $network && is_multisite() ) {
+		if ( null !== $network && is_multisite() && $network->is_network() ) {
 			$this->network_preview( $network->site( $package ), $options );
 		} elseif ( ! empty( $options['domain_map'] ) ) {
 			WP_CLI::error( '--map is for restoring a multisite network onto a network.' );
