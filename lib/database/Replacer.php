@@ -22,8 +22,16 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * (double serialization) are handled recursively. Custom-serialized objects
  * (C:) are opaque and left as they are.
  *
- * Replacement is a single pass with strtr(): text produced by one pair is
- * never matched again, so "example.com" -> "example.com/staging" is safe.
+ * Replacement is a single pass, like strtr(): leftmost and longest match
+ * first, and text produced by one pair is never matched again, so
+ * "example.com" -> "example.com/staging" is safe.
+ *
+ * Addresses and paths match whole: a search string that ends in a letter or
+ * digit only matches when the next character cannot continue it (not a
+ * letter, digit, "_", "-", a byte of a multibyte character, or "." followed
+ * by one of those). So example.com/shop leaves example.com/shopping and
+ * example.com.au alone. Plain pairs (find / replace chosen by people) match
+ * anywhere.
  */
 final class Replacer {
 
@@ -35,13 +43,26 @@ final class Replacer {
 	private $pairs;
 
 	/**
+	 * Search strings that must match whole.
+	 *
+	 * @var array<string,true>
+	 */
+	private $bounded = array();
+
+	/**
 	 * Constructor.
 	 *
-	 * @param array<string,string> $pairs Search => replace. Empty searches are ignored.
+	 * @param array<string,string> $pairs Search => replace for addresses and paths: they match whole. Empty searches are ignored.
+	 * @param array<string,string> $plain Search => replace that match anywhere (the first of two same searches wins).
 	 */
-	public function __construct( array $pairs ) {
-		unset( $pairs[''] );
-		$this->pairs = $pairs;
+	public function __construct( array $pairs, array $plain = array() ) {
+		unset( $pairs[''], $plain[''] );
+		foreach ( $pairs as $search => $replace ) {
+			if ( 1 === preg_match( '/[A-Za-z0-9]$/D', (string) $search ) ) {
+				$this->bounded[ (string) $search ] = true;
+			}
+		}
+		$this->pairs = $pairs + $plain;
 	}
 
 	/**
@@ -79,7 +100,84 @@ final class Replacer {
 				return $result;
 			}
 		}
-		return strtr( $value, $this->pairs );
+		return $this->swap( $value );
+	}
+
+	/**
+	 * One replacement pass over plain text: leftmost, longest match first, whole matches for bounded searches.
+	 *
+	 * @param string $value Text.
+	 * @return string
+	 */
+	private function swap( string $value ): string {
+		if ( ! $this->bounded ) {
+			return strtr( $value, $this->pairs );
+		}
+		$hits = array();
+		foreach ( $this->pairs as $search => $replace ) {
+			$search = (string) $search;
+			$at     = strpos( $value, $search );
+			while ( false !== $at ) {
+				$hits[ $at ][] = $search;
+				$at            = strpos( $value, $search, $at + 1 );
+			}
+		}
+		if ( ! $hits ) {
+			return $value;
+		}
+		ksort( $hits );
+		$out    = '';
+		$cursor = 0;
+		foreach ( $hits as $at => $searches ) {
+			if ( $at < $cursor ) {
+				continue; // Inside text already replaced.
+			}
+			usort(
+				$searches,
+				static function ( string $a, string $b ): int {
+					return strlen( $b ) - strlen( $a );
+				}
+			);
+			foreach ( $searches as $search ) {
+				$end = $at + strlen( $search );
+				if ( isset( $this->bounded[ $search ] ) && ! self::ends_here( $value, $end ) ) {
+					continue;
+				}
+				$out   .= substr( $value, $cursor, $at - $cursor ) . $this->pairs[ $search ];
+				$cursor = $end;
+				break;
+			}
+		}
+		return $out . substr( $value, $cursor );
+	}
+
+	/**
+	 * Whether an address or path can end before position $at (nothing continues it).
+	 *
+	 * @param string $value Text.
+	 * @param int    $at    Position after the match.
+	 * @return bool
+	 */
+	private static function ends_here( string $value, int $at ): bool {
+		if ( ! isset( $value[ $at ] ) ) {
+			return true;
+		}
+		$next = $value[ $at ];
+		if ( self::word_byte( $next ) ) {
+			return false;
+		}
+		return ! ( '.' === $next && isset( $value[ $at + 1 ] ) && self::word_byte( $value[ $at + 1 ] ) );
+	}
+
+	/**
+	 * Whether a byte continues a host name, path segment or word.
+	 *
+	 * @param string $byte Byte.
+	 * @return bool
+	 */
+	private static function word_byte( string $byte ): bool {
+		$code = ord( $byte );
+		return ( $code >= 48 && $code <= 57 ) || ( $code >= 65 && $code <= 90 ) || ( $code >= 97 && $code <= 122 ) || 95 === $code || 45 === $code || $code >= 128;
 	}
 
 	/**

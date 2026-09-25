@@ -105,4 +105,20 @@ final class ReplacerTest extends TestCase {
 		$pairs = Replacer::site_pairs( array( 'https://example.com' => 'https://new.test', 'https://example.com/wp-content/uploads' => 'https://cdn.example.net/uploads' ), array(), true ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
 		$this->assertSame( '@new.test', $pairs['@example.com'] );
 	}
+
+	public function test_addresses_and_paths_match_whole(): void {
+		$r = new Replacer(
+			Replacer::site_pairs( array( 'https://example.com/shop' => 'https://shop.test' ), array( '/srv/old' => '/srv/new' ), true ),
+			array( 'Brand' => 'Label' )
+		);
+		$this->assertSame(
+			'https://shop.test/cart https://example.com/shopping https://shop.test "https://shop.test" https://example.com/shop-2 /srv/new/x /srv/old_bak Label Labels',
+			$r->replace( 'https://example.com/shop/cart https://example.com/shopping https://example.com/shop "https://example.com/shop" https://example.com/shop-2 /srv/old/x /srv/old_bak Brand Brands' )
+		);
+		// A shorter address still matches where a longer one does not end.
+		$r = new Replacer( Replacer::site_pairs( array( 'https://example.com' => 'https://new.test', 'https://example.com/shop' => 'https://shop.test' ), array(), true ) );
+		$this->assertSame( 'https://new.test/shopping https://shop.test/x https://example.com.au https://new.test. Done', $r->replace( 'https://example.com/shopping https://example.com/shop/x https://example.com.au https://example.com. Done' ) );
+		$this->assertSame( 's:25:"https://new.test/shopping";', $r->replace( 's:28:"https://example.com/shopping";' ) );
+		$this->assertSame( 'mail@new.test and mail@example.com.au', $r->replace( 'mail@example.com and mail@example.com.au' ) );
+	}
 }

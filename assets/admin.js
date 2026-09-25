@@ -392,6 +392,17 @@
 			if ( info.encrypted ) {
 				body.push( el( 'p', {}, [ el( 'label', {}, [ t.password, el( 'br' ), password ] ) ] ) );
 			}
+			var site = null; // One site of a network backup, restored onto this single site.
+			if ( ! config.multisite && info.sites && info.sites.length ) {
+				site = el( 'select', { required: 'required' }, [ el( 'option', { value: '', text: t.restoreSiteChoose } ) ].concat( info.sites.map( function ( blog ) {
+					return el( 'option', { value: String( blog.id ), text: blog.id + ' · ' + blog.address } );
+				} ) ) );
+				body.push( el( 'div', { class: 'notice inline notice-info' }, [ el( 'p', { text: t.restoreSiteNote } ) ] ) );
+				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSite, el( 'br' ), site ] ) ] ) );
+			} else if ( ! config.multisite && info.encrypted && 'fmw' === info.format ) {
+				site = el( 'input', { type: 'text', class: 'regular-text code', spellcheck: 'false' } );
+				body.push( el( 'p', {}, [ el( 'label', {}, [ t.restoreSiteOptional, el( 'br' ), site ] ) ] ) );
+			}
 			body.push( el( 'p', {}, [ el( 'label', {}, [ keepOld, ' ', t.keepOld ] ) ] ) );
 			body.push( el( 'p', {}, [ el( 'label', {}, [ noEmail, ' ', t.noEmailReplace ] ) ] ) );
 			body.push( error );
@@ -406,6 +417,15 @@
 				}
 				if ( noEmail.checked ) {
 					flags[ 'exclude-email-replace' ] = true;
+				}
+				if ( site && 'SELECT' === site.tagName && ! site.value ) {
+					go.disabled       = false;
+					error.textContent = t.restoreSiteChoose;
+					site.focus();
+					return;
+				}
+				if ( site && site.value.trim() ) {
+					flags.site = site.value.trim();
 				}
 				api( '/jobs', { method: 'POST', body: { type: 'restore', backup: info.name, password: password.value, flags: flags } } ).then( function ( created ) {
 					return runJob( created, created.token, t.restore );

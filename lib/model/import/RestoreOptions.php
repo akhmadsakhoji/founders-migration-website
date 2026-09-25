@@ -63,6 +63,7 @@ final class RestoreOptions {
 				'network'        => is_multisite() ? BackupOptions::network() : null,
 			),
 			'domain_map'          => NetworkMove::parse_map( is_string( $flags['map'] ?? null ) ? $flags['map'] : '' ),
+			'subsite'             => is_scalar( $flags['site'] ?? null ) && ! is_bool( $flags['site'] ) ? substr( trim( (string) $flags['site'], " \n\r\t\v\0" ), 0, 300 ) : '',
 			'protect_paths'       => $protect,
 			'email_replace'       => empty( $flags['exclude-email-replace'] ),
 			'keep_old_tables'     => ! empty( $flags['keep-old-tables'] ),

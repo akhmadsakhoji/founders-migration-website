@@ -90,8 +90,19 @@ final class PartsStep implements Step {
 		$job->bytes_total = $total;
 		$count            = count( $parts );
 
+		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
 		while ( $cursor['p'] < $count && $context->should_continue() ) {
-			$part      = $parts[ $cursor['p'] ];
+			$part = $parts[ $cursor['p'] ];
+			if ( null !== $subsite && 'database' === $part['type'] && ! self::subsite_table( $job, $subsite, (string) ( $part['table'] ?? '' ) ) ) {
+				// Another site's table (or the network's views): it stays in the backup.
+				$cursor = array(
+					'p'       => $cursor['p'] + 1,
+					'phase'   => 'copy',
+					'copied'  => 0,
+					'entries' => 0,
+				);
+				continue;
+			}
 			$staged    = $context->dir() . '/' . self::STAGING . '/' . $part['path'];
 			$encrypted = ! empty( $job->data['encrypted'] );
 			$relative  = self::STAGING . '/' . ( $encrypted ? (string) preg_replace( '/\.enc$/', '', $part['path'] ) : $part['path'] );
@@ -330,6 +341,9 @@ final class PartsStep implements Step {
 			(array) ( $job->options['protect_paths'] ?? array() )
 		);
 
+		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
+		$uploads = (string) ( $subsite['uploads'] ?? 'uploads' );
+
 		$reader    = TarReader::open( $staged );
 		$extractor = new Extractor( $root );
 		try {
@@ -347,6 +361,14 @@ final class PartsStep implements Step {
 				++$cursor['entries'];
 
 				$relative = PathGuard::relative( $entry->name ); // Unsafe names fail the restore.
+				if ( null !== $subsite ) {
+					$mapped = SubsiteExtract::file( $relative, $uploads, (int) $subsite['blog_id'], (int) ( $subsite['main_site'] ?? 1 ) );
+					if ( null === $mapped ) {
+						continue; // Another site's media.
+					}
+					$relative    = $mapped;
+					$entry->name = $mapped;
+				}
 				foreach ( $protected as $path ) {
 					if ( '' !== $path && ( $relative === $path || 0 === strpos( $relative, $path . '/' ) ) ) {
 						continue 2;
@@ -385,7 +407,30 @@ final class PartsStep implements Step {
 		if ( null === $this->restore ) {
 			$this->restore = new RestoreDatabase();
 		}
-		$guard = new SqlGuard( (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ), RestoreDatabase::TMP );
+		$prefix  = (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' );
+		$subsite = is_array( $job->data['subsite'] ?? null ) ? $job->data['subsite'] : null;
+		$guard   = new SqlGuard(
+			$prefix,
+			RestoreDatabase::TMP,
+			null !== $subsite ? static function ( string $table ) use ( $prefix, $subsite ): ?string {
+				return SubsiteExtract::table( $table, $prefix, (int) $subsite['blog_id'], array_map( 'intval', (array) $subsite['site_ids'] ) );
+			} : null
+		);
 		return ( new SqlImporter( $this->restore ) )->import( 'sql:' . $part['path'], $staged, $guard, $context );
+	}
+
+	/**
+	 * Whether a database part is restored when one site of a network becomes a single site.
+	 *
+	 * @param Job                 $job     Job.
+	 * @param array<string,mixed> $subsite Chosen site.
+	 * @param string              $table   The part's table ("views" and "triggers" for objects).
+	 * @return bool
+	 */
+	private static function subsite_table( Job $job, array $subsite, string $table ): bool {
+		if ( in_array( $table, array( 'views', 'triggers' ), true ) ) {
+			return false; // A network's views and triggers name several sites' tables.
+		}
+		return '' === $table || null !== SubsiteExtract::table( $table, (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ), (int) $subsite['blog_id'], array_map( 'intval', (array) $subsite['site_ids'] ) );
 	}
 }

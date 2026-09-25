@@ -246,8 +246,30 @@ final class RestController {
 				'created'   => isset( $manifest['created_at'] ) ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) strtotime( (string) $manifest['created_at'] ) ) : '',
 				'encrypted' => ! empty( $manifest['options']['encrypted'] ),
 				'size'      => $backup['size'],
+				'sites'     => self::network_sites( (array) ( $manifest['site'] ?? array() ) ),
 			)
 		);
+	}
+
+	/**
+	 * The sites of a network backup (ID and address), for choosing one on a single site; empty otherwise.
+	 *
+	 * @param array<string,mixed> $site Manifest site.
+	 * @return array<int,array{id:int,address:string}>
+	 */
+	private static function network_sites( array $site ): array {
+		$sites = array();
+		if ( ! empty( $site['multisite'] ) ) {
+			foreach ( array_slice( (array) ( $site['sites'] ?? array() ), 0, 2000 ) as $blog ) {
+				if ( is_array( $blog ) && (int) ( $blog['blog_id'] ?? 0 ) > 0 ) {
+					$sites[] = array(
+						'id'      => (int) $blog['blog_id'],
+						'address' => sanitize_text_field( (string) ( $blog['domain'] ?? '' ) . (string) ( $blog['path'] ?? '' ) ),
+					);
+				}
+			}
+		}
+		return $sites;
 	}
 
 	/**
