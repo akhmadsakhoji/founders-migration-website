@@ -80,7 +80,7 @@ wp fmw restore <file> --keep-old-tables
 wp fmw cleanup --tables                # drop fmwold_* / leftover fmwtmp_* tables
 ```
 
-Multisite networks restore onto a network of the same kind (subdomains or subdirectories), at the same or another address. The main site and every subsite under the network's address move with it, and the `blogs` and `site` tables follow:
+Multisite networks (`.fmw`, or `.wpress` from the All-in-One WP Migration Multisite Extension) restore onto a network of the same kind (subdomains or subdirectories), at the same or another address. The main site and every subsite under the network's address move with it, and the `blogs` and `site` tables follow:
 
 ```bash
 wp fmw restore network.fmw             # shows where each site goes before asking
@@ -103,7 +103,7 @@ wp fmw verify site.wpress              # headers + CRC-32 (archives from recent 
 wp fmw restore site.wpress --password=<password>   # password only for encrypted backups; asked for when omitted
 ```
 
-Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. Multisite `.wpress` backups arrive in phase 3.
+Plain, encrypted (AES-256) and gzip / bzip2 compressed `.wpress` files from both older (7.85) and current (7.111) versions of All-in-One WP Migration are supported; the format is described in [docs/wpress.md](docs/wpress.md). The order is chosen so a bad backup fails early: headers and checksum first, then the database into temporary tables, and only then the files. The plugins and theme the backup had active are switched on again, as All-in-One WP Migration does. Whole-network backups from its Multisite Extension restore onto a network like FMW's own network backups (below); backups of sites picked one by one from a network arrive later in phase 3.
 
 How a restore protects the site:
 
@@ -121,7 +121,7 @@ Commands and flags mirror `wp ai1wm`. Add `alias fmw='wp fmw'` to `~/.bashrc` to
 | `wp fmw delete <file>` | — | now |
 | `wp fmw status` | — | now |
 | `wp fmw backup` | `wp ai1wm backup` | now |
-| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`; networks from `.fmw`) |
+| `wp fmw restore <file>` | `wp ai1wm restore <file>` | now (`.fmw` and `.wpress`, sites and whole networks) |
 | `wp fmw jobs` | — | now |
 | `wp fmw resume <job_id>` | — | now |
 | `wp fmw cancel <job_id>` | — | now |
@@ -271,7 +271,7 @@ PHP globals use the `fmwp_` / `FMWP_` prefix (WordPress.org requires prefixes of
 | 1 — CLI MVP | Job engine, database dump and restore, serialized-safe search-replace, `backup`, `restore`, `resume`, `verify`, `inspect` |
 | 2 — UI and compatibility | ai1wm-style screens, resumable uploads, `.wpress` import, encryption, `reset`, schedules, S3-compatible storage and Google Drive (done) |
 | 2b — FMW Tools | Standalone app to inspect, verify, decrypt and extract `.fmw` files without PHP ([done](https://github.com/akhmadsakhoji/fmw-tools)) |
-| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain and network pulls (done), `.wpress` networks, subsite ↔ single site, reset for networks |
+| 3 — Pull and multisite | Server-to-server migration (CLI and admin screen done), networks to another domain, network pulls and `.wpress` networks (done), subsite ↔ single site and picked sites, reset for networks |
 | 4 — Public release | WordPress.org, documentation site, translations |
 
 ## Contributing and security

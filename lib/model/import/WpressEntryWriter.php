@@ -32,10 +32,11 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  * far ("crc", combined across slices), plus whether the entry is stored as
  * is ("raw").
  *
- * Which entries are stored as is: the top-level package.json and
- * multisite.json always. Older All-in-One WP Migration versions also skipped
- * encryption for every file named package.json; such a file is recognised
- * by being valid JSON, which encrypted or compressed data never is.
+ * Which entries are stored as is: the top-level package.json always.
+ * Older All-in-One WP Migration versions also skipped encryption for every
+ * file named package.json; such a file is recognised by being valid JSON,
+ * which encrypted or compressed data never is. multisite.json is encrypted
+ * and compressed like other files.
  */
 final class WpressEntryWriter {
 
@@ -165,7 +166,7 @@ final class WpressEntryWriter {
 	 * @return bool
 	 */
 	private function stored_as_is( WpressReader $reader, WpressEntry $entry ): bool {
-		if ( in_array( $entry->name, array( 'package.json', 'multisite.json' ), true ) || ! $this->decoder->transforms() ) {
+		if ( 'package.json' === $entry->name || ! $this->decoder->transforms() ) {
 			return true;
 		}
 		if ( 'package.json' !== basename( $entry->name ) || 0 === $entry->size || $entry->size > 16777216 ) {

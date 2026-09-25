@@ -50,7 +50,7 @@ final class NetworkMove {
 	 * The source network: from the manifest, or worked out from its list of sites (backups made before 0.1.0).
 	 *
 	 * @param array<string,mixed> $site Manifest site.
-	 * @return array{domain:string,path:string,subdomain:bool,main_site:int,networks:int}
+	 * @return array{domain:string,path:string,subdomain:bool|null,main_site:int,networks:int} subdomain is null when unknown.
 	 */
 	public static function source( array $site ): array {
 		$network = $site['network'] ?? null;
@@ -58,7 +58,7 @@ final class NetworkMove {
 			return array(
 				'domain'    => strtolower( (string) $network['domain'] ),
 				'path'      => self::slashed( (string) ( $network['path'] ?? '/' ) ),
-				'subdomain' => ! empty( $network['subdomain'] ),
+				'subdomain' => isset( $network['subdomain'] ) ? (bool) $network['subdomain'] : null,
 				'main_site' => (int) ( $network['main_site'] ?? 1 ),
 				'networks'  => max( 1, (int) ( $network['networks'] ?? 1 ) ),
 			);
@@ -191,7 +191,7 @@ final class NetworkMove {
 		if ( (int) ( $from['main_site'] ?? 1 ) !== (int) ( $to['main_site'] ?? 1 ) ) {
 			return sprintf( 'The source network\'s main site is site %1$d and this network\'s is site %2$d: set BLOG_ID_CURRENT_SITE to %1$d in wp-config.php and try again.', (int) ( $from['main_site'] ?? 1 ), (int) ( $to['main_site'] ?? 1 ) );
 		}
-		if ( $sites > 1 && ! empty( $from['subdomain'] ) !== ! empty( $to['subdomain'] ) ) {
+		if ( $sites > 1 && isset( $from['subdomain'] ) && empty( $from['subdomain'] ) === ! empty( $to['subdomain'] ) ) { // Unknown kind (null): nothing to compare.
 			return sprintf(
 				'The source is a network with %s and this network uses %s. Converting between them is not supported: set SUBDOMAIN_INSTALL to %s in wp-config.php (on a network with only its main site) and try again.',
 				empty( $from['subdomain'] ) ? 'subdirectories' : 'subdomains',

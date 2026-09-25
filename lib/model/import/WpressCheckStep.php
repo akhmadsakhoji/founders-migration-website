@@ -116,7 +116,7 @@ final class WpressCheckStep implements Step {
 	 * @param array<string,mixed> $cursor  Cursor (offset is updated).
 	 * @param Context             $context Context.
 	 * @return bool Whether the end block was reached.
-	 * @throws JobException On an unsafe path or a multisite archive.
+	 * @throws JobException On an unsafe path.
 	 */
 	private function scan( Job $job, string $path, array &$cursor, Context $context ): bool {
 		$info   = (array) ( $job->data['wpress'] ?? array() );
@@ -140,10 +140,10 @@ final class WpressCheckStep implements Step {
 				}
 
 				++$info['entries'];
+				if ( 0 === strpos( $relative, 'blogs.dir/' ) ) {
+					$info['blogs_dir'] = true; // Networks from before WordPress 3.5.
+				}
 				if ( in_array( $relative, self::CONFIG_FILES, true ) ) {
-					if ( 'multisite.json' === $relative ) {
-						throw new JobException( 'This is a multisite network backup; restoring .wpress networks arrives in phase 3.' );
-					}
 					$info[ $relative ] = array(
 						'offset' => $entry->offset,
 						'size'   => $entry->size,
@@ -174,9 +174,6 @@ final class WpressCheckStep implements Step {
 		if ( ! isset( $info['package.json'] ) ) {
 			throw new JobException( 'The archive has no package.json; this is not a complete All-in-One WP Migration backup.' );
 		}
-		if ( ! empty( $target['multisite'] ) ) {
-			throw new JobException( 'Restoring a .wpress backup onto a multisite network arrives in phase 3.' );
-		}
 
 		$package = WpressPackage::read( (string) $job->options['archive'] );
 		$key     = null;
@@ -187,6 +184,8 @@ final class WpressCheckStep implements Step {
 			}
 		}
 		new WpressDecoder( $key ? $key : null, $package->compression() ); // Fails early when a PHP extension is missing.
+		$network = isset( $info['multisite.json'] ) ? WpressNetwork::read( (string) $job->options['archive'], $key ? $key : null, $package->compression(), (int) $info['multisite.json']['offset'] ) : null;
+		self::check_kind( $network, $target, $info, $job );
 
 		$has_db = isset( $info['database.sql'] ) && ! $package->no_database();
 		$db     = $has_db ? (int) $info['database.sql']['size'] : 0;
@@ -211,7 +210,7 @@ final class WpressCheckStep implements Step {
 		$site = (string) ( $package->data()['SiteURL'] ?? $home );
 
 		$job->data['manifest']    = array(
-			'site'    => array(
+			'site'    => null !== $network ? $network->site( $package ) : array(
 				'home_url'     => $home,
 				'site_url'     => $site,
 				'abspath'      => $package->wordpress( 'Absolute' ),
@@ -226,6 +225,8 @@ final class WpressCheckStep implements Step {
 		$job->data['compression'] = $package->compression();
 		$job->data['encrypted']   = $package->encrypted();
 		$job->data['replace']     = self::replace_plan( $package, $target, ! empty( $job->options['email_replace'] ) );
+		$job->data['activate']    = null !== $network ? $network->activation() : WpressNetwork::single_activation( $package );
+		$job->data['network']     = null !== $network ? NetworkMove::plan( $job->data['manifest']['site'], $target, (array) ( $job->options['domain_map'] ?? array() ) ) : null;
 
 		$context->log(
 			sprintf(
@@ -239,6 +240,42 @@ final class WpressCheckStep implements Step {
 				$has_db ? ' and the database' : ', no database'
 			)
 		);
+		if ( null !== $job->data['network'] ) {
+			CheckStep::log_network( $job->data['network'], $context );
+		}
+	}
+
+	/**
+	 * Refuses what cannot be restored here: a network onto a single site
+	 * or the reverse, sites picked one by one, old blogs.dir networks.
+	 *
+	 * @param WpressNetwork|null  $network multisite.json, when there is one.
+	 * @param array<string,mixed> $target  Target site.
+	 * @param array<string,mixed> $info    What the scan found.
+	 * @param Job                 $job     Job.
+	 * @return void
+	 * @throws JobException When the archive does not fit here.
+	 */
+	private static function check_kind( ?WpressNetwork $network, array $target, array $info, Job $job ): void {
+		$here = ! empty( $target['multisite'] );
+		if ( null === $network ) {
+			if ( $here ) {
+				throw new JobException( 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
+			}
+			if ( ! empty( $job->options['domain_map'] ) ) {
+				throw new JobException( '--map is for restoring a multisite network onto a network.' );
+			}
+			return;
+		}
+		if ( ! $network->is_network() ) {
+			throw new JobException( sprintf( 'This backup holds %d site(s) picked one by one from a network (not the whole network); restoring those arrives later in phase 3.', $network->count() ) );
+		}
+		if ( ! $here ) {
+			throw new JobException( 'This is a backup of a whole multisite network; restore it onto a multisite network of the same kind (subdomains or subdirectories).' );
+		}
+		if ( ! empty( $info['blogs_dir'] ) ) {
+			throw new JobException( 'This network stores its media in wp-content/blogs.dir (created before WordPress 3.5); restoring those arrives later.' );
+		}
 	}
 
 	/**

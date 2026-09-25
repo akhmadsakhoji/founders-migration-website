@@ -30,6 +30,7 @@ use Founders\Migration\Model\Export\BackupOptions;
 use Founders\Migration\Model\Import\NetworkMove;
 use Founders\Migration\Model\Import\RestoreDatabase;
 use Founders\Migration\Model\Import\RestoreOptions;
+use Founders\Migration\Model\Import\WpressNetwork;
 use Founders\Migration\Model\Reset\ResetOptions;
 use Founders\Migration\Requirements;
 use Founders\Migration\Storage\Backups;
@@ -312,7 +313,8 @@ final class Command {
 	 * its CRC-32 when it has one) and the database is imported before any file
 	 * is written, so a damaged backup stops while the site is untouched.
 	 *
-	 * A multisite network backup restores onto a multisite network of the same
+	 * A multisite network backup (.fmw, or .wpress from the All-in-One WP
+	 * Migration Multisite Extension) restores onto a multisite network of the same
 	 * kind (subdomains or subdirectories), at any address: the main site and
 	 * every subsite under the network's address move with it
 	 * (shop.old.example -> shop.new.example, old.example/shop/ ->
@@ -466,6 +468,16 @@ final class Command {
 	}
 
 	/**
+	 * A network's kind in words.
+	 *
+	 * @param bool|null $subdomain Subdomain install; null when unknown.
+	 * @return string
+	 */
+	private static function kind( ?bool $subdomain ): string {
+		return null === $subdomain ? 'kind unknown' : ( $subdomain ? 'subdomains' : 'subdirectories' );
+	}
+
+	/**
 	 * The password from --password=<value>, or asked for without echo.
 	 *
 	 * @param array<string,mixed> $assoc_args Flags.
@@ -542,20 +554,37 @@ final class Command {
 		}
 
 		$data = $package->data();
+		try {
+			$network = WpressNetwork::read( $path, $key, $package->compression() );
+			$options = RestoreOptions::build( $path, $assoc_args );
+		} catch ( ArchiveException | \InvalidArgumentException $e ) {
+			WP_CLI::error( $e->getMessage() );
+			return;
+		}
+		if ( null !== $network && ! $network->is_network() ) {
+			WP_CLI::error( sprintf( 'This backup holds %d site(s) picked one by one from a network (not the whole network); restoring those arrives later in phase 3.', $network->count() ) );
+		}
+		if ( ( null !== $network ) !== is_multisite() ) {
+			WP_CLI::error( null !== $network ? 'This is a backup of a whole multisite network; restore it onto a multisite network of the same kind (subdomains or subdirectories).' : 'This is a backup of a single site and this is a multisite network; moving a single site into a network arrives later in phase 3.' );
+		}
+		if ( null !== $network ) {
+			$this->network_preview( $network->site( $package ), $options );
+		} elseif ( ! empty( $options['domain_map'] ) ) {
+			WP_CLI::error( '--map is for restoring a multisite network onto a network.' );
+		}
 		WP_CLI::confirm(
 			sprintf(
-				'Restore %s (All-in-One WP Migration %s backup of %s) onto %s? This replaces this site\'s files and database.',
+				'Restore %s (All-in-One WP Migration %s backup of %s) onto %s? This replaces this %s\'s files and database.',
 				basename( $path ),
 				'' !== $package->plugin_version() ? $package->plugin_version() : '?',
 				(string) ( $data['HomeURL'] ?? '?' ),
-				home_url()
+				home_url(),
+				is_multisite() ? 'network' : 'site'
 			),
 			$assoc_args
 		);
 
 		Paths::ensure_all();
-		unset( $assoc_args['map'] ); // Networks from .wpress backups arrive later.
-		$options = RestoreOptions::build( $path, $assoc_args );
 		if ( null !== $key ) {
 			$options['secret_wpress_key'] = Secrets::seal( $key ); // Removed from the job when it ends.
 		}
@@ -1058,7 +1087,7 @@ final class Command {
 			'PHP'             => (string) ( $site['php_version'] ?? '' ),
 			'Database server' => trim( ( $db['engine'] ?? '' ) . ' ' . ( $db['version'] ?? '' ), ' ' ),
 			'Table prefix'    => (string) ( $site['table_prefix'] ?? '' ),
-			'Multisite'       => ! empty( $site['multisite'] ) ? sprintf( 'yes (%d sites, %s)', count( (array) ( $site['sites'] ?? array() ) ), NetworkMove::source( $site )['subdomain'] ? 'subdomains' : 'subdirectories' ) : 'no',
+			'Multisite'       => ! empty( $site['multisite'] ) ? sprintf( 'yes (%d sites, %s)', count( (array) ( $site['sites'] ?? array() ) ), self::kind( NetworkMove::source( $site )['subdomain'] ) ) : 'no',
 			'Files'           => number_format( (int) ( $totals['files'] ?? 0 ) ),
 			'Tables / rows'   => sprintf( '%d / %s', (int) ( $totals['tables'] ?? 0 ), number_format( (int) ( $totals['rows'] ?? 0 ) ) ),
 			'Parts'           => (string) count( (array) $manifest['parts'] ),
@@ -1175,15 +1204,24 @@ final class Command {
 			}
 		}
 		try {
-			$end = WpressReader::end_block( $path );
+			$end     = WpressReader::end_block( $path );
+			$present = null !== WpressPackage::read_entry( $path, 'multisite.json' );
+			$network = $present && ! $package->encrypted() ? WpressNetwork::read( $path, null, $package->compression() ) : null;
 		} catch ( ArchiveException $e ) {
 			WP_CLI::error( $e->getMessage() );
 			return;
+		}
+		$multisite = $present ? 'network backup (details are encrypted)' : 'no';
+		if ( null !== $network ) {
+			$multisite = $network->is_network()
+				? sprintf( 'whole network (%d sites, %s)', $network->count(), self::kind( $network->site( $package )['network']['subdomain'] ) )
+				: sprintf( '%d site(s) picked from a network', $network->count() );
 		}
 
 		$rows  = array(
 			'Generator'    => 'All-in-One WP Migration ' . $package->plugin_version(),
 			'Site URL'     => (string) ( $data['HomeURL'] ?? '' ),
+			'Multisite'    => $multisite,
 			'WordPress'    => $package->wordpress( 'Version' ),
 			'PHP'          => (string) ( $data['PHP']['Version'] ?? '' ),
 			'Database'     => (string) ( $data['Database']['Version'] ?? '' ),

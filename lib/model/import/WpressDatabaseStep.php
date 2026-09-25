@@ -35,8 +35,10 @@ defined( 'ABSPATH' ) || defined( 'FMWP_TESTS' ) || exit;
  *    SERVMASK_PREFIX_ tables going to fmwtmp_; views are kept for the swap;
  * 3. unmask: All-in-One WP Migration also writes SERVMASK_PREFIX_ instead
  *    of the table prefix at the start of option names and user meta keys
- *    (wp_user_roles, wp_capabilities, ...). They get the source prefix back,
- *    and the replace step moves the prefix-based keys to the target prefix.
+ *    (wp_user_roles, wp_2_user_roles, wp_capabilities, ...). They get the
+ *    source prefix back, and the replace step moves the prefix-based keys
+ *    to the target prefix. Then the plugins and themes the backup had
+ *    active are put back (see WpressActivation).
  */
 final class WpressDatabaseStep implements Step {
 
@@ -100,6 +102,10 @@ final class WpressDatabaseStep implements Step {
 		}
 
 		$this->unmask( $restore, (string) ( $job->data['manifest']['site']['table_prefix'] ?? 'wp_' ) );
+		if ( is_array( $job->data['activate'] ?? null ) ) {
+			$https = 'https' === strtolower( (string) parse_url( (string) ( $job->options['target']['home_url'] ?? '' ), PHP_URL_SCHEME ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Runs outside WordPress in tests.
+			WpressActivation::apply( $restore, $job->data['activate'], $https, $context );
+		}
 		$context->log( sprintf( 'Imported the database into %d temporary tables.', count( $restore->imported_tables() ) ) );
 		$restore->db()->close();
 		return true;
@@ -123,7 +129,7 @@ final class WpressDatabaseStep implements Step {
 		);
 		foreach ( $restore->imported_tables() as $table ) {
 			foreach ( $tables as $name => $column ) {
-				if ( RestoreDatabase::TMP . $name === $table ) {
+				if ( 1 === preg_match( '/^' . RestoreDatabase::TMP . ( 'options' === $name ? '([0-9]+_)?' : '' ) . $name . '$/D', $table ) ) {
 					$db->query( 'UPDATE ' . Connection::identifier( $table ) . ' SET ' . Connection::identifier( $column ) . ' = CONCAT(' . $db->quote( $prefix ) . ', SUBSTRING(' . Connection::identifier( $column ) . ", {$start})) WHERE " . Connection::identifier( $column ) . " LIKE BINARY '{$like}'" );
 				}
 			}

@@ -146,7 +146,9 @@ final class RestoreWpressTest extends TestCase {
 			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (5,'widget_text'," . $q( $text ) . ",'on');\n"
 			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (6,'upload_path','/srv/old/wp-content/uploads','on');\n"
 			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (7,'admin_email','admin@old.example','on');\n"
-			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (8,'active_plugins'," . $q( serialize( array( 'shop/shop.php' ) ) ) . ",'on');\n" // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- Test data.
+			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (8,'active_plugins','a:0:{}','on');\n" // Blanked by the export; package.json lists them.
+			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (10,'template','','on');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (11,'stylesheet','','on');\n"
 			. "INSERT INTO `SERVMASK_PREFIX_options` VALUES (9,'brand','Old Brand Ltd','on');\n"
 			. "COMMIT;\n\n"
 			. "DROP TABLE IF EXISTS `SERVMASK_PREFIX_posts`;\n"
@@ -189,7 +191,9 @@ final class RestoreWpressTest extends TestCase {
 				'UploadsURL' => 'https://old.example/blog/wp-content/uploads/',
 			),
 			'Database'  => array( 'Prefix' => 'wp_' ),
-			'Plugins'   => array( 'shop/shop.php' ),
+			'Plugins'    => array( 'shop/shop.php', 'wps-hide-login/wps-hide-login.php', 'really-simple-ssl/rlrsssl-really-simple-ssl.php' ),
+			'Template'   => 'astra',
+			'Stylesheet' => 'astra-child',
 		);
 		if ( $encrypted ) {
 			$data['Encrypted'] = true;
@@ -312,7 +316,10 @@ final class RestoreWpressTest extends TestCase {
 		$this->assertNotNull( $option( 'shop_user_roles' ) );
 		$this->assertNull( $option( 'SERVMASK_PREFIX_user_roles' ) );
 		$this->assertSame( 'kept', $option( 'wp_custom_setting' ) ); // Original name, not the target prefix.
-		$this->assertContains( self::PLUGIN, (array) unserialize( (string) $option( 'active_plugins' ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test.
+		// The plugins and theme package.json lists are active again; a login hider stays off; HTTPS plugins stay on an https:// site.
+		$this->assertSame( array( 'founders-migration-website/founders-migration-website.php', 'really-simple-ssl/rlrsssl-really-simple-ssl.php', 'shop/shop.php' ), (array) unserialize( (string) $option( 'active_plugins' ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test.
+		$this->assertSame( 'astra', $option( 'template' ) );
+		$this->assertSame( 'astra-child', $option( 'stylesheet' ) );
 
 		$this->assertSame( array( 'shop_capabilities', 'nickname' ), $db->column( 'SELECT meta_key FROM shop_usermeta ORDER BY umeta_id' ) );
 		$post = $db->rows( 'SELECT guid, post_content, HEX(thumb) AS thumb FROM shop_posts WHERE ID = 1' )[0];
@@ -334,6 +341,107 @@ final class RestoreWpressTest extends TestCase {
 		$this->assertSame( '<?php // running FMW', file_get_contents( $content . '/plugins/founders-migration-website/founders-migration-website.php' ) );
 		$this->assertFileDoesNotExist( $content . '/package.json' );
 		$this->assertFileDoesNotExist( $content . '/database.sql' );
+	}
+
+	public function test_a_network_backup_restores_onto_a_network_at_another_address(): void {
+		$q     = static function ( string $value ): string {
+			return "'" . addslashes( $value ) . "'";
+		};
+		$table = static function ( string $name, string $columns ): string {
+			return "CREATE TABLE `SERVMASK_PREFIX_{$name}` ({$columns}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n";
+		};
+		$opts  = '`option_id` bigint unsigned NOT NULL AUTO_INCREMENT, `option_name` varchar(191) NOT NULL, `option_value` longtext NOT NULL, `autoload` varchar(20) NOT NULL DEFAULT \'yes\', PRIMARY KEY (`option_id`), UNIQUE KEY `option_name` (`option_name`)';
+		$sql   = $table( 'options', $opts ) . $table( '2_options', $opts ) . $table( '3_options', $opts )
+			. $table( 'blogs', '`blog_id` bigint NOT NULL AUTO_INCREMENT, `site_id` bigint NOT NULL, `domain` varchar(200) NOT NULL, `path` varchar(100) NOT NULL, PRIMARY KEY (`blog_id`)' )
+			. $table( 'site', '`id` bigint NOT NULL AUTO_INCREMENT, `domain` varchar(200) NOT NULL, `path` varchar(100) NOT NULL, PRIMARY KEY (`id`)' )
+			. $table( 'sitemeta', '`meta_id` bigint NOT NULL AUTO_INCREMENT, `site_id` bigint NOT NULL, `meta_key` varchar(255), `meta_value` longtext, PRIMARY KEY (`meta_id`)' )
+			. $table( 'usermeta', '`umeta_id` bigint unsigned NOT NULL AUTO_INCREMENT, `user_id` bigint unsigned NOT NULL, `meta_key` varchar(255), `meta_value` longtext, PRIMARY KEY (`umeta_id`)' )
+			. "INSERT INTO `SERVMASK_PREFIX_blogs` VALUES (1,1,'old.example','/'),(2,1,'shop.old.example','/'),(3,1,'brand.example','/');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_site` VALUES (1,'old.example','/');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_sitemeta` VALUES (1,1,'siteurl','https://old.example/');\n"
+			. "INSERT INTO `SERVMASK_PREFIX_usermeta` VALUES (1,1,'SERVMASK_PREFIX_capabilities','a:0:{}'),(2,1,'SERVMASK_PREFIX_2_capabilities','a:0:{}');\n";
+		foreach ( array( '' => 'https://old.example', '2_' => 'https://shop.old.example', '3_' => 'https://brand.example' ) as $id => $url ) {
+			$sql .= "INSERT INTO `SERVMASK_PREFIX_{$id}options` (`option_name`, `option_value`) VALUES ('home'," . $q( $url ) . "),('siteurl'," . $q( $url ) . "),('SERVMASK_PREFIX_{$id}user_roles','a:0:{}'),('active_plugins','a:0:{}'),('template',''),('stylesheet',''),('note'," . $q( "See {$url}/deal and mail@old.example" ) . ");\n";
+		}
+		$site      = static function ( int $id, string $domain, string $theme, array $plugins ): array {
+			return array(
+				'BlogID'     => $id,
+				'SiteID'     => 1,
+				'Domain'     => $domain,
+				'Path'       => '/',
+				'SiteURL'    => 'https://' . $domain,
+				'HomeURL'    => 'https://' . $domain,
+				'Plugins'    => $plugins,
+				'Template'   => $theme,
+				'Stylesheet' => $theme,
+			);
+		};
+		$multisite = array(
+			'Network'  => true,
+			'Networks' => array(
+				array(
+					'SiteID' => 1,
+					'Domain' => 'old.example',
+					'Path'   => '/',
+				),
+			),
+			'Sites'    => array( $site( 1, 'old.example', 'astra', array() ), $site( 2, 'shop.old.example', 'storefront', array( 'shop/shop.php' ) ), $site( 3, 'brand.example', 'astra', array() ) ),
+			'Plugins'  => array( 'demo/demo.php' ),
+		);
+		$package   = json_decode( self::package( true, true ), true ); // Encrypted and compressed: multisite.json is too.
+		$package   = array( 'SiteURL' => 'https://old.example', 'HomeURL' => 'https://old.example' ) + $package; // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound -- Test data.
+		$builder   = new WpressBuilder( self::PASSWORD, 'gzip', true );
+		$builder->add( 'package.json', (string) json_encode( $package ) );
+		$builder->add( 'multisite.json', (string) json_encode( $multisite ) );
+		$builder->add( 'uploads/sites/2/2026/09/shop.jpg', 'shop photo' );
+		$builder->add( 'database.sql', $sql );
+		$archive = $builder->save( $this->tmp . '/network.wpress' );
+
+		$options                        = $this->options( $archive, true );
+		$options['target']['home_url']  = 'https://staging.test';
+		$options['target']['site_url']  = 'https://staging.test';
+		$options['target']['uploads_url'] = 'https://staging.test/wp-content/uploads';
+		$options['target']['multisite'] = true;
+		$options['target']['network']   = array(
+			'domain'    => 'staging.test',
+			'path'      => '/',
+			'subdomain' => true,
+			'main_site' => 1,
+			'networks'  => 1,
+		);
+		$job = $this->run_job( $options );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+
+		$db    = $this->connect( self::TARGET );
+		$value = static function ( string $table, string $name ) use ( $db ): string {
+			return (string) ( $db->column( "SELECT option_value FROM {$table} WHERE option_name = " . $db->quote( $name ) )[0] ?? '' );
+		};
+		$this->assertSame( array( '1 staging.test /', '2 shop.staging.test /', '3 brand.example /' ), $db->column( "SELECT CONCAT(blog_id, ' ', domain, ' ', path) FROM shop_blogs ORDER BY blog_id" ) );
+		$this->assertSame( array( 'staging.test /' ), $db->column( "SELECT CONCAT(domain, ' ', path) FROM shop_site" ) );
+		$this->assertSame( 'https://shop.staging.test', $value( 'shop_2_options', 'home' ) );
+		$this->assertSame( 'See https://shop.staging.test/deal and mail@staging.test', $value( 'shop_2_options', 'note' ) );
+		$this->assertSame( 'https://brand.example', $value( 'shop_3_options', 'home' ) ); // Own domain, kept.
+		$this->assertSame( 'storefront', $value( 'shop_2_options', 'template' ) );
+		$this->assertSame( array( 'shop/shop.php' ), unserialize( $value( 'shop_2_options', 'active_plugins' ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test.
+		$this->assertSame( 'astra', $value( 'shop_options', 'template' ) );
+		$this->assertSame( 'a:0:{}', $value( 'shop_2_options', 'shop_2_user_roles' ) );
+		$this->assertSame( array( 'shop_capabilities', 'shop_2_capabilities' ), $db->column( 'SELECT meta_key FROM shop_usermeta ORDER BY umeta_id' ) );
+		$sitewide = unserialize( (string) $db->column( "SELECT meta_value FROM shop_sitemeta WHERE meta_key = 'active_sitewide_plugins'" )[0] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize -- Test.
+		$this->assertSame( array( 'demo/demo.php' ), array_keys( $sitewide ) );
+		$this->assertSame( array( 'https://staging.test/' ), $db->column( "SELECT meta_value FROM shop_sitemeta WHERE meta_key = 'siteurl'" ) );
+		$db->close();
+		$this->assertSame( 'shop photo', file_get_contents( $this->tmp . '/target/wp-content/uploads/sites/2/2026/09/shop.jpg' ) );
+
+		// A network backup onto a single site, and sites picked one by one, are refused before anything changes.
+		$job = $this->run_job( $this->options( $archive, true ) );
+		$this->assertStringContainsString( 'backup of a whole multisite network', (string) $job->error );
+		$multisite['Network'] = false;
+		$builder              = new WpressBuilder( self::PASSWORD, 'gzip', true );
+		$builder->add( 'package.json', (string) json_encode( $package ) );
+		$builder->add( 'multisite.json', (string) json_encode( $multisite ) );
+		$builder->add( 'database.sql', $sql );
+		$job = $this->run_job( $this->options( $builder->save( $this->tmp . '/picked.wpress' ), true ) );
+		$this->assertStringContainsString( 'picked one by one', (string) $job->error );
 	}
 
 	public function test_a_damaged_archive_is_refused_before_anything_changes(): void {
