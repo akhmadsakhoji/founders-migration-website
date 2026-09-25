@@ -386,11 +386,15 @@ final class SubsiteImport {
 							if ( in_array( 'user_nicename', $copy, true ) ) {
 								$user['user_nicename'] = self::free_nicename( $db, $live( 'users' ), (string) ( $user['user_nicename'] ?? '' ), $login );
 							}
+							$names  = array();
 							$values = array();
 							foreach ( $copy as $column ) {
-								$values[] = null === ( $user[ $column ] ?? null ) ? "''" : $db->quote( (string) $user[ $column ] );
+								if ( null !== ( $user[ $column ] ?? null ) ) { // A missing value takes the column's default (strict SQL modes refuse '' for dates).
+									$names[]  = Connection::identifier( $column );
+									$values[] = $db->quote( (string) $user[ $column ] );
+								}
 							}
-							$db->query( 'INSERT INTO ' . $live( 'users' ) . ' (' . implode( ', ', array_map( array( Connection::class, 'identifier' ), $copy ) ) . ') VALUES (' . implode( ', ', $values ) . ')' );
+							$db->query( 'INSERT INTO ' . $live( 'users' ) . ' (' . implode( ', ', $names ) . ') VALUES (' . implode( ', ', $values ) . ')' );
 							$id = (int) $db->mysqli()->insert_id;
 							++$state['added'];
 							// A new user's profile comes along; per-site keys are handled below.

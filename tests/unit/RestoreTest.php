@@ -569,7 +569,11 @@ final class RestoreTest extends TestCase {
 		$db->query( 'UPDATE wp_posts SET post_author = 3 WHERE ID = 4' );
 		$db->query( 'UPDATE wp_posts SET post_author = 9999 WHERE ID = 6' ); // A deleted user.
 		// Enough customers for several batches of the merge.
-		$db->query( "INSERT INTO wp_users (user_login, user_email, user_nicename) SELECT CONCAT('customer', seq), CONCAT('c', seq, '@shop.example'), CONCAT('customer', seq) FROM seq_1_to_450" );
+		$rows = array();
+		for ( $i = 1; $i <= 450; $i++ ) {
+			$rows[] = "('customer{$i}', 'c{$i}@shop.example', 'customer{$i}')";
+		}
+		$db->query( 'INSERT INTO wp_users (user_login, user_email, user_nicename) VALUES ' . implode( ', ', $rows ) ); // Plain SQL: MariaDB and MySQL.
 		$db->close();
 		$this->make_file( 'source/wp-content/mu-plugins/single-only.php', '<?php // stays out' );
 		$this->make_file( 'source/wp-content/object-cache.php', '<?php // stays out' );
