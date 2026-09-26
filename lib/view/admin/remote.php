@@ -113,7 +113,7 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 			</tr>
 			<tr data-fmw-kind="gdrive" hidden>
 				<th scope="row"><label for="fmw-storage-client"><?php esc_html_e( 'Client ID', 'founders-migration-website' ); ?></label></th>
-				<td><input type="text" id="fmw-storage-client" name="client_id" class="large-text" spellcheck="false" placeholder="1234567890-abc.apps.googleusercontent.com" /></td>
+				<td><input type="text" id="fmw-storage-client" name="client_id" class="large-text" spellcheck="false" placeholder="<?php echo esc_attr( '1234567890-abc.apps.googleusercontent.com' ); // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- Placeholder showing the format of a Google OAuth client ID. ?>" /></td>
 			</tr>
 			<tr data-fmw-kind="gdrive" hidden>
 				<th scope="row"><label for="fmw-storage-client-secret"><?php esc_html_e( 'Client secret', 'founders-migration-website' ); ?></label></th>
