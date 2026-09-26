@@ -62,7 +62,7 @@ This adds a line such as `Signed-off-by: Your Name <you@example.com>` to the com
 ## Releases
 
 1. Set the version in `founders-migration-website.php` (header), `constants.php` (`FMWP_VERSION`) and `readme.txt` (`Stable tag`), move **Unreleased** in `CHANGELOG.md` to the new version, add it to the changelog in `readme.txt`, update the version line near the top of `README.md` and regenerate the translation template.
-2. Merge to `main`, then push a tag `vX.Y.Z`. The release workflow checks the versions, builds `founders-migration-website.zip` with `git archive` and attaches it to a GitHub release.
+2. Merge to `main`, and only once the pull request shows **Merged** (`gh pr view <number>`; auto-merge waits for CI) pull `main` and push a tag `vX.Y.Z` on it. The release workflow checks the versions, builds `founders-migration-website.zip` with `git archive` and attaches it to a GitHub release.
 
 ## License
 

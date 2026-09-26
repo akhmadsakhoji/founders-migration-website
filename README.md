@@ -12,7 +12,7 @@ Founders Migration Website (FMW) has the familiar Export / Import / Backups work
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Version 1.0.0.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+> **Version 1.0.1.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -152,6 +152,14 @@ How a restore protects the site:
 - SQL from the archive is checked against an allowlist (table DDL and literal `INSERT`s only), so a crafted backup cannot run arbitrary queries.
 - The FMW plugin folder, backups and storage are never overwritten, the plugin stays active, and files that are not in the backup are kept.
 
+After the restore, FMW makes the site work on its server, as a fresh CyberPanel / OpenLiteSpeed or Apache site otherwise needs by hand (the `fmwp_server_fixes` filter switches any of these off):
+
+- **Permalinks.** A backup never carries the root `.htaccess`, so on a new site every page but the home page answers 404. When WordPress's rules are missing (an empty `# BEGIN WordPress` block counts as missing), they are added in that block (network rules on a multisite network); other rules, such as LiteSpeed Cache's, stay as they are. Browser restores on Nginx or IIS write nothing; a WP-CLI restore cannot tell the server apart and writes the file anyway, which those servers ignore.
+- **File owner.** A restore run as root (`wp fmw restore --allow-root`) writes files that belong to root, so WordPress cannot write uploads or updates. What this restore wrote as root in `wp-content` (and custom uploads, plugins or themes folders), the root `.htaccess` and FMW's folders goes back to the owner and group of `wp-config.php` (or the owner of the site folder). Only entries owned by root and changed since the restore started are touched; links are changed themselves, never followed (each folder is entered and checked before its entries are handled); folders outside the site's home folder that do not belong to the site are not walked, and the walk does not cross into other disks.
+- **Elementor.** Its generated CSS and element caches are emptied and rebuilt on the next visit with the new URLs.
+- **LiteSpeed Cache.** The page cache is purged on the next uncached request.
+- **Check.** An unknown address is requested from this server (127.0.0.1, whatever the DNS says). When the web server answers with its own 404 page instead of WordPress, the restore ends with what to do: on OpenLiteSpeed, `autoLoadHtaccess 1` in the site's `vhost.conf` and `systemctl restart lsws`, which need root and are outside a plugin's reach.
+
 All commands (`wp help fmw <command>` lists every option). Add `alias fmw='wp fmw'` to `~/.bashrc` to type `fmw backup`.
 
 | Command | What it does |
@@ -285,6 +293,7 @@ Deleting the plugin (Plugins → Delete) removes its cloud storages with their s
 | `fmwp_background_request` | filter | Arguments of the loopback requests that run scheduled backups (`$args`, `$url`), for example HTTP auth on a staging site |
 | `fmwp_pull_client_ip` | filter | The address pull keys are checked against, for sites behind a trusted proxy |
 | `fmwp_remote_curl_options` | filter | curl options for cloud storage and pull requests (proxy, CA bundle) |
+| `fmwp_server_fixes` | filter | Fixes run after a restore (`rewrite`, `owner`, `elementor`, `purge`, `probe`; `$job`); return fewer to skip some |
 
 
 ## Development
