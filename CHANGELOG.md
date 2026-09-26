@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-26
+
+### Fixed
+
+- Activating the plugin while another copy of it is loaded (another folder under plugins, or a must-use copy) stopped with "Constant FMWP_PLUGIN_FILE already defined" and a fatal error. The second copy now stays idle and wp-admin shows which copy runs and that the other should be deleted.
+
 ## [1.0.2] - 2026-09-26
 
 ### Security
@@ -70,7 +76,8 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/akhmadsakhoji/founders-migration-website/releases/tag/v1.0.0

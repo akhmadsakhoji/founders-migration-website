@@ -4,7 +4,7 @@ Tags: backup, migration, restore, multisite, wp-cli
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -88,6 +88,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 
 == Changelog ==
 
+= 1.0.3 =
+* A second copy of the plugin (another folder or a must-use copy) no longer stops activation with a fatal error; a notice says which copy runs and asks to delete the other.
+
 = 1.0.2 =
 * The backups and storage folders are also closed on OpenLiteSpeed (CyberPanel): their .htaccess now has a rewrite rule that denies every request, which OpenLiteSpeed applies when autoLoadHtaccess is on. Folders created by older versions are updated.
 
@@ -98,6 +101,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 * First public release: resumable backups and restores of sites and multisite networks in the open `.fmw` format, `.wpress` restores, password protection, reset, scheduled backups, S3-compatible and Google Drive storage, and server-to-server pulls. Full list in CHANGELOG.md.
 
 == Upgrade Notice ==
+
+= 1.0.3 =
+Two installed copies of the plugin show a notice instead of a fatal error.
 
 = 1.0.2 =
 On OpenLiteSpeed / CyberPanel, backups could be downloaded from the web. Update, then restart lsws once.

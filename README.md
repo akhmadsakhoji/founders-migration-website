@@ -12,7 +12,7 @@ Founders Migration Website (FMW) has the familiar Export / Import / Backups work
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Version 1.0.2.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+> **Version 1.0.3.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
