@@ -11,7 +11,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // Plugin.
-define( 'FMWP_VERSION', '1.0.1' );
+define( 'FMWP_VERSION', '1.0.2' );
 define( 'FMWP_PATH', __DIR__ );
 define( 'FMWP_BASENAME', plugin_basename( FMWP_PLUGIN_FILE ) );
 define( 'FMWP_URL', plugin_dir_url( FMWP_PLUGIN_FILE ) );

@@ -41,7 +41,7 @@ $fmwp_base = is_multisite() ? network_admin_url( 'admin.php' ) : admin_url( 'adm
 	<?php if ( 'exposed' === $fmwp_exposure ) : ?>
 		<div class="notice notice-error">
 			<p><strong><?php esc_html_e( 'Your backups folder can be downloaded by anyone on the internet.', 'founders-migration-website' ); ?></strong></p>
-			<p><?php esc_html_e( 'This web server ignores .htaccess (common on Nginx and OpenLiteSpeed). Move the folder outside the web root with FMWP_BACKUPS_PATH in wp-config.php, or block it in the server configuration:', 'founders-migration-website' ); ?></p>
+			<p><?php esc_html_e( 'This web server does not apply the .htaccess rules of the folder (Nginx never does; OpenLiteSpeed only with autoLoadHtaccess on, and after a restart of lsws when it was just turned on). Move the folder outside the web root with FMWP_BACKUPS_PATH in wp-config.php, or block it in the server configuration:', 'founders-migration-website' ); ?></p>
 			<pre>location ~* /wp-content/fmw-(backups|storage)/ { deny all; }</pre>
 		</div>
 	<?php endif; ?>

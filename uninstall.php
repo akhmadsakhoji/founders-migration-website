@@ -144,7 +144,7 @@ if ( '' !== $fmwp_storage && is_dir( $fmwp_storage ) && ! is_link( $fmwp_storage
 		// The folder's protection files, when they are still the plugin's own (the backups folder keeps its own).
 		foreach ( Founders\Migration\Storage\Paths::protection_files() as $fmwp_name => $fmwp_contents ) {
 			$fmwp_file = $fmwp_storage . '/' . $fmwp_name;
-			if ( is_file( $fmwp_file ) && ! is_link( $fmwp_file ) && file_get_contents( $fmwp_file ) === $fmwp_contents ) {
+			if ( is_file( $fmwp_file ) && ! is_link( $fmwp_file ) && ( file_get_contents( $fmwp_file ) === $fmwp_contents || Founders\Migration\Storage\Paths::is_outdated( $fmwp_file, $fmwp_contents ) ) ) {
 				fmwp_uninstall_remove( $fmwp_file, $fmwp_backups );
 			}
 		}

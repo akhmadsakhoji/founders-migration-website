@@ -12,7 +12,7 @@ Founders Migration Website (FMW) has the familiar Export / Import / Backups work
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Version 1.0.1.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+> **Version 1.0.2.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -275,7 +275,7 @@ define( 'FMWP_BACKUPS_PATH', '/home/example.com/fmw-backups' );
 define( 'FMWP_STORAGE_PATH', '/home/example.com/fmw-storage' );
 ```
 
-Both folders get `index.php`, `.htaccess` and `web.config`. Nginx and OpenLiteSpeed usually ignore `.htaccess`, so FMW also checks over HTTP whether the backups folder is reachable and warns you if it is. For Nginx:
+Both folders get `index.php`, `.htaccess` and `web.config`. The `.htaccess` denies access with Apache's access rules and with a rewrite rule, the only part OpenLiteSpeed reads (with `autoLoadHtaccess 1` in the site's `vhost.conf`; restart lsws after it changes). Nginx ignores `.htaccess`, so FMW also checks over HTTP whether the backups folder is reachable and warns you if it is. For Nginx:
 
 ```nginx
 location ~* /wp-content/fmw-(backups|storage)/ { deny all; }
