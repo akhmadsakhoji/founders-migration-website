@@ -162,6 +162,7 @@ foreach ( array( '_transient_fmwp_', '_transient_timeout_fmwp_', '_site_transien
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s", $wpdb->esc_like( $fmwp_prefix ) . '%' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- As above.
 	}
 }
+delete_site_option( 'fmwp_purge_page_cache' );
 wp_cache_delete( 'alloptions', 'options' );
 wp_cache_delete( 'notoptions', 'options' );
 

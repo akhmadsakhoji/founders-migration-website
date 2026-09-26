@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-26
+
+### Added
+
+- After a restore, a new "Server" step makes the site work on its server (`fmwp_server_fixes` filter to switch parts off):
+  - Adds WordPress's permalink rules (`# BEGIN WordPress`, or the network rules on a multisite network) to the root `.htaccess` when they are missing (an empty block counts as missing). A backup never carries that file, so restores onto a fresh CyberPanel / OpenLiteSpeed or Apache site answered 404 on every page but the home page.
+  - Gives what a restore run as root (WP-CLI) wrote in `wp-content` (and custom uploads, plugins or themes folders), the root `.htaccess` and FMW's folders to the owner of `wp-config.php` or the site folder, so WordPress can write uploads and updates. Only entries owned by root and changed since the restore started; links are never followed, and folders outside the site that do not belong to it are not walked.
+  - Empties Elementor's generated CSS and element caches, rebuilt on the next visit with the new URLs.
+  - Purges the LiteSpeed page cache on the next uncached request.
+  - Requests an unknown address from this server (127.0.0.1, whatever the DNS says) and, when the web server answers with its own 404 page, ends the restore with what to do (on OpenLiteSpeed: make sure the site's `vhost.conf` has `autoLoadHtaccess 1`, then `systemctl restart lsws`).
+- Notes from a restore are shown after it: as warnings in WP-CLI and in the restore dialog.
+
 ## [1.0.0] - 2026-09-26
 
 First public release. The development history before it is in the [pull requests](https://github.com/akhmadsakhoji/founders-migration-website/pulls?q=is%3Apr+is%3Amerged) and the git log.
@@ -48,5 +60,6 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/akhmadsakhoji/founders-migration-website/releases/tag/v1.0.0

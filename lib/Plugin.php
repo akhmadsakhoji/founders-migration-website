@@ -40,6 +40,7 @@ final class Plugin {
 	 */
 	public static function boot(): void {
 		add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
+		add_action( 'init', array( \Founders\Migration\Model\Import\ServerFixStep::class, 'send_pending_purge' ), 1 );
 
 		$errors = Requirements::errors();
 		if ( $errors ) {

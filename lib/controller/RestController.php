@@ -771,6 +771,9 @@ final class RestController {
 				'key'  => (string) ( $job->data['remote']['label'] ?? $job->data['remote']['key'] ),
 			);
 		}
+		if ( Job::STATUS_COMPLETED === $job->status && ! empty( $job->data['notes'] ) ) {
+			$summary['notes'] = array_values( array_map( 'strval', (array) $job->data['notes'] ) );
+		}
 		if ( Job::STATUS_COMPLETED === $job->status && ! empty( $job->data['archive']['deleted_local'] ) ) {
 			$summary['deleted_local'] = true;
 		}

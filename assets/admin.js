@@ -326,6 +326,11 @@
 			modal.message( t.failed + ' ' + ( summary.error || '' ) + ' ' + t.failedHint, 'error' );
 			modal.actions( [ closeButton( true ) ] );
 		}
+		if ( 'completed' === summary.status && summary.notes && summary.notes.length ) {
+			modal.part( 'modal-body' ).appendChild( el( 'div', { class: 'notice notice-warning inline' }, summary.notes.map( function ( note ) {
+				return el( 'p', { text: note } );
+			} ) ) );
+		}
 	}
 
 	function startJob( request, title ) {

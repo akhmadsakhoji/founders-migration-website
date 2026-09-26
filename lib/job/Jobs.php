@@ -94,6 +94,7 @@ final class Jobs {
 					\Founders\Migration\Model\Import\PartsStep::class,
 					\Founders\Migration\Model\Import\ReplaceStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\ServerFixStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,
 					\Founders\Migration\Model\Pull\PullCleanupStep::class, // The restore checked every part.
 				)
@@ -105,6 +106,7 @@ final class Jobs {
 					\Founders\Migration\Model\Import\PartsStep::class,
 					\Founders\Migration\Model\Import\ReplaceStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\ServerFixStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,
 				)
 			);
@@ -116,6 +118,7 @@ final class Jobs {
 					\Founders\Migration\Model\Import\ReplaceStep::class, // Before the files: the site's files and database disagree for as short a time as possible.
 					\Founders\Migration\Model\Import\WpressFilesStep::class,
 					\Founders\Migration\Model\Import\SwapStep::class,
+					\Founders\Migration\Model\Import\ServerFixStep::class,
 					\Founders\Migration\Model\Import\FinalizeStep::class,
 				)
 			);

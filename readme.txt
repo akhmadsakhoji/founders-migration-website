@@ -4,7 +4,7 @@ Tags: backup, migration, restore, multisite, wp-cli
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -52,6 +52,10 @@ The server needs 64-bit PHP 7.4 or newer with the zlib, hash, mysqli and json ex
 
 In `wp-content/fmw-backups/` by default, protected from web access. Define `FMWP_BACKUPS_PATH` and `FMWP_STORAGE_PATH` in wp-config.php to keep backups and job data outside the web root. On Nginx, add a rule that denies `/wp-content/fmw-backups/` and `/wp-content/fmw-storage/`; the plugin warns you when the folder can be reached from the web.
 
+= Pages show a 404 error after a restore. =
+
+A backup never carries the `.htaccess` file of the site's root folder. FMW adds WordPress's permalink rules to it after every restore when they are missing, and checks that the web server applies them. On OpenLiteSpeed (CyberPanel), the server may need `autoLoadHtaccess 1` in the site's vhost.conf and a restart (`systemctl restart lsws`); the restore tells you when.
+
 = How large can a site be? =
 
 There is no size limit in the plugin. Backups are split into parts, and every step works in short, resumable slices, so PHP time limits and upload limits do not stop large sites. You need enough free disk space for one backup.
@@ -84,10 +88,16 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 
 == Changelog ==
 
+= 1.0.1 =
+* After a restore, FMW adds missing permalink rules to .htaccess, gives files written by a root WP-CLI run back to the site's owner, empties Elementor's generated CSS, purges the LiteSpeed page cache and checks that the web server applies the rules (CyberPanel / OpenLiteSpeed).
+
 = 1.0.0 =
 * First public release: resumable backups and restores of sites and multisite networks in the open `.fmw` format, `.wpress` restores, password protection, reset, scheduled backups, S3-compatible and Google Drive storage, and server-to-server pulls. Full list in CHANGELOG.md.
 
 == Upgrade Notice ==
+
+= 1.0.1 =
+Restores onto fresh CyberPanel / OpenLiteSpeed or Apache sites get their permalink rules and file owner fixed, and tell you when the web server needs a restart.
 
 = 1.0.0 =
 First public release.

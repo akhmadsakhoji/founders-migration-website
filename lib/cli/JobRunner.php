@@ -59,6 +59,9 @@ final class JobRunner {
 		}
 
 		if ( Job::STATUS_COMPLETED === $job->status ) {
+			foreach ( (array) ( $job->data['notes'] ?? array() ) as $note ) {
+				WP_CLI::warning( (string) $note );
+			}
 			if ( Jobs::changes_site( $job->type ) ) {
 				if ( ! empty( $job->options['reset_network'] ) && is_multisite() && get_current_blog_id() !== get_main_site_id() ) {
 					switch_to_blog( get_main_site_id() ); // Only the main site is left: the site of --url is gone.
