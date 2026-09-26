@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-26
+
+### Security
+
+- The backups and storage folders could be downloaded from the web on OpenLiteSpeed (CyberPanel), which reads only rewrite rules from `.htaccess` and ignores `Require all denied`. Their `.htaccess` now also has `RewriteRule .* - [F,L]`, applied by OpenLiteSpeed when `autoLoadHtaccess` is on (restart lsws once after the update). An unchanged `.htaccess` from an older version is replaced; one edited by hand is left alone. The warning in wp-admin says what to do when the folder is still reachable.
+
 ## [1.0.1] - 2026-09-26
 
 ### Added
@@ -64,6 +70,7 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/akhmadsakhoji/founders-migration-website/releases/tag/v1.0.0

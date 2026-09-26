@@ -26,6 +26,9 @@ final class Paths {
 	const EXPOSURE_TRANSIENT = 'fmwp_exposure_check';
 	const CANARY_FILE        = 'fmw-canary.txt';
 
+	/** First line of the .htaccess FMW writes; a file starting with it is FMW's and is kept up to date. */
+	const HTACCESS_MARKER = '# Founders Migration Website: deny direct web access.';
+
 	/**
 	 * Creates both data folders with their protective files.
 	 *
@@ -48,7 +51,12 @@ final class Paths {
 			'.htaccess'  => implode(
 				"\n",
 				array(
-					'# Founders Migration Website: deny direct web access.',
+					self::HTACCESS_MARKER,
+					'# The rewrite rule is what OpenLiteSpeed and LiteSpeed read; Apache uses either.',
+					'<IfModule mod_rewrite.c>',
+					'	RewriteEngine On',
+					'	RewriteRule .* - [F,L]',
+					'</IfModule>',
 					'<IfModule mod_authz_core.c>',
 					'	Require all denied',
 					'</IfModule>',
@@ -96,10 +104,32 @@ final class Paths {
 			$path = $dir . '/' . $name;
 			if ( ! file_exists( $path ) ) {
 				file_put_contents( $path, $contents );
+			} elseif ( self::is_outdated( $path, $contents ) && false !== file_put_contents( $path, $contents ) ) {
+				delete_site_transient( self::EXPOSURE_TRANSIENT ); // Check the folder again with the new rules.
 			}
 		}
 
 		return wp_is_writable( $dir );
+	}
+
+	/**
+	 * Whether $path is the .htaccess an older FMW version wrote, unchanged (a file edited or
+	 * written by someone else is left alone).
+	 *
+	 * @param string $path     File.
+	 * @param string $contents Current contents.
+	 * @return bool
+	 */
+	public static function is_outdated( string $path, string $contents ): bool {
+		if ( '.htaccess' !== basename( $path ) || ! is_file( $path ) || is_link( $path ) ) {
+			return false;
+		}
+		$existing = str_replace( "\r\n", "\n", (string) file_get_contents( $path ) );
+		$previous = array(
+			// Up to 1.0.1: Apache access rules only, which OpenLiteSpeed ignores.
+			implode( "\n", array( self::HTACCESS_MARKER, '<IfModule mod_authz_core.c>', '	Require all denied', '</IfModule>', '<IfModule !mod_authz_core.c>', '	Order deny,allow', '	Deny from all', '</IfModule>', '' ) ),
+		);
+		return $existing !== $contents && in_array( $existing, $previous, true );
 	}
 
 	/**
