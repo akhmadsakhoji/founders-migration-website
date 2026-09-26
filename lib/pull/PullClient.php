@@ -15,6 +15,8 @@ use Founders\Migration\Remote\RemoteException;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Talks to the source site's pull API (docs/pull-v1.md).
  *

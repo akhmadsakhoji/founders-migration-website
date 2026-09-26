@@ -12,6 +12,8 @@ namespace Founders\Migration\Remote;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * S3-compatible storages: small files in one PUT, larger ones as multipart
  * uploads (parts of at least 5 MiB, at most 10,000 of them).

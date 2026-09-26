@@ -39,7 +39,6 @@ final class Plugin {
 	 * @return void
 	 */
 	public static function boot(): void {
-		add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
 		add_action( 'init', array( \Founders\Migration\Model\Import\ServerFixStep::class, 'send_pending_purge' ), 1 );
 
 		$errors = Requirements::errors();
@@ -104,14 +103,5 @@ final class Plugin {
 	 */
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( Scheduler::HOOK );
-	}
-
-	/**
-	 * Loads translations.
-	 *
-	 * @return void
-	 */
-	public static function load_textdomain(): void {
-		load_plugin_textdomain( 'founders-migration-website', false, dirname( FMWP_BASENAME ) . '/languages' );
 	}
 }

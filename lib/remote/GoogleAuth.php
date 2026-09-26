@@ -14,6 +14,8 @@ use Founders\Migration\Job\Secrets;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Google sign-in (OAuth 2.0 with PKCE) for a Google Drive storage.
  *

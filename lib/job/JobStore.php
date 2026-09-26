@@ -12,6 +12,8 @@ namespace Founders\Migration\Job;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Job state must be written atomically with rename(); WP_Filesystem cannot guarantee that.
 
 /**

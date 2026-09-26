@@ -21,6 +21,8 @@ use Founders\Migration\Pull\PullException;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Makes a backup on the source site and drives it to the end, slice by
  * slice, from this site (the source needs no WP-Cron or loopback for it).

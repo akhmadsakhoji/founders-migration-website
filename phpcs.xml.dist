@@ -38,11 +38,6 @@
 		</properties>
 	</rule>
 
-	<!-- Exception messages are plain text for logs and WP-CLI; they are escaped wherever they reach HTML. -->
-	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
-		<severity>0</severity>
-	</rule>
-
 	<!-- WP-CLI passes ($args, $assoc_args) to every subcommand, used or not. -->
 	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
 		<exclude-pattern>lib/cli/*</exclude-pattern>

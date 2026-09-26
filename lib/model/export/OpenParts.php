@@ -18,6 +18,8 @@ use Founders\Migration\Archive\TarWriter;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * The currently open .tar.gz and .tar parts of a FilesStep slice.
  *

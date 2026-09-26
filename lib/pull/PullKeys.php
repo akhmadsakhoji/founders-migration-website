@@ -14,6 +14,8 @@ use Founders\Migration\Storage\CollectionStore;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Pull keys of this (source) site, in fmw-storage/pull-keys.json.
  *

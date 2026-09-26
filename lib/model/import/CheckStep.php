@@ -21,6 +21,8 @@ use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Reads the archive's manifest and refuses restores that cannot succeed, before anything changes.
  *

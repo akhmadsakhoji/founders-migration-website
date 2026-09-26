@@ -294,7 +294,7 @@ final class PullRestController {
 			ignore_user_abort( true ); // The job checkpoints; a dropped connection must not stop a slice half-way.
 			$seconds = RestController::slice_seconds();
 			if ( function_exists( 'set_time_limit' ) ) {
-				@set_time_limit( (int) $seconds + 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Disabled on some hosts.
+				@set_time_limit( (int) $seconds + 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Backup and restore slices need more time; disabled on some hosts.
 			}
 			$store = Jobs::store();
 			try {
@@ -416,7 +416,7 @@ final class PullRestController {
 		}
 		ignore_user_abort( false );
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Disabled on some hosts.
+			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Backup and restore slices need more time; disabled on some hosts.
 		}
 		status_header( null === $range ? 200 : 206 );
 		header( 'Content-Type: application/octet-stream' );

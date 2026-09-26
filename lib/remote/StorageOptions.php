@@ -14,6 +14,8 @@ use Founders\Migration\Job\Secrets;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Checks and builds cloud storage settings from user input.
  *
@@ -34,7 +36,7 @@ final class StorageOptions {
 		return array(
 			'aws'    => array(
 				'label'      => 'Amazon S3',
-				'endpoint'   => 'https://s3.{region}.amazonaws.com',
+				'endpoint'   => 'https://s3.{region}.amazonaws.com', // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- API endpoint of the user's own S3 bucket for backups, no assets are loaded from it.
 				'region'     => 'ap-southeast-3',
 				'path_style' => false,
 			),

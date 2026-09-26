@@ -610,7 +610,7 @@ final class RestController {
 		ignore_user_abort( true ); // A closed tab must not stop a slice half-way; the job checkpoints anyway.
 		$seconds = self::slice_seconds();
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( (int) $seconds + 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Disabled on some hosts.
+			@set_time_limit( (int) $seconds + 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Backup and restore slices need more time; disabled on some hosts.
 		}
 
 		try {
