@@ -245,7 +245,7 @@ final class StorageOptions {
 		if ( array_key_exists( 'client_id', $input ) ) {
 			$client = trim( (string) $input['client_id'], " \t\n\r\0\x0B" );
 			if ( 1 !== preg_match( '/^[A-Za-z0-9._-]{8,200}\.apps\.googleusercontent\.com$/', $client ) ) {
-				throw new \InvalidArgumentException( 'The client ID looks wrong; it ends with .apps.googleusercontent.com.' );
+				throw new \InvalidArgumentException( 'The client ID looks wrong; it ends with .apps.googleusercontent.com.' ); // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- Format of a Google OAuth client ID; nothing is loaded from it.
 			}
 			if ( $client !== $storage['client_id'] ) {
 				// Another OAuth client: the earlier sign-in belongs to the old one.
@@ -308,7 +308,7 @@ final class StorageOptions {
 		$parts = parse_url( $url ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Also used without WordPress.
 		if ( ! is_array( $parts ) || empty( $parts['host'] ) || ! in_array( strtolower( (string) ( $parts['scheme'] ?? '' ) ), array( 'http', 'https' ), true )
 			|| isset( $parts['user'] ) || isset( $parts['query'] ) || isset( $parts['fragment'] ) || false !== strpos( $url, '<' ) ) {
-			throw new \InvalidArgumentException( 'Enter the endpoint URL, for example https://s3.ap-southeast-3.amazonaws.com.' );
+			throw new \InvalidArgumentException( 'Enter the endpoint URL, for example https://s3.ap-southeast-3.amazonaws.com.' ); // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- Example in an error message; nothing is loaded from it.
 		}
 		return $url;
 	}

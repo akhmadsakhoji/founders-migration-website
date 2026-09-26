@@ -56,7 +56,7 @@ final class S3Client {
 		}
 		$parts = parse_url( (string) ( $config['endpoint'] ?? '' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Also used without WordPress.
 		if ( ! is_array( $parts ) || empty( $parts['host'] ) || ! in_array( $parts['scheme'] ?? '', array( 'http', 'https' ), true ) ) {
-			throw new RemoteException( 'The storage endpoint must be a URL such as https://s3.eu-central-1.amazonaws.com.' );
+			throw new RemoteException( 'The storage endpoint must be a URL such as https://s3.eu-central-1.amazonaws.com.' ); // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- Example in an error message; nothing is loaded from it.
 		}
 		$this->config = $config + array(
 			'region'     => 'us-east-1',
@@ -161,7 +161,7 @@ final class S3Client {
 	 */
 	public function complete_multipart( string $key, string $upload, array $parts ): void {
 		ksort( $parts );
-		$xml = '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">';
+		$xml = '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'; // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- XML namespace of the S3 API, not a download.
 		foreach ( $parts as $number => $etag ) {
 			$xml .= '<Part><PartNumber>' . (int) $number . '</PartNumber><ETag>' . htmlspecialchars( $etag, ENT_XML1 ) . '</ETag></Part>';
 		}

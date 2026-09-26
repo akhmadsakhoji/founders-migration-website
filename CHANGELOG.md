@@ -18,7 +18,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
-- Plugin Check (WordPress.org rules) passes again; it had failed in CI since 1.0.0. Exception messages are marked as plain text file by file (they reach WP-CLI, logs and JSON, and the admin screens insert them as text), and PHP_CodeSniffer now enforces the rule instead of switching it off for the whole plugin. The S3 endpoint is marked as the user's own storage, `load_plugin_textdomain()` is gone (WordPress loads translations itself since 4.6), and the Google Drive account shown after connecting is sanitized first.
+- Plugin Check (WordPress.org rules) passes again; it had failed in CI since 1.0.0. Exception messages are marked as plain text file by file (they reach WP-CLI, logs and JSON, and the admin screens insert them as text), and PHP_CodeSniffer now enforces the rule instead of switching it off for the whole plugin. S3 and Google Drive addresses (the endpoint of the user's own bucket, examples in messages, the S3 XML namespace, the client ID format) are marked as not loading anything, `load_plugin_textdomain()` is gone (WordPress loads translations itself since 4.6), and the Google Drive account shown after connecting is sanitized first.
 
 ## [1.0.0] - 2026-09-26
 
