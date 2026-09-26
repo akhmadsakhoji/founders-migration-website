@@ -14,6 +14,8 @@ use Founders\Migration\Archive\ArchiveException;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Append-only list with byte offsets needs a native handle.
 
 /**

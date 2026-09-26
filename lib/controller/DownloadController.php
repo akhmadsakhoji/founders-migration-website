@@ -89,7 +89,7 @@ final class DownloadController {
 		}
 		ignore_user_abort( false );
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Disabled on some hosts.
+			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, Squiz.PHP.DiscouragedFunctions.Discouraged -- Backup and restore slices need more time; disabled on some hosts.
 		}
 		nocache_headers();
 		status_header( null === $range ? 200 : 206 );

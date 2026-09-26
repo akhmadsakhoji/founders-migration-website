@@ -19,7 +19,7 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 	<?php
 	// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Only picks which message to show.
 	$fmwp_gdrive = isset( $_GET['fmw_gdrive'] ) ? sanitize_key( wp_unslash( $_GET['fmw_gdrive'] ) ) : '';
-	$fmwp_acct   = isset( $_GET['fmw_account'] ) ? sanitize_email( rawurldecode( wp_unslash( $_GET['fmw_account'] ) ) ) : '';
+	$fmwp_acct   = isset( $_GET['fmw_account'] ) ? sanitize_email( rawurldecode( sanitize_text_field( wp_unslash( $_GET['fmw_account'] ) ) ) ) : '';
 	// phpcs:enable
 	?>
 	<?php if ( 'connected' === $fmwp_gdrive ) : ?>

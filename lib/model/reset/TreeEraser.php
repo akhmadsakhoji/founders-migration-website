@@ -12,6 +12,8 @@ namespace Founders\Migration\Model\Reset;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Deletes the contents of a folder, in time slices, except the paths to keep.
  *

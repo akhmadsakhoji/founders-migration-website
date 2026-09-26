@@ -25,6 +25,8 @@ use Founders\Migration\Job\Step;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Multi-GB archives are streamed with native file calls, like the archive library.
 
 /**
@@ -445,7 +447,7 @@ final class PackageStep implements Step, Discardable {
 			'generator'  => (string) ( $job->options['generator'] ?? 'fmw' ),
 			'site'       => $site,
 			'options'    => array(
-				'exclude'            => $exclude,
+				'exclude'            => $exclude, // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_exclude -- Not a query argument.
 				'exclude_tables'     => array_values( (array) ( $job->options['exclude_tables'] ?? array() ) ),
 				'exclude_paths'      => array_values( (array) ( $job->options['exclude_paths'] ?? array() ) ),
 				'include_root_files' => false,

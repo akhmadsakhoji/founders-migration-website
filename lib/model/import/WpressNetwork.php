@@ -18,6 +18,8 @@ use Founders\Migration\Job\JobException;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * The multisite.json of a .wpress network backup (All-in-One WP Migration Multisite Extension).
  *

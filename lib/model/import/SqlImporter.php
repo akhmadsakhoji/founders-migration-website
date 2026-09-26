@@ -17,6 +17,8 @@ use Founders\Migration\Job\JobException;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Imports an SQL file statement by statement through SqlGuard, exactly once across resumes.
  *

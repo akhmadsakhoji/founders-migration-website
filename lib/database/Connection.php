@@ -12,6 +12,8 @@ namespace Founders\Migration\Database;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 // phpcs:disable WordPress.DB.RestrictedClasses.mysql__mysqli, WordPress.DB.RestrictedFunctions -- Dumps need their own connection: a consistent-snapshot transaction and row-by-row reads that $wpdb cannot provide.
 
 /**

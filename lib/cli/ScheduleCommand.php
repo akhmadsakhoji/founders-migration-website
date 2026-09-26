@@ -72,7 +72,7 @@ final class ScheduleCommand {
 				'enabled'     => $schedule['enabled'] ? 'yes' : 'no',
 				'when'        => Scheduler::describe( $schedule ),
 				'keep'        => $schedule['keep'] ? (string) $schedule['keep'] : 'all',
-				'exclude'     => implode( ',', array_map( array( self::class, 'short_flag' ), array_keys( (array) $schedule['flags'] ) ) ),
+				'exclude'     => implode( ',', array_map( array( self::class, 'short_flag' ), array_keys( (array) $schedule['flags'] ) ) ), // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_exclude -- Not a query argument.
 				'encrypted'   => empty( $schedule['secret_password'] ) ? 'no' : 'yes',
 				'notify'      => $schedule['notify'] . ( '' !== $schedule['email'] ? ' (' . $schedule['email'] . ')' : '' ),
 				'next_run'    => self::when( (int) ( $state['next_run'] ?? 0 ) ),

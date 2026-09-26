@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows [Kee
   - Requests an unknown address from this server (127.0.0.1, whatever the DNS says) and, when the web server answers with its own 404 page, ends the restore with what to do (on OpenLiteSpeed: make sure the site's `vhost.conf` has `autoLoadHtaccess 1`, then `systemctl restart lsws`).
 - Notes from a restore are shown after it: as warnings in WP-CLI and in the restore dialog.
 
+### Fixed
+
+- Plugin Check (WordPress.org rules) passes again; it had failed in CI since 1.0.0. Exception messages are marked as plain text file by file (they reach WP-CLI, logs and JSON, and the admin screens insert them as text), and PHP_CodeSniffer now enforces the rule instead of switching it off for the whole plugin. The S3 endpoint is marked as the user's own storage, `load_plugin_textdomain()` is gone (WordPress loads translations itself since 4.6), and the Google Drive account shown after connecting is sanitized first.
+
 ## [1.0.0] - 2026-09-26
 
 First public release. The development history before it is in the [pull requests](https://github.com/akhmadsakhoji/founders-migration-website/pulls?q=is%3Apr+is%3Amerged) and the git log.

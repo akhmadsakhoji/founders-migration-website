@@ -16,6 +16,8 @@ use Founders\Migration\Remote\Storages;
 
 defined( 'ABSPATH' ) || exit;
 
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Exception messages are plain text for WP-CLI, logs and JSON; the admin screens insert them as text, never as HTML.
+
 /**
  * Turns `wp fmw backup` flags (named like `wp ai1wm backup`) into backup job options.
  *
@@ -81,7 +83,7 @@ final class BackupOptions {
 		$options = array(
 			'content_dir'      => $content,
 			'skip_paths'       => $skip,
-			'exclude'          => $exclude,
+			'exclude'          => $exclude, // phpcs:ignore WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_exclude -- Not a query argument.
 			'exclude_database' => ! empty( $flags['exclude-database'] ),
 			'exclude_tables'   => self::csv( $flags['exclude-tables'] ?? '' ),
 			'exclude_paths'    => self::csv( $flags['exclude-paths'] ?? '' ),
