@@ -12,7 +12,7 @@ Founders Migration Website (FMW) has the familiar Export / Import / Backups work
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Version 1.0.3.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+> **Version 1.0.4.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -148,7 +148,7 @@ How a restore protects the site:
 
 - Every part is checked against its SHA-256 before it is used; a damaged archive stops the restore before anything live changes.
 - The database is imported into `fmwtmp_*` tables and put live with **one atomic `RENAME TABLE`**; the previous tables become `fmwold_*` and are dropped at the end (kept with `--keep-old-tables`). Tables of other sites in a shared database are left alone.
-- URLs, paths and e-mail domains are replaced for the new location, serialized data included, without running `unserialize()` on backup data. Addresses match whole: moving `example.com/shop` leaves `example.com/shopping` and `example.com.au` alone. `posts.guid` stays unchanged, as WordPress recommends. A changed table prefix is applied to user roles and user meta keys.
+- URLs, paths and e-mail domains are replaced for the new location, serialized data included, without running `unserialize()` on backup data. Addresses match whole: moving `example.com/shop` leaves `example.com/shopping` and `example.com.au` alone. `posts.guid` stays unchanged, as WordPress recommends. A changed table prefix is applied to user roles and user meta keys. Cache tables that only map URLs (LiteSpeed Cache's `litespeed_url` and `litespeed_url_file`) are emptied instead, and their plugin rebuilds them. A row whose new address would duplicate another row's unique key (the same URL over `http://` and `https://`) keeps the old one; the restore ends with a note and the log names the tables.
 - SQL from the archive is checked against an allowlist (table DDL and literal `INSERT`s only), so a crafted backup cannot run arbitrary queries.
 - The FMW plugin folder, backups and storage are never overwritten, the plugin stays active, and files that are not in the backup are kept.
 
@@ -293,6 +293,7 @@ Deleting the plugin (Plugins → Delete) removes its cloud storages with their s
 | `fmwp_background_request` | filter | Arguments of the loopback requests that run scheduled backups (`$args`, `$url`), for example HTTP auth on a staging site |
 | `fmwp_pull_client_ip` | filter | The address pull keys are checked against, for sites behind a trusted proxy |
 | `fmwp_remote_curl_options` | filter | curl options for cloud storage and pull requests (proxy, CA bundle) |
+| `fmwp_restore_cache_tables` | filter | Tables (without the prefix, `$job`) emptied instead of searched on a restore to a new address; default `litespeed_url`, `litespeed_url_file` |
 | `fmwp_server_fixes` | filter | Fixes run after a restore (`rewrite`, `owner`, `elementor`, `purge`, `probe`; `$job`); return fewer to skip some |
 
 

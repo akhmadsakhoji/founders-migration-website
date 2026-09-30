@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-30
+
+### Fixed
+
+- A restore or pull to a new address stopped in the Replace step with "Duplicate entry '…' for key '…'" when a table with a unique URL column held the same address over `http://` and `https://` (LiteSpeed Cache's `litespeed_url`, for example): both became the new URL. The step now:
+  - empties LiteSpeed Cache's URL tables (`litespeed_url`, `litespeed_url_file`) instead of searching them, since LiteSpeed rebuilds them (`fmwp_restore_cache_tables` filter to change the list);
+  - leaves a value that would duplicate another row's unique key as it was, still replaces the row's other columns, logs how many rows of which table kept the old address and ends the restore with a note.
+
+  A restore that stopped this way continues after the update (Backups page or `wp fmw resume`).
+
 ## [1.0.3] - 2026-09-26
 
 ### Fixed
@@ -76,7 +86,8 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.0...v1.0.1

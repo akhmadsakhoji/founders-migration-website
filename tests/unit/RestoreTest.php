@@ -380,6 +380,43 @@ final class RestoreTest extends TestCase {
 		$this->assertStringContainsString( 'Skipped symlink uploads/etc-link -> /etc', implode( "\n", $store->log_lines( $job->id, 0 ) ) );
 	}
 
+	public function test_cache_tables_are_emptied_and_rows_whose_new_url_is_taken_keep_the_old_one(): void {
+		// The same URL over http:// and https://: both become https://example.com/staging/..., in a unique column.
+		$db = $this->connect( self::SOURCE );
+		$db->query( 'CREATE TABLE wp_litespeed_url (id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, url varchar(500) NOT NULL, UNIQUE KEY url (url(191)))' );
+		$db->query( "INSERT INTO wp_litespeed_url (url) VALUES ('http://example.com/'), ('https://example.com/')" );
+		$db->query( 'CREATE TABLE wp_redirects (id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, source varchar(191) NOT NULL UNIQUE, target varchar(191) NOT NULL)' );
+		$db->query( "INSERT INTO wp_redirects (source, target) VALUES ('http://example.com/a', 'https://example.com/b'), ('https://example.com/a', 'https://example.com/c')" );
+		$db->close();
+
+		$store = new JobStore( $this->tmp . '/restore-jobs' );
+		$job   = $this->run_job( $store, 'restore', $this->restore_options( $this->backup() ), self::TARGET );
+		$this->assertSame( Job::STATUS_COMPLETED, $job->status, (string) $job->error );
+
+		$db = $this->connect( self::TARGET );
+		$this->assertSame( '0', $db->column( 'SELECT COUNT(*) FROM shop_litespeed_url' )[0] );
+		$this->assertSame(
+			array(
+				array(
+					'source' => 'https://example.com/staging/a',
+					'target' => 'https://example.com/staging/b',
+				),
+				array(
+					'source' => 'https://example.com/a',
+					'target' => 'https://example.com/staging/c',
+				), // Only the column that would duplicate the key keeps its old value.
+			),
+			$db->rows( 'SELECT source, target FROM shop_redirects ORDER BY id' )
+		);
+		$this->assertSame( 'https://example.com/staging', $db->column( "SELECT option_value FROM shop_options WHERE option_name = 'siteurl'" )[0] );
+		$db->close();
+
+		$this->assertContains( '1 database row(s) kept the old address because the new one already existed in the same table (see the log).', (array) $job->data['notes'] );
+		$log = implode( "\n", $store->log_lines( $job->id, 0 ) );
+		$this->assertStringContainsString( 'Emptied cache tables shop_litespeed_url; their plugin rebuilds them.', $log );
+		$this->assertStringContainsString( 'Left 1 row(s) of shop_redirects with the old address', $log );
+	}
+
 	public function test_a_subdomain_network_moves_to_a_new_domain_with_its_subsites(): void {
 		$db = $this->connect( self::SOURCE );
 		$db->query( 'CREATE TABLE wp_blogs (blog_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY, site_id bigint NOT NULL, domain varchar(200) NOT NULL, path varchar(100) NOT NULL)' );

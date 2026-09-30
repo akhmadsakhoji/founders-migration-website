@@ -11,6 +11,7 @@
 namespace Founders\Migration\Model\Import;
 
 use Founders\Migration\Database\Connection;
+use Founders\Migration\Database\DatabaseException;
 use Founders\Migration\Database\Replacer;
 use Founders\Migration\Job\Context;
 use Founders\Migration\Job\Job;
@@ -30,6 +31,11 @@ defined( 'ABSPATH' ) || exit;
  * record, so no row is ever replaced twice, even when the new URL contains
  * the old one. posts.guid is left alone, as WordPress recommends.
  *
+ * Known cache tables (CACHE_TABLES, filter fmwp_restore_cache_tables) are
+ * emptied instead: their plugin rebuilds them. A row whose new value would
+ * duplicate another row's unique key (http:// and https:// copies of one
+ * URL, for example) keeps the old value, is counted and ends as a note.
+ *
  * Reads job options: target { home_url, site_url, abspath, table_prefix },
  * email_replace. Reads job data: manifest.site, network (see NetworkMove).
  */
@@ -38,6 +44,11 @@ final class ReplaceStep implements Step {
 	const BATCH      = 500;
 	const TEXT_TYPES = array( 'char', 'varchar', 'tinytext', 'text', 'mediumtext', 'longtext', 'json' );
 	const NUMERIC    = array( 'tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint', 'decimal', 'numeric' );
+
+	/**
+	 * Tables without the prefix that only cache what their plugin rebuilds (LiteSpeed Cache's URL map, unique by URL).
+	 */
+	const CACHE_TABLES = array( 'litespeed_url', 'litespeed_url_file' );
 
 	/**
 	 * Database helper, one per process.
@@ -101,6 +112,8 @@ final class ReplaceStep implements Step {
 
 		if ( $replacer->is_empty() ) {
 			$cursor['t'] = $count;
+		} else {
+			$this->empty_caches( $job, $tables, $context );
 		}
 
 		while ( $cursor['t'] < $count && $context->should_continue() ) {
@@ -117,6 +130,7 @@ final class ReplaceStep implements Step {
 			return false;
 		}
 
+		$this->report_kept( $job, $tables, (string) ( $target['table_prefix'] ?? 'wp_' ), $context );
 		$this->fix_prefix_keys( (string) ( $site['table_prefix'] ?? 'wp_' ), (string) ( $target['table_prefix'] ?? 'wp_' ), $tables, $context );
 		if ( is_array( $job->data['network'] ?? null ) ) {
 			$this->fix_network( $job->data['network'], $tables, $context );
@@ -132,6 +146,117 @@ final class ReplaceStep implements Step {
 				)
 		);
 		return true;
+	}
+
+	/**
+	 * Whether an imported table is one of the cache tables, on any site of a network (fmwtmp_litespeed_url, fmwtmp_2_litespeed_url).
+	 *
+	 * @param string   $table Imported table.
+	 * @param string[] $names Cache tables without the prefix.
+	 * @return bool
+	 */
+	public static function is_cache_table( string $table, array $names ): bool {
+		if ( 0 !== strpos( $table, RestoreDatabase::TMP ) ) {
+			return false;
+		}
+		return in_array( (string) preg_replace( '/^\d+_/', '', substr( $table, strlen( RestoreDatabase::TMP ) ) ), $names, true );
+	}
+
+	/**
+	 * Empties the imported cache tables before anything is replaced in them. Runs once.
+	 *
+	 * @param Job      $job     Job.
+	 * @param string[] $tables  Imported tables.
+	 * @param Context  $context Context.
+	 * @return void
+	 * @throws \Throwable After rolling back, when a table cannot be emptied.
+	 */
+	private function empty_caches( Job $job, array $tables, Context $context ): void {
+		if ( 'done' === $this->restore->progress( 'caches' ) ) {
+			return;
+		}
+		$names = self::CACHE_TABLES;
+		if ( function_exists( 'apply_filters' ) ) {
+			/**
+			 * Filters the tables (without the prefix) emptied instead of searched on a restore to a new address.
+			 *
+			 * @param string[] $names Tables, such as litespeed_url.
+			 * @param Job      $job   Restore job.
+			 */
+			$names = array_map( 'strval', (array) apply_filters( 'fmwp_restore_cache_tables', $names, $job ) );
+		}
+		$caches = array_values(
+			array_filter(
+				$tables,
+				static function ( string $table ) use ( $names ): bool {
+					return self::is_cache_table( $table, $names );
+				}
+			)
+		);
+		$db     = $this->restore->db();
+		$db->query( 'START TRANSACTION' );
+		try {
+			foreach ( $caches as $table ) {
+				$db->query( 'DELETE FROM ' . Connection::identifier( $table ) );
+			}
+			$this->restore->set_progress( 'caches', 'done' );
+			$db->query( 'COMMIT' );
+		} catch ( \Throwable $e ) {
+			$db->query( 'ROLLBACK' );
+			throw $e;
+		}
+		if ( $caches ) {
+			$context->log( sprintf( 'Emptied cache tables %s; their plugin rebuilds them.', implode( ', ', self::live_names( $caches, (string) ( $job->options['target']['table_prefix'] ?? 'wp_' ) ) ) ) );
+		}
+	}
+
+	/**
+	 * Logs the rows that kept their old value, and adds a note shown after the restore. Runs once.
+	 *
+	 * @param Job      $job     Job.
+	 * @param string[] $tables  Imported tables.
+	 * @param string   $prefix  Target table prefix.
+	 * @param Context  $context Context.
+	 * @return void
+	 */
+	private function report_kept( Job $job, array $tables, string $prefix, Context $context ): void {
+		if ( 'done' === $this->restore->progress( 'kept' ) ) {
+			return;
+		}
+		$total = 0;
+		foreach ( $tables as $table ) {
+			$state = json_decode( (string) $this->restore->progress( 'replace:' . $table ), true );
+			$kept  = is_array( $state ) ? (int) ( $state['kept'] ?? 0 ) : 0;
+			if ( $kept > 0 ) {
+				$total += $kept;
+				$context->log( sprintf( 'Left %d row(s) of %s with the old address: with the new one they would duplicate another row\'s unique key.', $kept, self::live_names( array( $table ), $prefix )[0] ) );
+			}
+		}
+		if ( $total > 0 ) {
+			$note  = sprintf( '%d database row(s) kept the old address because the new one already existed in the same table (see the log).', $total );
+			$notes = (array) ( $job->data['notes'] ?? array() );
+			if ( ! in_array( $note, $notes, true ) ) {
+				$notes[]            = $note;
+				$job->data['notes'] = $notes;
+			}
+		}
+		$this->restore->set_progress( 'kept', 'done' );
+	}
+
+	/**
+	 * Names imported tables get on the live site.
+	 *
+	 * @param string[] $tables Imported tables.
+	 * @param string   $prefix Target table prefix.
+	 * @return string[]
+	 */
+	private static function live_names( array $tables, string $prefix ): array {
+		return array_map(
+			static function ( string $table ) use ( $prefix ): string {
+				return $prefix . substr( $table, strlen( RestoreDatabase::TMP ) );
+			},
+			$tables
+		);
 	}
 
 	/**
@@ -283,6 +408,7 @@ final class ReplaceStep implements Step {
 		if ( is_array( $state ) && ! empty( $state['done'] ) ) {
 			return true;
 		}
+		$kept = is_array( $state ) ? (int) ( $state['kept'] ?? 0 ) : 0;
 		$last = is_array( $state ) && isset( $state['last'] ) ? array_map( 'base64_decode', (array) $state['last'] ) : null; // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Key values may be binary.
 
 		$types = array();
@@ -345,12 +471,17 @@ final class ReplaceStep implements Step {
 					foreach ( $primary as $column ) {
 						$match[] = Connection::identifier( $column ) . ' = ' . $this->literal( $db, (string) $row[ $column ], $types[ $column ] );
 					}
-					$db->query( 'UPDATE ' . Connection::identifier( $table ) . ' SET ' . implode( ', ', $set ) . ' WHERE ' . implode( ' AND ', $match ) );
+					if ( ! $this->update_row( $table, $set, implode( ' AND ', $match ) ) ) {
+						++$kept;
+					}
 				}
 			}
 
 			$done  = count( $rows ) < self::BATCH;
-			$state = array( 'done' => $done );
+			$state = array(
+				'done' => $done,
+				'kept' => $kept,
+			);
 			if ( $rows ) {
 				$tail          = end( $rows );
 				$state['last'] = array_map(
@@ -370,6 +501,51 @@ final class ReplaceStep implements Step {
 		}
 
 		return $done;
+	}
+
+	/**
+	 * Updates one row. When the new values would duplicate another row's unique key, the columns are
+	 * tried one by one and those that would still duplicate it keep their old value.
+	 *
+	 * InnoDB undoes only the failed statement, so the batch's transaction goes on.
+	 *
+	 * @param string   $table Table.
+	 * @param string[] $set   Assignments ("`column` = value").
+	 * @param string   $where Row condition.
+	 * @return bool Whether every column got its new value.
+	 * @throws DatabaseException On any other failure.
+	 */
+	private function update_row( string $table, array $set, string $where ): bool {
+		if ( $this->try_update( $table, $set, $where ) ) {
+			return true;
+		}
+		if ( count( $set ) > 1 ) {
+			foreach ( $set as $assignment ) {
+				$this->try_update( $table, array( $assignment ), $where );
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Runs one row update.
+	 *
+	 * @param string   $table Table.
+	 * @param string[] $set   Assignments.
+	 * @param string   $where Row condition.
+	 * @return bool False when it would duplicate a unique key (nothing changed).
+	 * @throws DatabaseException On any other failure.
+	 */
+	private function try_update( string $table, array $set, string $where ): bool {
+		try {
+			$this->restore->db()->query( 'UPDATE ' . Connection::identifier( $table ) . ' SET ' . implode( ', ', $set ) . ' WHERE ' . $where );
+		} catch ( DatabaseException $e ) {
+			if ( DatabaseException::DUPLICATE_KEY !== $e->getCode() ) {
+				throw $e;
+			}
+			return false;
+		}
+		return true;
 	}
 
 	/**
