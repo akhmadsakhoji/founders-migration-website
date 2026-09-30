@@ -4,7 +4,7 @@ Tags: backup, migration, restore, multisite, wp-cli
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.3
+Stable tag: 1.0.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -88,6 +88,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 
 == Changelog ==
 
+= 1.0.4 =
+* A restore to a new address no longer stops in the Replace step with "Duplicate entry ... for key" when a table holds the same URL over http:// and https:// (LiteSpeed Cache's URL table, for example). LiteSpeed Cache's URL tables are emptied and rebuilt by LiteSpeed; elsewhere, a row whose new address is already taken keeps the old one and the restore says so.
+
 = 1.0.3 =
 * A second copy of the plugin (another folder or a must-use copy) no longer stops activation with a fatal error; a notice says which copy runs and asks to delete the other.
 
@@ -101,6 +104,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 * First public release: resumable backups and restores of sites and multisite networks in the open `.fmw` format, `.wpress` restores, password protection, reset, scheduled backups, S3-compatible and Google Drive storage, and server-to-server pulls. Full list in CHANGELOG.md.
 
 == Upgrade Notice ==
+
+= 1.0.4 =
+Restores to a new address no longer stop on "Duplicate entry" in the Replace step. A stopped restore continues after the update (Backups page or wp fmw resume).
 
 = 1.0.3 =
 Two installed copies of the plugin show a notice instead of a fatal error.

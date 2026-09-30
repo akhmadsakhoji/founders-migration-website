@@ -141,10 +141,10 @@ final class Connection {
 		try {
 			$result = $this->mysqli->query( $sql, $unbuffer ? MYSQLI_USE_RESULT : MYSQLI_STORE_RESULT );
 		} catch ( \mysqli_sql_exception $e ) {
-			throw new DatabaseException( $e->getMessage() . ' [' . self::excerpt( $sql ) . ']' );
+			throw new DatabaseException( $e->getMessage() . ' [' . self::excerpt( $sql ) . ']', (int) $e->getCode() );
 		}
 		if ( false === $result ) {
-			throw new DatabaseException( $this->mysqli->error . ' [' . self::excerpt( $sql ) . ']' );
+			throw new DatabaseException( $this->mysqli->error . ' [' . self::excerpt( $sql ) . ']', (int) $this->mysqli->errno );
 		}
 		return $result;
 	}

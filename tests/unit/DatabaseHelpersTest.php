@@ -12,6 +12,7 @@ namespace Founders\Migration\Tests\Unit;
 
 use Founders\Migration\Database\Connection;
 use Founders\Migration\Model\Export\DatabaseStep;
+use Founders\Migration\Model\Import\ReplaceStep;
 use Founders\Migration\Tests\TestCase;
 
 /**
@@ -25,6 +26,17 @@ final class DatabaseHelpersTest extends TestCase {
 		$this->assertSame( array( 'localhost', null, '/var/run/mysqld/mysqld.sock' ), Connection::parse_host( 'localhost:/var/run/mysqld/mysqld.sock' ) );
 		$this->assertSame( array( 'localhost', null, '/tmp/mysql.sock' ), Connection::parse_host( '/tmp/mysql.sock' ) );
 		$this->assertSame( array( '::1', 3306, null ), Connection::parse_host( '[::1]:3306' ) );
+	}
+
+	public function test_cache_tables_match_on_every_site_of_a_network(): void {
+		$names = ReplaceStep::CACHE_TABLES;
+		$this->assertTrue( ReplaceStep::is_cache_table( 'fmwtmp_litespeed_url', $names ) );
+		$this->assertTrue( ReplaceStep::is_cache_table( 'fmwtmp_litespeed_url_file', $names ) );
+		$this->assertTrue( ReplaceStep::is_cache_table( 'fmwtmp_2_litespeed_url', $names ) );
+		$this->assertFalse( ReplaceStep::is_cache_table( 'fmwtmp_litespeed_avatar', $names ) );
+		$this->assertFalse( ReplaceStep::is_cache_table( 'fmwtmp_my_litespeed_url', $names ) );
+		$this->assertFalse( ReplaceStep::is_cache_table( 'wp_litespeed_url', $names ), 'only imported tables' );
+		$this->assertFalse( ReplaceStep::is_cache_table( 'fmwtmp_litespeed_url', array() ) );
 	}
 
 	public function test_definer_clauses_are_removed(): void {
