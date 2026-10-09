@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Founders Migration Website 1.0.4\n"
+"Project-Id-Version: Founders Migration Website 1.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/akhmadsakhoji/founders-migration-website/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-30T08:59:41+00:00\n"
+"POT-Creation-Date: 2026-10-09T07:00:25+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: founders-migration-website\n"
@@ -87,7 +87,7 @@ msgstr ""
 
 #. translators: %s: remaining time.
 #: lib/controller/AdminController.php:94
-#: lib/view/admin/remote.php:184
+#: lib/view/admin/remote.php:192
 #: lib/view/admin/schedules.php:172
 msgid "Cancel"
 msgstr ""
@@ -1033,7 +1033,7 @@ msgstr ""
 #: lib/view/admin/pull.php:111
 #: lib/view/admin/remote.php:49
 #: lib/view/admin/remote.php:67
-#: lib/view/admin/remote.php:162
+#: lib/view/admin/remote.php:170
 #: lib/view/admin/schedules.php:47
 #: lib/view/admin/schedules.php:78
 msgid "Name"
@@ -1359,7 +1359,7 @@ msgid "In the %s, create a project (or pick one) and enable the Google Drive API
 msgstr ""
 
 #: lib/view/admin/remote.php:106
-msgid "Configure the OAuth consent screen (External; add your Google account as a test user, or publish the app so the sign-in does not expire after 7 days)."
+msgid "Configure the OAuth consent screen: Internal for a Google Workspace account (no review, the sign-in does not expire); otherwise External, then publish the app so the sign-in does not expire after 7 days."
 msgstr ""
 
 #: lib/view/admin/remote.php:107
@@ -1367,7 +1367,7 @@ msgid "Create credentials: OAuth client ID, type \"Web application\", with this 
 msgstr ""
 
 #: lib/view/admin/remote.php:110
-msgid "Paste the client ID and client secret below, save, then click Connect and allow access. The plugin can only see the files it creates in your Drive."
+msgid "Paste the client ID and client secret below, save, then click Connect and allow access. Without a folder link the plugin can only see the files it creates in your Drive."
 msgstr ""
 
 #: lib/view/admin/remote.php:115
@@ -1383,63 +1383,79 @@ msgid "Stored encrypted with this site's keys, outside the database, like the Go
 msgstr ""
 
 #: lib/view/admin/remote.php:126
-msgid "Region"
+msgid "Folder link"
 msgstr ""
 
 #: lib/view/admin/remote.php:129
-msgid "For example ap-southeast-3 (Amazon S3 Jakarta), ap-southeast-1 (Singapore), auto (Cloudflare R2), sgp1 (DigitalOcean)."
+msgid "Optional: to keep the backups in a shared drive or a folder shared with you, open that folder at drive.google.com and paste its address. The plugin then needs access to your whole Drive, so Google may warn that the app is unverified (Advanced > Go to … continues; an Internal consent screen shows no warning). In a shared drive the account needs the Content manager role. Leave empty for My Drive."
 msgstr ""
 
 #: lib/view/admin/remote.php:133
-msgid "Endpoint"
+msgid "Region"
+msgstr ""
+
+#: lib/view/admin/remote.php:136
+msgid "For example ap-southeast-3 (Amazon S3 Jakarta), ap-southeast-1 (Singapore), auto (Cloudflare R2), sgp1 (DigitalOcean)."
 msgstr ""
 
 #: lib/view/admin/remote.php:140
-msgid "Bucket"
-msgstr ""
-
-#: lib/view/admin/remote.php:144
-msgid "Folder"
+msgid "Endpoint"
 msgstr ""
 
 #: lib/view/admin/remote.php:147
-msgid "Optional folder inside the bucket, useful when several sites share one bucket."
+msgid "Bucket"
 msgstr ""
 
 #: lib/view/admin/remote.php:151
-msgid "Access key"
+msgid "Folder"
+msgstr ""
+
+#: lib/view/admin/remote.php:154
+msgid "Optional folder inside the bucket, useful when several sites share one bucket."
 msgstr ""
 
 #: lib/view/admin/remote.php:155
+msgid "Folder path in My Drive, or inside the linked folder (empty: right in the linked folder). Missing folders are created."
+msgstr ""
+
+#: lib/view/admin/remote.php:159
+msgid "Access key"
+msgstr ""
+
+#: lib/view/admin/remote.php:163
 msgid "Secret key"
 msgstr ""
 
-#: lib/view/admin/remote.php:158
+#: lib/view/admin/remote.php:166
 msgid "Stored encrypted with this site's keys, outside the database. Use a key limited to this bucket (list, read, write, delete)."
 msgstr ""
 
-#: lib/view/admin/remote.php:166
+#: lib/view/admin/remote.php:174
 msgid "Advanced"
 msgstr ""
 
-#: lib/view/admin/remote.php:168
+#: lib/view/admin/remote.php:176
 msgid "Path-style addressing (endpoint/bucket/…); needed for MinIO and most other services"
 msgstr ""
 
-#: lib/view/admin/remote.php:170
+#: lib/view/admin/remote.php:178
 msgid "Storage class"
 msgstr ""
 
-#: lib/view/admin/remote.php:172
+#: lib/view/admin/remote.php:180
 msgid "Default (Standard)"
 msgstr ""
 
-#: lib/view/admin/remote.php:183
+#: lib/view/admin/remote.php:191
 msgid "Test and save"
 msgstr ""
 
-#: lib/view/admin/remote.php:188
+#: lib/view/admin/remote.php:195
 msgid "Same as: wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=… --access-key=… --secret-key=…"
+msgstr ""
+
+#: lib/view/admin/remote.php:196
+msgid "Same as: wp fmw storage add --provider=gdrive --client-id=… --client-secret=… [--folder-link=…] [--prefix=…], then wp fmw storage connect <id>"
 msgstr ""
 
 #: lib/view/admin/reset.php:17

@@ -12,7 +12,7 @@ Founders Migration Website (FMW) has the familiar Export / Import / Backups work
 - **Readable without WordPress.** [FMW Tools](https://github.com/akhmadsakhoji/fmw-tools) inspects, verifies, decrypts and extracts `.fmw` backups on Windows, macOS and Linux.
 - **Free and open.** Every feature, multisite, cloud storage and schedules included, is in one GPL plugin with no paid add-ons.
 
-> **Version 1.0.4.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+> **Version 1.1.0.** Backup and restore (`.fmw` and `.wpress`), password encryption, reset, scheduled backups, cloud storage (S3-compatible and Google Drive), server-to-server pulls (sites and networks), moving multisite networks to another domain, moving one site out of or into a network, and resetting one site or a whole network. Every job is resumable. As with any migration tool, try a restore on a staging site before you rely on a new setup in production. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
@@ -222,20 +222,23 @@ The whole network (`--network`, or "The whole network" at the end of the Reset s
 **Google Drive** uses your own Google OAuth client, so backups go straight from your server to your Drive with no third-party server in between:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/apis/library/drive.googleapis.com), create or pick a project and enable the Google Drive API.
-2. Configure the OAuth consent screen (External). Publish the app ("In production"): while it is in "Testing", Google ends the sign-in after 7 days. FMW only asks for the `drive.file` scope, which Google does not require an app review for.
+2. Configure the OAuth consent screen. With a Google Workspace account, choose **Internal**: no app review, and the sign-in does not expire. Otherwise choose External and publish the app ("In production"): while it is in "Testing", Google ends the sign-in after 7 days. Without a folder link FMW only asks for the `drive.file` scope, which Google does not require an app review for.
 3. Create an OAuth client ID of type "Web application" with the redirect URI shown on the Cloud storage screen: `https://example.com/wp-admin/admin-post.php?action=fmwp_gdrive_callback`.
 4. Add the storage with the client ID and secret, then click **Connect** (or run `wp fmw storage connect <id>` and open the printed link) and allow access.
 
+**Shared drives.** To keep the backups in a shared drive (or a folder someone shared with you), open the folder at drive.google.com and paste its address in **Folder link** (`--folder-link=https://drive.google.com/drive/folders/…`). The backups go right into that folder, or into the **Folder** path inside it (missing folders are created, existing ones are used). Since FMW did not create that folder, it then asks for the full `drive` scope: on an External consent screen Google shows an "unverified app" warning (Advanced, then Go to …), on an Internal one it does not. In a shared drive the account needs the **Content manager** role: a Contributor can add files but not remove old backups. Content managers cannot delete for good, so removed backups go to the shared drive's trash, which Google empties after 30 days. Adding or removing the link asks you to connect again.
+
 ```bash
 wp fmw storage add --provider=gdrive --client-id=123-abc.apps.googleusercontent.com --client-secret=GOCSPX-... --prefix="FMW Backups/example.com"
+wp fmw storage add --provider=gdrive --client-id=... --client-secret=... --folder-link=https://drive.google.com/drive/folders/0AbC...   # shared drive
 wp fmw storage connect <id>        # prints the Google sign-in link
 wp fmw storage test <id>
 wp fmw backup --storage=<id>
 ```
 
-- With `drive.file`, FMW sees only the files it created itself. Backups you put into the folder by hand do not show in the list; upload them with FMW instead.
+- With `drive.file` (no folder link), FMW sees only the files it created itself. Backups you put into the folder by hand do not show in the list; upload them with FMW instead. With a folder link they do.
 - Resumable uploads in 256 KiB-aligned chunks sized to the connection. After an interruption, the upload asks Google how much arrived and continues from there. Older copies with the same name in the folder are replaced.
-- The folder (default `FMW Backups/<domain>`) is created on first use. The client secret and the Google tokens are stored encrypted like S3 keys. **Disconnect** revokes the sign-in; the backups stay in Drive.
+- The folder (default `FMW Backups/<domain>` in My Drive, or the linked folder) is created on first use. The client secret and the Google tokens are stored encrypted like S3 keys. **Disconnect** revokes the sign-in; the backups stay in Drive.
 
 **Pulling a site** (server to server, [docs/pull-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/pull-v1.md)) copies a site onto this one without downloading and uploading the backup by hand. On the source site, create a pull key; on the site that should receive the copy, pull:
 

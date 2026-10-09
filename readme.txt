@@ -4,7 +4,7 @@ Tags: backup, migration, restore, multisite, wp-cli
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.4
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,12 +81,17 @@ No. Deleting the plugin removes its settings, cloud storage credentials, schedul
 The plugin works entirely on your server. It contacts other services only when you set them up, and sends only what the feature needs:
 
 * **Amazon S3 and S3-compatible storage** (Amazon S3, Cloudflare R2, Wasabi, Backblaze B2, DigitalOcean Spaces, or any endpoint you enter), when you add a cloud storage and when backups are uploaded to, listed in, downloaded from or deleted from it. Sent: the backup files and their names, and requests signed with your access key (the secret key is never sent). Terms and privacy: [Amazon S3](https://aws.amazon.com/service-terms/) ([privacy](https://aws.amazon.com/privacy/)), [Cloudflare](https://www.cloudflare.com/website-terms/) ([privacy](https://www.cloudflare.com/privacypolicy/)), [Wasabi](https://wasabi.com/legal/terms-of-use) ([privacy](https://wasabi.com/legal/privacy-policy)), [Backblaze](https://www.backblaze.com/company/policy/terms-of-service) ([privacy](https://www.backblaze.com/company/policy/privacy)), [DigitalOcean](https://www.digitalocean.com/legal/terms-of-service-agreement) ([privacy](https://www.digitalocean.com/legal/privacy-policy)).
-* **Google OAuth and Google Drive** (accounts.google.com, oauth2.googleapis.com, www.googleapis.com), when you connect a Google Drive storage, when its access is refreshed or revoked, and when backups are uploaded to, listed in, downloaded from or deleted from it. Sent: your OAuth client ID and secret, the authorization code and tokens, and the backup files and their names. The plugin asks only for the `drive.file` scope, so it sees only files it created. [Google Terms of Service](https://policies.google.com/terms), [Google Privacy Policy](https://policies.google.com/privacy), [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy).
+* **Google OAuth and Google Drive** (accounts.google.com, oauth2.googleapis.com, www.googleapis.com), when you connect a Google Drive storage, when its access is refreshed or revoked, and when backups are uploaded to, listed in, downloaded from or deleted from it. Sent: your OAuth client ID and secret, the authorization code and tokens, and the backup files and their names. Without a folder link the plugin asks only for the `drive.file` scope, so it sees only files it created; with a folder link (a shared drive or a shared folder) it asks for the `drive` scope, which it uses only for that folder. [Google Terms of Service](https://policies.google.com/terms), [Google Privacy Policy](https://policies.google.com/privacy), [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy).
 * **Another WordPress site you pull from**, at the address you enter, when you start a pull. Sent: the pull key, the backup options and, if you chose one, the backup password. The backup is downloaded from that site. As the source of a pull, your site answers only requests with a valid key that you created.
 
 Scheduled backups send e-mail through your site's own mailer. The plugin also makes requests to your own site to continue background jobs and to check whether the backups folder is reachable from the web. There is no tracking and no data is sent to the plugin's authors.
 
 == Changelog ==
+
+= 1.1.0 =
+* Google Drive storages can use a shared drive, or a folder someone shared with you: paste the folder's address in "Folder link". The backups go right into it, or into a folder path inside it. The plugin then asks for access to the whole Drive, since it did not create that folder; without a link it keeps asking only for its own files.
+* Deleting a backup in a shared drive as a Content manager moves it to the shared drive's trash (only managers may delete for good).
+* The Cloud storage screen shows the matching WP-CLI command for Google Drive, and suggests an Internal consent screen for Google Workspace accounts.
 
 = 1.0.4 =
 * A restore to a new address no longer stops in the Replace step with "Duplicate entry ... for key" when a table holds the same URL over http:// and https:// (LiteSpeed Cache's URL table, for example). LiteSpeed Cache's URL tables are emptied and rebuilt by LiteSpeed; elsewhere, a row whose new address is already taken keeps the old one and the restore says so.
@@ -104,6 +109,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 * First public release: resumable backups and restores of sites and multisite networks in the open `.fmw` format, `.wpress` restores, password protection, reset, scheduled backups, S3-compatible and Google Drive storage, and server-to-server pulls. Full list in CHANGELOG.md.
 
 == Upgrade Notice ==
+
+= 1.1.0 =
+Google Drive storages can keep backups in a shared drive (Folder link).
 
 = 1.0.4 =
 Restores to a new address no longer stop on "Duplicate entry" in the Replace step. A stopped restore continues after the update (Backups page or wp fmw resume).

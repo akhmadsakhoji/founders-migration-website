@@ -274,7 +274,7 @@ final class RemoteRestController {
 	 */
 	private function save( WP_REST_Request $request, ?array $existing ) {
 		$input = array();
-		foreach ( array( 'name', 'provider', 'endpoint', 'region', 'bucket', 'prefix', 'access_key', 'path_style', 'storage_class', 'client_id' ) as $field ) {
+		foreach ( array( 'name', 'provider', 'endpoint', 'region', 'bucket', 'prefix', 'access_key', 'path_style', 'storage_class', 'client_id', 'folder_link' ) as $field ) {
 			if ( null !== $request[ $field ] ) {
 				$input[ $field ] = is_bool( $request[ $field ] ) ? $request[ $field ] : sanitize_text_field( (string) $request[ $field ] );
 			}

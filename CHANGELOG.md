@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-09
+
+### Added
+
+- Google Drive storages can use a shared drive, or a folder someone shared with you: **Folder link** on the Cloud storage screen, `--folder-link=<url>` for `wp fmw storage add|update`. It takes the folder's address as the browser shows it (`https://drive.google.com/drive/folders/<id>`, also with `/u/0/`, `?usp=sharing` or `open?id=`) or the bare ID. The backups go right into the linked folder, or into the Folder path inside it; existing subfolders are used, missing ones created.
+  - Every Drive API call now passes `supportsAllDrives=true`, and lists in a shared drive search that drive (`corpora=drive`).
+  - The linked folder is checked on first use: missing or not visible to the account, a file, in the trash, or read-only each give their own message.
+  - A storage with a folder link signs in with the full `drive` scope (FMW did not create that folder, so `drive.file` cannot see it); one without keeps `drive.file`. Adding or removing the link drops the sign-in, so Connect asks Google again; the connection fails when Google did not grant the scope.
+  - Deleting a backup that the account may not delete for good (a Content manager in a shared drive) moves it to the shared drive's trash instead. When that is refused too, the message says the account needs the Content manager role.
+
+### Changed
+
+- The Google Drive set-up steps suggest an Internal consent screen for Google Workspace accounts (no review, no 7-day expiry).
+- The "Same as: wp fmw storage add …" line under the storage form shows the Google Drive command when Google Drive is picked (it always showed the Amazon S3 one).
+
 ## [1.0.4] - 2026-09-30
 
 ### Fixed
@@ -86,7 +101,8 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.1...v1.0.2

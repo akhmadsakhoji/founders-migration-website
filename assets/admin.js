@@ -913,7 +913,7 @@
 			row.hidden = row.getAttribute( 'data-fmw-kind' ) !== ( drive ? 'gdrive' : 's3' );
 		} );
 		if ( drive ) {
-			form.elements.prefix.placeholder = 'FMW Backups/' + window.location.hostname;
+			form.elements.prefix.placeholder = form.elements.folder_link.value.trim() ? '' : 'FMW Backups/' + window.location.hostname;
 			return;
 		}
 		var option  = form.elements.provider.selectedOptions[ 0 ];
@@ -958,6 +958,7 @@
 		form.elements.storage_class.value = storage.storage_class || '';
 		form.elements.secret_key.placeholder = t.secretKept;
 		form.elements.client_id.value        = storage.client_id || '';
+		form.elements.folder_link.value      = storage.folder_link || '';
 		form.elements.client_secret.placeholder = t.secretKept;
 		title.textContent = title.getAttribute( 'data-edit' ) + ': ' + storage.name;
 		form.querySelector( '[data-fmw-storage-cancel]' ).hidden = false;
@@ -971,13 +972,13 @@
 		var id     = form.elements.id.value;
 		var body   = {};
 		var drive  = 'gdrive' === form.elements.provider.value;
-		( drive ? [ 'provider', 'prefix', 'name', 'client_id', 'client_secret' ] : [ 'provider', 'region', 'endpoint', 'bucket', 'prefix', 'access_key', 'secret_key', 'name', 'storage_class' ] ).forEach( function ( field ) {
+		( drive ? [ 'provider', 'prefix', 'name', 'client_id', 'client_secret', 'folder_link' ] : [ 'provider', 'region', 'endpoint', 'bucket', 'prefix', 'access_key', 'secret_key', 'name', 'storage_class' ] ).forEach( function ( field ) {
 			body[ field ] = form.elements[ field ].value;
 		} );
 		if ( ! drive ) {
 			body.path_style = form.elements.path_style.checked;
 		}
-		if ( drive && ! body.prefix ) {
+		if ( drive && ! body.prefix && ! body.folder_link.trim() ) {
 			delete body.prefix; // Keeps the default folder.
 		}
 		error.textContent = t.testing;
@@ -1454,6 +1455,9 @@
 			if ( pattern.indexOf( '{region}' ) !== -1 ) {
 				storageFormNode.elements.endpoint.value = pattern.replace( '{region}', storageFormNode.elements.region.value.trim() );
 			}
+			applyProvider( storageFormNode, false );
+		} );
+		storageFormNode.elements.folder_link.addEventListener( 'input', function () {
 			applyProvider( storageFormNode, false );
 		} );
 		storageFormNode.querySelector( '[data-fmw-storage-cancel]' ).addEventListener( 'click', resetStorageForm );

@@ -103,11 +103,11 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 							);
 							?>
 						</li>
-						<li><?php esc_html_e( 'Configure the OAuth consent screen (External; add your Google account as a test user, or publish the app so the sign-in does not expire after 7 days).', 'founders-migration-website' ); ?></li>
+						<li><?php esc_html_e( 'Configure the OAuth consent screen: Internal for a Google Workspace account (no review, the sign-in does not expire); otherwise External, then publish the app so the sign-in does not expire after 7 days.', 'founders-migration-website' ); ?></li>
 						<li><?php esc_html_e( 'Create credentials: OAuth client ID, type "Web application", with this authorized redirect URI:', 'founders-migration-website' ); ?>
 							<br /><input type="text" class="large-text code" readonly value="<?php echo esc_attr( Founders\Migration\Remote\GoogleAuth::redirect_uri() ); ?>" data-fmw-redirect-uri onclick="this.select()" />
 						</li>
-						<li><?php esc_html_e( 'Paste the client ID and client secret below, save, then click Connect and allow access. The plugin can only see the files it creates in your Drive.', 'founders-migration-website' ); ?></li>
+						<li><?php esc_html_e( 'Paste the client ID and client secret below, save, then click Connect and allow access. Without a folder link the plugin can only see the files it creates in your Drive.', 'founders-migration-website' ); ?></li>
 					</ol>
 				</td>
 			</tr>
@@ -120,6 +120,13 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 				<td>
 					<input type="password" id="fmw-storage-client-secret" name="client_secret" class="regular-text" autocomplete="new-password" spellcheck="false" />
 					<p class="description"><?php esc_html_e( 'Stored encrypted with this site\'s keys, outside the database, like the Google sign-in.', 'founders-migration-website' ); ?></p>
+				</td>
+			</tr>
+			<tr data-fmw-kind="gdrive" hidden>
+				<th scope="row"><label for="fmw-storage-folder-link"><?php esc_html_e( 'Folder link', 'founders-migration-website' ); ?></label></th>
+				<td>
+					<input type="text" id="fmw-storage-folder-link" name="folder_link" class="large-text" spellcheck="false" placeholder="https://drive.google.com/drive/folders/…" />
+					<p class="description"><?php esc_html_e( 'Optional: to keep the backups in a shared drive or a folder shared with you, open that folder at drive.google.com and paste its address. The plugin then needs access to your whole Drive, so Google may warn that the app is unverified (Advanced > Go to … continues; an Internal consent screen shows no warning). In a shared drive the account needs the Content manager role. Leave empty for My Drive.', 'founders-migration-website' ); ?></p>
 				</td>
 			</tr>
 			<tr data-fmw-kind="s3">
@@ -144,7 +151,8 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 				<th scope="row"><label for="fmw-storage-prefix"><?php esc_html_e( 'Folder', 'founders-migration-website' ); ?></label></th>
 				<td>
 					<input type="text" id="fmw-storage-prefix" name="prefix" class="regular-text" spellcheck="false" placeholder="<?php echo esc_attr( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" />
-					<p class="description"><?php esc_html_e( 'Optional folder inside the bucket, useful when several sites share one bucket.', 'founders-migration-website' ); ?></p>
+					<p class="description" data-fmw-kind="s3"><?php esc_html_e( 'Optional folder inside the bucket, useful when several sites share one bucket.', 'founders-migration-website' ); ?></p>
+					<p class="description" data-fmw-kind="gdrive" hidden><?php esc_html_e( 'Folder path in My Drive, or inside the linked folder (empty: right in the linked folder). Missing folders are created.', 'founders-migration-website' ); ?></p>
 				</td>
 			</tr>
 			<tr data-fmw-kind="s3">
@@ -184,6 +192,7 @@ $fmwp_providers = Founders\Migration\Remote\StorageOptions::providers();
 			<button type="button" class="button" data-fmw-storage-cancel hidden><?php esc_html_e( 'Cancel', 'founders-migration-website' ); ?></button>
 		</p>
 		<p class="fmw-error" role="alert" data-fmw-storage-error></p>
+		<p class="description" data-fmw-kind="s3"><?php esc_html_e( 'Same as: wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=… --access-key=… --secret-key=…', 'founders-migration-website' ); ?></p>
+		<p class="description" data-fmw-kind="gdrive" hidden><?php esc_html_e( 'Same as: wp fmw storage add --provider=gdrive --client-id=… --client-secret=… [--folder-link=…] [--prefix=…], then wp fmw storage connect <id>', 'founders-migration-website' ); ?></p>
 	</form>
-	<p class="description"><?php esc_html_e( 'Same as: wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=… --access-key=… --secret-key=…', 'founders-migration-website' ); ?></p>
 </div>

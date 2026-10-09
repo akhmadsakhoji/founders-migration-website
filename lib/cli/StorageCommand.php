@@ -34,6 +34,7 @@ use WP_CLI;
  *
  *     wp fmw storage add --provider=aws --region=ap-southeast-3 --bucket=my-backups --prefix=example.com --access-key=AKIA... --secret-key=...
  *     wp fmw storage add --provider=gdrive --client-id=123-abc.apps.googleusercontent.com --client-secret=GOCSPX-...
+ *     wp fmw storage add --provider=gdrive --client-id=123-abc.apps.googleusercontent.com --folder-link=https://drive.google.com/drive/folders/0AbCdEfGhIjKlMn
  *     wp fmw storage connect 5e6f7a8b
  *     wp fmw storage test 1a2b3c4d
  *     wp fmw backup --storage=1a2b3c4d
@@ -141,6 +142,9 @@ final class StorageCommand {
 	 * [--client-secret=<secret>]
 	 * : Google Drive: its client secret. Asked for without echo when missing.
 	 *
+	 * [--folder-link=<url>]
+	 * : Google Drive: address of a folder to use instead of My Drive, also in a shared drive (https://drive.google.com/drive/folders/...). The backups go right into it, or into --prefix inside it. Needs access to the whole Drive.
+	 *
 	 * [--skip-test]
 	 * : Save without the write/read/delete check.
 	 *
@@ -216,6 +220,9 @@ final class StorageCommand {
 	 * [--client-secret=<secret>]
 	 * : Google Drive: client secret.
 	 *
+	 * [--folder-link=<url>]
+	 * : Google Drive: address of a folder to use instead of My Drive ("" for My Drive). Adding or removing it needs `wp fmw storage connect` again.
+	 *
 	 * [--skip-test]
 	 * : Save without the check.
 	 *
@@ -233,7 +240,11 @@ final class StorageCommand {
 		if ( 'gdrive' !== $storage['provider'] || ! empty( $storage['refresh'] ) ) {
 			$this->check( $storage, $assoc_args );
 		}
-		Storages::save_settings( $storage );
+		$storage = Storages::save_settings( $storage );
+		if ( 'gdrive' === $storage['provider'] && empty( $storage['refresh'] ) ) {
+			WP_CLI::success( sprintf( 'Storage %s updated. Sign in to Google again: run `wp fmw storage connect %s`.', $storage['id'], $storage['id'] ) );
+			return;
+		}
 		WP_CLI::success( sprintf( 'Storage %s updated.', $storage['id'] ) );
 	}
 
@@ -522,6 +533,7 @@ final class StorageCommand {
 			'secret-key'    => 'secret_key',
 			'client-id'     => 'client_id',
 			'client-secret' => 'client_secret',
+			'folder-link'   => 'folder_link',
 			'storage-class' => 'storage_class',
 		);
 		foreach ( $map as $flag => $field ) {
