@@ -4,7 +4,7 @@ Tags: backup, migration, restore, multisite, wp-cli
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -88,6 +88,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 
 == Changelog ==
 
+= 1.1.1 =
+* With LiteSpeed Cache's "Cache REST API" and "Cache Logged-in Users" on, the admin screens kept showing old answers: a new cloud storage did not appear in the list, and a job's progress could stand still. The plugin's REST answers are now never cached.
+
 = 1.1.0 =
 * Google Drive storages can use a shared drive, or a folder someone shared with you: paste the folder's address in "Folder link". The backups go right into it, or into a folder path inside it. The plugin then asks for access to the whole Drive, since it did not create that folder; without a link it keeps asking only for its own files.
 * Deleting a backup in a shared drive as a Content manager moves it to the shared drive's trash (only managers may delete for good).
@@ -109,6 +112,9 @@ Scheduled backups send e-mail through your site's own mailer. The plugin also ma
 * First public release: resumable backups and restores of sites and multisite networks in the open `.fmw` format, `.wpress` restores, password protection, reset, scheduled backups, S3-compatible and Google Drive storage, and server-to-server pulls. Full list in CHANGELOG.md.
 
 == Upgrade Notice ==
+
+= 1.1.1 =
+On sites with LiteSpeed Cache, lists and progress in the plugin's screens no longer show old cached answers.
 
 = 1.1.0 =
 Google Drive storages can keep backups in a shared drive (Folder link).

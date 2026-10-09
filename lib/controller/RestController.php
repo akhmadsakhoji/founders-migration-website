@@ -65,6 +65,64 @@ final class RestController {
 	 */
 	public function register(): void {
 		add_action( 'rest_api_init', array( $this, 'routes' ) );
+		add_filter( 'rest_pre_dispatch', array( $this, 'no_cache' ), 10, 3 );
+		add_filter( 'rest_post_dispatch', array( $this, 'no_store' ), 10, 3 );
+	}
+
+	/**
+	 * Whether a REST route belongs to this plugin (fmw/v1).
+	 *
+	 * @param string $route Route, such as /fmw/v1/storages.
+	 * @return bool
+	 */
+	public static function is_own_route( string $route ): bool {
+		$base = '/' . self::NAMESPACE_V1;
+		return $base === $route || 0 === strpos( $route, $base . '/' );
+	}
+
+	/**
+	 * Keeps page caches away from the plugin's REST answers.
+	 *
+	 * LiteSpeed Cache with "Cache REST API" and "Cache Logged-in Users" kept
+	 * an answer per user and served it again: the storage list stayed empty
+	 * after a storage was added, a job's progress stood still. It ignores
+	 * Cache-Control, so it is told with its own action, and DONOTCACHEPAGE
+	 * covers the other page caches. Runs before the route's callback, so it
+	 * also holds for answers that are streamed and end the request.
+	 *
+	 * @param mixed           $result  Answer so far (passed on unchanged).
+	 * @param mixed           $server  Server.
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function no_cache( $result, $server, $request ) {
+		unset( $server );
+		if ( self::is_own_route( (string) $request->get_route() ) ) {
+			if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+				define( 'DONOTCACHEPAGE', true ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- The constant page caches read.
+			}
+			if ( function_exists( 'do_action' ) ) {
+				do_action( 'litespeed_control_set_nocache', 'Founders Migration Website REST API' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- LiteSpeed Cache's own action.
+			}
+		}
+		return $result;
+	}
+
+	/**
+	 * No cache may keep the plugin's REST answers, errors included (also for LiteSpeed's server-level cache).
+	 *
+	 * @param \WP_HTTP_Response $response Response.
+	 * @param mixed             $server   Server.
+	 * @param WP_REST_Request   $request  Request.
+	 * @return \WP_HTTP_Response
+	 */
+	public function no_store( $response, $server, $request ) {
+		unset( $server );
+		if ( self::is_own_route( (string) $request->get_route() ) ) {
+			$response->header( 'Cache-Control', 'no-store, private' );
+			$response->header( 'X-LiteSpeed-Cache-Control', 'no-cache' );
+		}
+		return $response;
 	}
 
 	/**

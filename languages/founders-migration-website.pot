@@ -2,14 +2,14 @@
 # This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: Founders Migration Website 1.1.0\n"
+"Project-Id-Version: Founders Migration Website 1.1.1\n"
 "Report-Msgid-Bugs-To: https://github.com/akhmadsakhoji/founders-migration-website/issues\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-09T07:00:25+00:00\n"
+"POT-Creation-Date: 2026-10-09T07:32:06+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: founders-migration-website\n"
@@ -750,9 +750,9 @@ msgid "You do not have permission to download backups."
 msgstr ""
 
 #: lib/controller/DownloadController.php:70
-#: lib/controller/RestController.php:184
-#: lib/controller/RestController.php:204
-#: lib/controller/RestController.php:500
+#: lib/controller/RestController.php:242
+#: lib/controller/RestController.php:262
+#: lib/controller/RestController.php:558
 msgid "Backup not found."
 msgstr ""
 
@@ -780,54 +780,54 @@ msgstr ""
 msgid "Cloud storage or backup not found."
 msgstr ""
 
-#: lib/controller/RestController.php:187
+#: lib/controller/RestController.php:245
 msgid "This backup belongs to All-in-One WP Migration; delete it there."
 msgstr ""
 
-#: lib/controller/RestController.php:190
+#: lib/controller/RestController.php:248
 msgid "The backup could not be deleted."
 msgstr ""
 
-#: lib/controller/RestController.php:356
+#: lib/controller/RestController.php:414
 msgid "Not enough free disk space for this file."
 msgstr ""
 
-#: lib/controller/RestController.php:374
-#: lib/controller/RestController.php:398
+#: lib/controller/RestController.php:432
+#: lib/controller/RestController.php:456
 msgid "Unknown upload."
 msgstr ""
 
-#: lib/controller/RestController.php:413
+#: lib/controller/RestController.php:471
 msgid "The upload could not be moved into the backups folder."
 msgstr ""
 
-#: lib/controller/RestController.php:536
-#: lib/controller/RestController.php:560
+#: lib/controller/RestController.php:594
+#: lib/controller/RestController.php:618
 msgid "This backup is protected with a password."
 msgstr ""
 
 #. translators: %s: site host name, or a network site's address.
-#: lib/controller/RestController.php:552
+#: lib/controller/RestController.php:610
 #, php-format
 msgid "Type %s to confirm the reset."
 msgstr ""
 
-#: lib/controller/RestController.php:557
+#: lib/controller/RestController.php:615
 msgid "Unknown job type."
 msgstr ""
 
-#: lib/controller/RestController.php:560
+#: lib/controller/RestController.php:618
 msgid "Wrong password for this backup."
 msgstr ""
 
-#: lib/controller/RestController.php:585
-#: lib/controller/RestController.php:601
-#: lib/controller/RestController.php:653
-#: lib/controller/RestController.php:680
+#: lib/controller/RestController.php:643
+#: lib/controller/RestController.php:659
+#: lib/controller/RestController.php:711
+#: lib/controller/RestController.php:738
 msgid "Job not found."
 msgstr ""
 
-#: lib/controller/RestController.php:710
+#: lib/controller/RestController.php:768
 msgid "Another backup or restore is running. Wait for it to finish, or cancel it on the Backups page."
 msgstr ""
 
