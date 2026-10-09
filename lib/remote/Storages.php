@@ -84,9 +84,7 @@ final class Storages {
 	}
 
 	/**
-	 * Saves edited settings. Google sign-in data written meanwhile (a refreshed
-	 * token, the folder found on first use) is kept unless the edit dropped it
-	 * on purpose (another client ID or folder).
+	 * Saves edited settings, keeping what was written meanwhile (see keep_found()).
 	 *
 	 * @param array<string,mixed> $storage Storage built from the edit.
 	 * @return array<string,mixed> What was saved.
@@ -95,22 +93,40 @@ final class Storages {
 		$saved = self::store()->update(
 			static function ( array &$data ) use ( $storage ): array {
 				$current = $data['records'][ $storage['id'] ] ?? null;
-				if ( is_array( $current ) && 'gdrive' === $storage['provider'] ) {
-					if ( ( $current['client_id'] ?? '' ) === $storage['client_id'] ) {
-						foreach ( array( 'refresh', 'access', 'account', 'connected_at' ) as $field ) {
-							$storage[ $field ] = $current[ $field ] ?? $storage[ $field ];
-						}
-					}
-					if ( ( $current['prefix'] ?? '' ) === $storage['prefix'] ) {
-						$storage['folder_id']   = $current['folder_id'] ?? $storage['folder_id'];
-						$storage['folder_path'] = $current['folder_path'] ?? $storage['folder_path'];
-					}
+				if ( is_array( $current ) ) {
+					$storage = self::keep_found( $current, $storage );
 				}
 				$data['records'][ $storage['id'] ] = $storage;
 				return $storage;
 			}
 		);
 		return (array) $saved;
+	}
+
+	/**
+	 * An edited storage with the Google sign-in data written meanwhile (a
+	 * refreshed token, the folder found on first use), unless the edit dropped
+	 * it on purpose (another client ID, scope, folder or linked folder).
+	 *
+	 * @param array<string,mixed> $current Storage as saved now.
+	 * @param array<string,mixed> $storage Storage built from the edit.
+	 * @return array<string,mixed>
+	 */
+	public static function keep_found( array $current, array $storage ): array {
+		if ( 'gdrive' !== $storage['provider'] ) {
+			return $storage;
+		}
+		if ( ( $current['client_id'] ?? '' ) === $storage['client_id'] && GoogleAuth::scope( $current ) === GoogleAuth::scope( $storage ) ) {
+			foreach ( array( 'refresh', 'access', 'account', 'connected_at' ) as $field ) {
+				$storage[ $field ] = $current[ $field ] ?? $storage[ $field ];
+			}
+		}
+		if ( ( $current['prefix'] ?? '' ) === $storage['prefix'] && (string) ( $current['parent'] ?? '' ) === (string) ( $storage['parent'] ?? '' ) ) {
+			foreach ( array( 'folder_id', 'folder_path', 'parent_name' ) as $field ) {
+				$storage[ $field ] = $current[ $field ] ?? $storage[ $field ] ?? '';
+			}
+		}
+		return $storage;
 	}
 
 	/**

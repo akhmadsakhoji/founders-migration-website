@@ -27,6 +27,8 @@ final class StorageOptions {
 
 	const STORAGE_CLASSES = array( 'STANDARD', 'STANDARD_IA', 'ONEZONE_IA', 'INTELLIGENT_TIERING', 'GLACIER_IR' );
 
+	const DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/';
+
 	/**
 	 * Provider presets: label, endpoint template ({region}), default region, path-style addressing.
 	 *
@@ -198,8 +200,11 @@ final class StorageOptions {
 	public static function public_view( array $storage ): array {
 		$storage['provider_label'] = self::providers()[ $storage['provider'] ]['label'] ?? (string) $storage['provider'];
 		if ( 'gdrive' === $storage['provider'] ) {
-			$storage['connected'] = ! empty( $storage['refresh'] );
-			$storage['location']  = 'My Drive/' . $storage['prefix'];
+			$parent                 = (string) ( $storage['parent'] ?? '' );
+			$storage['connected']   = ! empty( $storage['refresh'] );
+			$storage['folder_link'] = '' !== $parent ? self::DRIVE_FOLDER_URL . $parent : '';
+			$storage['location']    = '' !== $parent ? ( '' !== (string) ( $storage['parent_name'] ?? '' ) ? (string) $storage['parent_name'] : self::DRIVE_FOLDER_URL . $parent ) : 'My Drive';
+			$storage['location']   .= '' !== (string) $storage['prefix'] ? '/' . $storage['prefix'] : '';
 		} else {
 			$storage['location'] = $storage['bucket'] . ( '' !== $storage['prefix'] ? '/' . $storage['prefix'] : '' );
 		}
@@ -211,8 +216,12 @@ final class StorageOptions {
 	 * A new or changed Google Drive storage.
 	 *
 	 * Fields: client_id and client_secret of the site's own OAuth client
-	 * ("Web application" in the Google Cloud Console), prefix (folder path
-	 * in My Drive). A new client ID drops the Google sign-in.
+	 * ("Web application" in the Google Cloud Console), folder_link (address
+	 * of a Drive folder to use instead of My Drive, also in a shared drive;
+	 * '' for My Drive) and prefix (folder path in My Drive or in the linked
+	 * folder, created when missing; may be '' with a linked folder). A new
+	 * client ID drops the Google sign-in, and so does adding or removing the
+	 * linked folder, which needs another scope.
 	 *
 	 * @param array<string,mixed>      $input    Fields; client_secret '' keeps the saved one.
 	 * @param array<string,mixed>|null $existing Storage being changed.
@@ -231,6 +240,8 @@ final class StorageOptions {
 			'client_id'    => '',
 			'secret'       => '',
 			'prefix'       => 'FMW Backups' . ( '' !== $host ? '/' . $host : '' ),
+			'parent'       => '',
+			'parent_name'  => '',
 			'folder_id'    => '',
 			'folder_path'  => '',
 			'refresh'      => '',
@@ -269,20 +280,66 @@ final class StorageOptions {
 		if ( '' === (string) $storage['secret'] ) {
 			throw new \InvalidArgumentException( 'Enter the client secret of your Google OAuth client.' );
 		}
+		$storage += array(
+			'parent'      => '',
+			'parent_name' => '',
+		);
+		if ( array_key_exists( 'folder_link', $input ) ) {
+			$parent = self::drive_folder( (string) $input['folder_link'] );
+			if ( $parent !== $storage['parent'] ) {
+				if ( GoogleAuth::scope( array( 'parent' => $parent ) ) !== GoogleAuth::scope( $storage ) ) {
+					// Another scope: Google has to be asked again.
+					$storage['refresh'] = '';
+					$storage['access']  = '';
+					$storage['account'] = '';
+				}
+				$storage['parent']      = $parent;
+				$storage['parent_name'] = '';
+				$storage['folder_id']   = '';
+				if ( null === $existing && ! array_key_exists( 'prefix', $input ) ) {
+					$storage['prefix'] = ''; // Straight into the linked folder.
+				}
+			}
+		}
 		if ( array_key_exists( 'prefix', $input ) ) {
 			$prefix = self::prefix( (string) $input['prefix'] );
-			if ( '' === $prefix ) {
-				throw new \InvalidArgumentException( 'Enter a folder for the backups in Google Drive, for example "FMW Backups".' );
-			}
 			if ( $prefix !== $storage['prefix'] ) {
 				$storage['folder_id'] = '';
 			}
 			$storage['prefix'] = $prefix;
 		}
+		if ( '' === $storage['prefix'] && '' === $storage['parent'] ) {
+			throw new \InvalidArgumentException( 'Enter a folder for the backups in Google Drive, for example "FMW Backups", or the link of a Drive folder.' );
+		}
 		if ( '' === $storage['name'] ) {
-			$storage['name'] = 'Google Drive · ' . $storage['prefix'];
+			$storage['name'] = 'Google Drive · ' . ( '' !== $storage['prefix'] ? $storage['prefix'] : 'linked folder' );
 		}
 		return $storage;
+	}
+
+	/**
+	 * ID of a Google Drive folder from its address (or the bare ID); '' for none.
+	 *
+	 * Takes what the browser shows for a folder, in My Drive, a shared drive or
+	 * "Shared with me": https://drive.google.com/drive/folders/ID, with /u/0/ or
+	 * ?usp=sharing, or https://drive.google.com/open?id=ID.
+	 *
+	 * @param string $link Address or ID.
+	 * @return string
+	 * @throws \InvalidArgumentException When it is not a folder address.
+	 */
+	public static function drive_folder( string $link ): string {
+		$link = trim( $link, " \t\n\r\0\x0B" );
+		if ( '' === $link ) {
+			return '';
+		}
+		if ( 1 === preg_match( '#^[A-Za-z0-9_-]{10,200}$#', $link ) ) {
+			return $link;
+		}
+		if ( 1 === preg_match( '#^https://drive\.google\.com/(?:drive/(?:u/\d+/|mobile/)?folders/|open\?(?:[^\#]*&)?id=)([A-Za-z0-9_-]{10,200})(?:[/?&\#]|$)#', $link, $match ) ) {
+			return $match[1];
+		}
+		throw new \InvalidArgumentException( 'Folder link: open the folder at drive.google.com and copy the address, which looks like https://drive.google.com/drive/folders/1AbC...' );
 	}
 
 	/**

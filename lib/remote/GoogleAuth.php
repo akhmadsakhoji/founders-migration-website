@@ -22,18 +22,31 @@ defined( 'ABSPATH' ) || exit;
  * Mode "own" (the only one for now): the site's own OAuth client from the
  * Google Cloud Console, so no server of anyone else is involved. The scope
  * is drive.file: the plugin sees only the files and folders it created,
- * nothing else in the Drive. The refresh token and the current access token
+ * nothing else in the Drive. A storage with a linked folder (a shared drive,
+ * or a folder someone shared) needs the full drive scope instead, since the
+ * plugin did not create that folder. The refresh token and the current access token
  * are kept sealed with the site's salts in the storage record. The storage
  * format has an "auth" field so that a hosted sign-in service (a relay) can
  * be added later without changing how storages are saved.
  */
 final class GoogleAuth {
 
-	const AUTH_URL  = 'https://accounts.google.com/o/oauth2/v2/auth';
-	const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-	const SCOPE     = 'https://www.googleapis.com/auth/drive.file';
-	const ACTION    = 'fmwp_gdrive_callback';
-	const STATE_TTL = 1200;
+	const AUTH_URL   = 'https://accounts.google.com/o/oauth2/v2/auth';
+	const TOKEN_URL  = 'https://oauth2.googleapis.com/token';
+	const SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+	const SCOPE_FULL = 'https://www.googleapis.com/auth/drive';
+	const ACTION     = 'fmwp_gdrive_callback';
+	const STATE_TTL  = 1200;
+
+	/**
+	 * The scope a storage signs in with: drive.file, or the full drive scope for a linked folder.
+	 *
+	 * @param array<string,mixed> $storage Storage.
+	 * @return string
+	 */
+	public static function scope( array $storage ): string {
+		return '' !== (string) ( $storage['parent'] ?? '' ) ? self::SCOPE_FULL : self::SCOPE;
+	}
 
 	/**
 	 * A Google endpoint (filterable, for a test server).
@@ -93,7 +106,7 @@ final class GoogleAuth {
 				'client_id'              => (string) $storage['client_id'],
 				'redirect_uri'           => self::redirect_uri(),
 				'response_type'          => 'code',
-				'scope'                  => self::SCOPE,
+				'scope'                  => self::scope( $storage ),
 				'access_type'            => 'offline',
 				'prompt'                 => 'consent',
 				'include_granted_scopes' => 'true',
@@ -140,6 +153,9 @@ final class GoogleAuth {
 		);
 		if ( empty( $tokens['refresh_token'] ) ) {
 			throw new RemoteException( 'Google did not grant offline access. Remove the app\'s access in your Google account (Security > Third-party access) and connect again.' );
+		}
+		if ( isset( $tokens['scope'] ) && ! in_array( self::scope( $storage ), explode( ' ', (string) $tokens['scope'] ), true ) ) {
+			throw new RemoteException( 'Google did not grant access to Google Drive. Click Connect again and tick the Google Drive box on Google\'s consent page.' );
 		}
 
 		$saved = Storages::store()->change(
