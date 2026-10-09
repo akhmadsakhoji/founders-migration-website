@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-09
+
+### Fixed
+
+- With LiteSpeed Cache's "Cache REST API" and "Cache Logged-in Users" on (`cache-rest`, `cache-priv`), LiteSpeed kept the plugin's REST answers per user and served them again. A cloud storage that was added and connected did not show in the list (the empty list of the first visit came back), and other lists and a job's progress could show old answers. LiteSpeed Cache ignores `Cache-Control`, so every `fmw/v1` request now calls its `litespeed_control_set_nocache` action and defines `DONOTCACHEPAGE` before the route runs, and the answer carries `Cache-Control: no-store, private` and `X-LiteSpeed-Cache-Control: no-cache`. An answer cached before the update may show until LiteSpeed's private cache expires (30 minutes by default), or until you log out and in again.
+
 ## [1.1.0] - 2026-10-09
 
 ### Added
@@ -101,7 +107,8 @@ First public release. The development history before it is in the [pull requests
 - Deleting the plugin removes its settings, credentials, jobs and logs, never backups.
 - Requirements: 64-bit PHP 7.4 or newer, WordPress 6.0 or newer.
 
-[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/akhmadsakhoji/founders-migration-website/compare/v1.0.2...v1.0.3
